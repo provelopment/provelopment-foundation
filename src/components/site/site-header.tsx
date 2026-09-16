@@ -11,7 +11,6 @@ import { Stack } from "@/components/ui/stack";
 import { ContextNavLinks, type ContextNavLink } from "./context-nav-links";
 import { LanguageSwitcher } from "./language-switcher";
 import { LocationSwitcher } from "./location-switcher";
-import { PresetSwitcher } from "./preset-switcher";
 import { getSiteNavLinks } from "./nav-links";
 import { headerGraphicBandProps } from "./header-graphic";
 
@@ -143,10 +142,6 @@ export function SiteHeader({ locale, resolved }: SiteHeaderProps) {
                     ) : null}
 
                     <Stack direction="row" gap="gap-x-3 gap-y-2" items="items-center">
-                        <PresetSwitcher
-                            label={dictionary.presetComparison.label}
-                            currentSuffix={dictionary.presetComparison.current}
-                        />
                         {hasLocations ? (
                             <LocationSwitcher
                                 locale={locale}

@@ -184,12 +184,16 @@ export async function SiteFooter({ locale, directionLinkResolver }: SiteFooterPr
                     rendered <img> always resolves (see title-bar.tsx). */}
                 <p className="flex items-center gap-2 self-end text-sm text-muted-foreground sm:justify-end lg:col-span-4 lg:pt-2 lg:justify-start">
                     {siteConfig.assets?.logoFooter ? (
+                        // Owner ruling (2026-09) — the footer mark is the SAME
+                        // coloured source as the header and renders at the SAME
+                        // display size via the one `--ui-logo-display-size` token
+                        // (`.ui-site-footer-logo`), never a second hardcoded size.
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                             src={assetPathFromUrl(siteConfig.assets.logoFooter)}
                             alt=""
                             aria-hidden="true"
-                            className="h-5 w-auto shrink-0"
+                            className="ui-site-footer-logo"
                         />
                     ) : null}
                     <span className="break-words">

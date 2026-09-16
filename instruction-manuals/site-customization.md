@@ -24,7 +24,7 @@ Full schema reference: the Foundation's `CUSTOMIZING.md`. This manual is the
 
 ## What you may change (adopter-owned)
 
-- site configuration (identity, URL, contact, navigation, features, CTA, preset, theme)
+- site configuration (identity, URL, contact, navigation, features, CTA, theme)
 - business content
 - business imagery/artwork and its wiring
 - the adopter's own locale dictionaries
@@ -54,12 +54,14 @@ Set the site's canonical URL to the **actual production hostname** before deploy
 > mismatch silently publishes wrong canonical/OpenGraph/sitemap/robots URLs — a
 > production defect that local validation cannot catch. See `troubleshooting.md`.
 
-### Preset
+### Presentation
 
-The preset selects a coherent presentation intent (typography, rhythm, surface,
-header, hero, density, content width, radius). Change it in configuration only.
-Preset switching, comparison controls and multi-preset deployments are a
-programme-level decision, not an adopter customization.
+The Foundation ships **ONE canonical presentation**: a coherent presentation
+intent (typography, rhythm, surface, header, hero, density, content width,
+radius) resolved by the shared UI engine from the shipped configuration.
+Presentation is **not an adopter-selectable surface** — there is no preset
+selector, no preset switching and no multi-presentation deployment map (the
+former preset-comparison feature was retired in 2026-09). Do not add one.
 
 ### Theme
 
@@ -121,8 +123,8 @@ the schema.
 - Editing platform source to achieve a configuration outcome.
 - Publishing a canonical URL that does not match the live hostname.
 - Removing a navigation item while leaving the route reachable (or vice versa).
-- Introducing selector controls (preset/location/language) into a single-locale,
+- Introducing selector controls (location/language) into a single-locale,
   single-location site contract.
 - Changing a locale dictionary key structure rather than its values.
-- Forgetting that presentation differences should come from the preset, not from
-  ad-hoc CSS.
+- Forgetting that presentation differences come from the shipped presentation
+  configuration, not from ad-hoc CSS.

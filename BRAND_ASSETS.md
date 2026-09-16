@@ -381,9 +381,10 @@ change to swap.**
 | --- | --- |
 | Rendered size | **HARD: exactly 24 × 24 px** on **desktop and tablet**, expanded **and** collapsed. One token (`--ui-sidebar-control-icon-size: 1.5rem`), **no** breakpoint override |
 | Distinct from page icons | the page icons above are 16 × 16; the control is 24 × 24. They are separate tokens and must never share one |
-| Alignment | **HARD: left-aligned** with the shared page/edge inset `--ui-shell-control-inset` (≈5px, derived from the spacing scale) from the rail's inline edge, in **both** states — it must not shift or resize when the rail collapses |
-| Rail geometry | the collapsed rail's width is its OWN approved token (`--ui-sidebar-rail-collapsed`, 38.4 / 76.8 px) and is **not** derived from the control size |
-| Shell CTA parity | the shell-top primary CTA (`Book Now`) takes the **same** inset value, so the action and the control align on one edge in every preset |
+| Alignment | **HARD:** EXPANDED it is left-aligned with the shared page/edge inset `--ui-shell-control-inset` (≈5px, from the spacing scale); COLLAPSED it is **centred** on the rail's axis with no padding of its own |
+| Rail geometry | the collapsed rail is a symmetric icon column: `--ui-sidebar-rail-collapsed` = the control icon + equal inline padding = **36 px**, with the inline-end padding reduced by the rail's own 1 px border so the contents centre between the rail's outer edges (browser-measured `left = right = 18.00`) |
+| Page-icon centreline | in the collapsed rail the 16 × 16 page-icon column shares the control's exact centreline (browser-measured `navCx = controlCx`) |
+| Shell CTA parity | the shell-top primary CTA (`Book Now`) takes the **same** inset value, so the action and the expanded rail control align on one edge |
 | Mobile | unchanged — the mobile disclosure keeps its own `32 × 32` control sizing (`h-8 w-8`) |
 
 **Colour.** Every icon in this table renders through the same plain `<img>` as
@@ -456,7 +457,7 @@ artwork; it documents only the file/rendering contract and the substitution path
 | Recommended production master | **the SAME coloured source as the header** — `assets/branding/logos/lockup-horizontal.svg`, mirrored into `logo-footer.svg` (owner ruling, 2026-09 closure pass: the footer uses the coloured lockup, not the monochrome one). **RECOMMENDED only**; the monochrome `lockup-mono.svg` remains a retained optional source asset |
 | Required SVG viewBox | none |
 | Transparency requirement | **RECOMMENDED:** transparent. The mark sits beside the copyright line on the footer surface |
-| Runtime sizing | **HARD:** `height: 1.25rem` (20px), `width: auto`, `shrink-0` → aspect ratio preserved; never cropped |
+| Runtime sizing | **HARD:** `height: var(--ui-logo-display-size)` = `2rem` (32px), `width: auto`, `max-width: 100%` → **the SAME displayed size as the header logo** (owner ruling, 2026-09) with the aspect ratio preserved; never cropped. ONE token governs both logo roles |
 | Runtime crop behaviour | **HARD: never cropped** |
 | Position / anchor | inline, immediately before the `© <year> <site name>` line |
 | Repetition | once per page |
@@ -1069,9 +1070,9 @@ A short map, for maintainers — not required reading for an artwork task.
 | All presentation (sizing, crop, anchor, pointer behaviour) | `src/app/globals.css` |
 | **Source → runtime asset mirror** (the only sanctioned writer of `public/assets/**`) | `scripts/sync-runtime-assets.mjs` — `MIRRORED`, `MIRRORED_DIRECTORIES`, `RUNTIME_ONLY`, `buildPlan`, `syncMirrors`, `checkMirrors` (`pnpm assets:sync` / `pnpm assets:check`; run first by `pnpm build`) |
 | Sidebar page icons (16 × 16 contract, icon-library mapping, tooltip) | `src/app/globals.css` (`--ui-sidebar-nav-icon-size`) · `src/components/site/nav-links.ts` (`withSidebarNavIcons`) · `src/components/ui/nav-item.tsx` · `site.config.json` (`navigation[].iconOpen/iconClosed`) |
-| Sidebar open/close CONTROL (24 × 24 contract, left-aligned inset) | `src/app/globals.css` (`--ui-sidebar-control-icon-size`, `--ui-shell-control-inset`, `--ui-sidebar-rail-collapsed`) · `src/components/ui/sidebar.tsx` · `src/components/shell/shell-engine.tsx` (`resolveControlPresentation`) |
-| **Foundation theme colour** (the ONE `--ui-brand-accent` value → wordmark + highlights) | `src/app/globals.css` (`--ui-brand-accent`; `--primary`/`--ring` derive from it) · consumers: `src/app/[locale]/page.tsx` (wordmark), `src/components/site/{preset,location,language}-switcher.tsx` (selector emphasis), `src/components/ui/cta.tsx` (CTA fill) |
-| Header/footer logo source relationship | `scripts/sync-runtime-assets.mjs` (`MIRRORED`: both roles ← `assets/branding/logos/lockup-horizontal.svg`) |
+| Sidebar open/close CONTROL (24 × 24; expanded inset / collapsed centred) | `src/app/globals.css` (`--ui-sidebar-control-icon-size`, `--ui-shell-control-inset`, `--ui-sidebar-rail-collapsed`, `--ui-sidebar-rail-collapsed-pad`) · `src/components/ui/sidebar.tsx` · `src/components/shell/shell-engine.tsx` (`resolveControlPresentation`) |
+| **Foundation accent** (the ONE hardcoded `--ui-foundation-accent` → wordmark + highlights; dark derived) | `src/app/globals.css` (`--ui-foundation-accent`; `--ui-brand-accent`, `--primary`, `--ring` derive from it) · consumers: `src/app/[locale]/page.tsx` (wordmark), `src/components/site/{location,language}-switcher.tsx` (selector emphasis), `src/components/ui/cta.tsx` (CTA fill) |
+| Header/footer logo source relationship + shared display size | `scripts/sync-runtime-assets.mjs` (`MIRRORED`: both roles ← `assets/branding/logos/lockup-horizontal.svg`) · `src/app/globals.css` (`--ui-logo-display-size`, `.ui-site-header-logo` / `.ui-site-footer-logo`) |
 
 ---
 

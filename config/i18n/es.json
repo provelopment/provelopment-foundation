@@ -39,11 +39,7 @@
   },
   "language": {
     "label": "Idioma"
-  },
-  "presetComparison": {
-    "label": "Ver este sitio en otro preset",
-    "current": "actual"
-  },
+  },
   "location": {
     "label": "Ubicación",
     "unspecified": "Global"

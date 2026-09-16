@@ -1156,41 +1156,22 @@ describe("UI-01 — the ui contract namespace", () => {
     ).toThrow(/hex/);
   });
 
-  it("maps ui.presetComparison through the loader (FS-3)", () => {
-    const comparison = {
-      adaptive: "https://foundation.provelopment.com",
-      classic: "https://classic.foundation.provelopment.com",
-      focus: "https://focus.foundation.provelopment.com",
-      workspace: "https://workspace.foundation.provelopment.com",
-      immersive: "https://immersive.foundation.provelopment.com",
-    };
-    const config = parseSiteConfig({ ...validConfig, ui: { preset: "adaptive", presetComparison: comparison } });
-    expect(config.ui).toEqual({ preset: "adaptive", presetComparison: comparison });
-    expect(config.presetComparison).toEqual(comparison);
-  });
-
-  it("rejects a non-URL presetComparison destination (FS-3)", () => {
-    expect(() =>
-      parseSiteConfig({
-        ...validConfig,
-        ui: { presetComparison: { adaptive: "not-a-url" } },
-      }),
-    ).toThrow(/adaptive/);
-  });
-
-  it("rejects an unknown presetComparison key (FS-3)", () => {
-    expect(() =>
-      parseSiteConfig({
-        ...validConfig,
-        ui: { presetComparison: { nyc: "https://example.com" } },
-      }),
-    ).toThrow(/nyc/);
-  });
-
   it("rejects an unknown preset value with the full expected list", () => {
     expect(() =>
       parseSiteConfig({ ...validConfig, ui: { preset: "glamorous" } }),
     ).toThrow(/classic, adaptive, focus, workspace, immersive/);
+  });
+
+  it("has NO preset-comparison / preset-selection config surface (feature retired)", () => {
+    // Owner decision (2026-09): the Foundation no longer exposes or supports
+    // selectable presets, so the deployment-comparison map was REMOVED from the
+    // schema entirely — an unknown key is a hard error, not a silent no-op.
+    expect(() =>
+      parseSiteConfig({
+        ...validConfig,
+        ui: { presetComparison: { adaptive: "https://foundation.example.com" } },
+      }),
+    ).toThrow(/presetComparison/);
   });
 
   it("rejects an unknown ui key (config typo)", () => {

@@ -2,64 +2,19 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-const globalsPath = path.join(process.cwd(), "src", "app", "globals.css");
-const globals = readFileSync(globalsPath, "utf8");
+import { contrastRatio, readGlobalsCss, schemeTokens } from "./support/theme-tokens";
+
+const globals = readGlobalsCss();
 
 /**
- * Extracts the `--token: <color>;` declarations from one scheme block of
- * globals.css, resolving ONE level of `var(--other)` indirection so a DERIVED
- * token (e.g. `--primary: var(--ui-brand-accent)`) is audited by its ACTUAL
- * emitted value. Tests the real values, not mere variable presence.
+ * The resolved colour tokens of one scheme, evaluated through the shared
+ * resolver so DERIVED values (`var()` chains and the dark scheme's `color-mix()`
+ * brand tint) are audited by the colour the browser actually computes — never
+ * skipped for not being a literal hex.
  */
 function tokenBlock(scheme: "light" | "dark"): Readonly<Record<string, string>> {
-  const from =
-    scheme === "dark"
-      ? globals.indexOf("@media (prefers-color-scheme: dark)")
-      : 0;
-  const rootStart = globals.indexOf(":root", from);
-  const blockStart = globals.indexOf("{", rootStart);
-  const blockEnd = globals.indexOf("}", blockStart);
-  const block = globals.slice(blockStart + 1, blockEnd);
-
-  const raw: Record<string, string> = {};
-  for (const entry of block.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
-    raw[entry[1]] = entry[2].trim();
-  }
-
-  const tokens: Record<string, string> = {};
-  for (const [name, value] of Object.entries(raw)) {
-    const indirect = value.match(/^var\((--[\w-]+)\)$/);
-    const resolved = indirect ? raw[indirect[1]] : value;
-    if (resolved && /^#[0-9a-fA-F]{3,8}$/.test(resolved)) tokens[name] = resolved;
-  }
-  return tokens;
-}
-
-function rgb(hex: string): { r: number; g: number; b: number } {
-  let value = hex.replace("#", "");
-  if (value.length === 3) {
-    value = value
-      .split("")
-      .map((channel) => channel + channel)
-      .join("");
-  }
-  const n = parseInt(value, 16);
-  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
-}
-
-function luminance({ r, g, b }: { r: number; g: number; b: number }): number {
-  const linear = (channel: number) => {
-    const s = channel / 255;
-    return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
-  };
-  return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
-}
-
-function contrastRatio(a: string, b: string): number {
-  const la = luminance(rgb(a));
-  const lb = luminance(rgb(b));
-  const [lighter, darker] = la >= lb ? [la, lb] : [lb, la];
-  return (lighter + 0.05) / (darker + 0.05);
+  const { light, dark } = schemeTokens();
+  return scheme === "dark" ? dark : light;
 }
 
 /**
@@ -84,7 +39,9 @@ const REQUIRED_TOKENS = [
   "--destructive",
   "--destructive-foreground",
   "--ring",
-  // The ONE Foundation theme colour every branded/emphasis role derives from.
+  // The ONE hardcoded Foundation accent every branded/emphasis role derives from.
+  "--ui-foundation-accent",
+  // The scheme-resolved theme colour the consumers actually read.
   "--ui-brand-accent",
 ] as const;
 

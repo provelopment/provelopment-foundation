@@ -9,6 +9,7 @@ import {
   CTA_STYLES,
   DESKTOP_NAVIGATION_PATTERNS,
   MOBILE_NAVIGATION_PATTERNS,
+  resolveUiConfig,
   SHELL_VARIANTS,
   TABLET_NAVIGATION_PATTERNS,
   THEME_MODES,
@@ -221,14 +222,18 @@ describe("UI-01 — no default preset (the contract decision)", () => {
   });
 });
 
-describe("FS-2 — the shipped Foundation reference site selects Adaptive", () => {
-  it("site.config.json ui block chooses the adaptive preset (canonical reference site)", () => {
+describe("FS-2 — the shipped Foundation reference site presents the canonical UI", () => {
+  it("site.config.json declares NO preset: the canonical presentation is the engine default", () => {
+    // Owner decision (2026-09): the Foundation exposes and supports ONE
+    // presentation. The shipped config therefore selects nothing — the resolved
+    // canonical presentation comes from the shared UI engine's default profile
+    // (FOUNDATION_UI_DEFAULTS.defaultPreset), not from a configuration leaf.
     expect(siteConfig.ui).toBeDefined();
-    expect(siteConfig.ui?.preset).toBe("adaptive");
+    expect(siteConfig.ui).not.toHaveProperty("preset");
+    expect(siteConfig.ui).not.toHaveProperty("presetComparison");
     // The reference site ships no explicit navigation/shell leaves (FS-2), so
-    // the adaptive profile governs: sidebar ≥md / collapsed-sidebar tablet /
-    // bottom-bar <md — personality == effective composition for the canonical
-    // Foundation deployment.
+    // the canonical profile governs: sidebar ≥md / collapsed-sidebar tablet /
+    // bottom-bar <md — one presentation, one composition.
     expect(siteConfig.ui?.navigation).toBeUndefined();
     expect(siteConfig.ui?.shell).toBeUndefined();
   });
@@ -276,8 +281,12 @@ describe("UI-01 — loader mapping", () => {
     expect(config.ui?.preset).toBe("classic");
   });
 
-  it("the shipped Foundation reference site ui block maps through the validated loader with the adaptive preset", () => {
+  it("the shipped Foundation reference site ui block maps through the validated loader with no preset declared", () => {
     const config = parseSiteConfig({ ...baseConfig, ui: siteConfig.ui ?? {} });
-    expect(config.ui?.preset).toBe("adaptive");
+    expect(config.ui).toBeDefined();
+    expect(config.ui).not.toHaveProperty("preset");
+    // …and the canonical presentation still resolves (from the engine default).
+    const resolved = resolveUiConfig(config.ui ?? {});
+    expect(resolved.preset).toBe("adaptive");
   });
 });

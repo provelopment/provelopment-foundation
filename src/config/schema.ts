@@ -936,31 +936,13 @@ const uiThemeSchema = z
   })
   .strict();
 
-/**
- * FS-3 — preset-comparison deployment metadata. Maps each UI preset to the URL
- * of the deployment that presents the Foundation through that preset. This is
- * deployment metadata (which site demonstrates which preset), NOT page content.
- *
- * Each deployment's own entry is redundant with its `site.url`; the block
- * exists so every deployment knows the full five-site map. The active preset is
- * derived from `ui.preset` at runtime, never from a hostname comparison. An
- * absent key means that preset is not part of the comparison set for this site.
- */
-const uiPresetComparisonSchema = z
-  .object({
-    adaptive: z.url("must be an absolute URL including protocol, e.g. https://foundation.provelopment.com").optional(),
-    classic: z.url("must be an absolute URL including protocol, e.g. https://classic.example.com").optional(),
-    focus: z.url("must be an absolute URL including protocol, e.g. https://focus.example.com").optional(),
-    workspace: z.url("must be an absolute URL including protocol, e.g. https://workspace.example.com").optional(),
-    immersive: z.url("must be an absolute URL including protocol, e.g. https://immersive.example.com").optional(),
-  })
-  .strict();
-
 export const uiConfigSchema = z
   .object({
     /**
-     * Explicit preset selection. Optional: NO default is injected — the
-     * resolved default preset is decided by UI-05, not by this contract.
+     * Explicit presentation selection (internal): the Foundation ships ONE
+     * canonical presentation, resolved through the shared UI engine. Omitted in
+     * the shipped config; NO default is injected here — the resolved default is
+     * decided by UI-05, not by this contract.
      */
     preset: z
       .enum(UI_PRESETS, { message: `must be one of: ${UI_PRESETS.join(", ")}` })
@@ -975,8 +957,6 @@ export const uiConfigSchema = z
     presentation: uiPresentationSchema.optional(),
     cta: uiCtaSchema.optional(),
     theme: uiThemeSchema.optional(),
-    /** FS-3 — preset-comparison deployment destinations (preset → deployment URL). */
-    presetComparison: uiPresetComparisonSchema.optional(),
   })
   .strict();
 

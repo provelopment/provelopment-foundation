@@ -1375,7 +1375,6 @@
     "blog": true
   },
   "ui": {
-    "preset": "adaptive",
     "density": "comfortable",
     "content": {
       "width": "standard"
@@ -1390,13 +1389,6 @@
     "theme": {
       "mode": "system",
       "radius": "medium"
-    },
-    "presetComparison": {
-      "adaptive": "https://foundation.provelopment.com",
-      "classic": "https://classic.foundation.provelopment.com",
-      "focus": "https://focus.foundation.provelopment.com",
-      "workspace": "https://workspace.foundation.provelopment.com",
-      "immersive": "https://immersive.foundation.provelopment.com"
     }
   },
   "legal": [

@@ -43,11 +43,7 @@
   "location": {
     "label": "Location",
     "unspecified": "Global"
-  },
-  "presetComparison": {
-    "label": "View this site in another preset",
-    "current": "current"
-  },
+  },
   "business": {
     "open": "Open now",
     "closed": "Closed",

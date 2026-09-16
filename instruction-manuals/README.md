@@ -125,7 +125,7 @@ Add a row whenever the manuals are propagated against a new Foundation baseline.
 | --- | --- |
 | [`foundation-upgrade.md`](foundation-upgrade.md) | A newer Foundation release must be absorbed without damaging adopter-owned material. |
 | [`adoption.md`](adoption.md) | Creating a new Foundation-derived project (Demo 3/4 or a real customer). |
-| [`site-customization.md`](site-customization.md) | Changing identity, navigation, CTA, preset, theme, contact or metadata **without touching source**. |
+| [`site-customization.md`](site-customization.md) | Changing identity, navigation, CTA, presentation, theme, contact or metadata **without touching source**. |
 | [`branding-and-assets.md`](branding-and-assets.md) | Replacing logos, favicon, banners, sidebar icons or imagery; runtime roles vs business files. |
 | [`content-management.md`](content-management.md) | Writing/editing pages, offerings, portfolio, testimonials, FAQs, legal pages or dictionaries. |
 | [`validation.md`](validation.md) | Before claiming any task complete; understanding what each gate proves. |

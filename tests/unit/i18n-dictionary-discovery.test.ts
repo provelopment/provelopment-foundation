@@ -24,7 +24,6 @@ function makeDictionary(overrides: Record<string, unknown> = {}) {
     error: { title: "e", message: "e", tryAgain: "e", returnHome: "e" },
     language: { label: "l" },
     location: { label: "lo", unspecified: "u" },
-    presetComparison: { label: "pc", current: "pc" },
     connect: { heading: "c", demoNotice: "c", demoBadge: "c", methods: { message: "m" } },
     business: { open: "o", closed: "c", noHours: "h", hoursLabel: "hh", hoursTimeZoneLabel: "tz" },
     a11y: { skipToContent: "s" },

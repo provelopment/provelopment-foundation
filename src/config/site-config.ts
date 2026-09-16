@@ -214,19 +214,6 @@ export interface UiThemeConfig {
 }
 
 /**
- * FS-3 — preset-comparison deployment metadata. Maps each presentable preset to
- * the deployment URL that demonstrates the Foundation through that preset.
- * Absent keys are simply not part of the comparison set for this deployment.
- */
-export interface UiPresetComparisonConfig {
-  readonly adaptive?: string;
-  readonly classic?: string;
-  readonly focus?: string;
-  readonly workspace?: string;
-  readonly immersive?: string;
-}
-
-/**
  * P6-2C/P6-3B — generic branding asset roles. `logo`/`favicon` have real
  * consumers (JSON-LD + rendered header mark, browser tab icon);
  * `logoFooter` is composed into the footer; `banners` is the per-page banner
@@ -308,11 +295,6 @@ export interface SiteConfig {
    * until UI-02+; see ARCHITECTURE.md — UI System Architecture.
    */
   readonly ui?: UiConfig;
-  /**
-   * FS-3 — preset-comparison deployment destinations, lifted from `ui` for direct
-   * consumption by the header preset switcher (never read from `ui` at runtime).
-   */
-  readonly presetComparison?: UiPresetComparisonConfig;
   /** Normalized business profile (from `business` block or legacy contact). */
   readonly business: Business;
   /**

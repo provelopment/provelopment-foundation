@@ -39,11 +39,7 @@
   },
   "language": {
     "label": "Язык"
-  },
-  "presetComparison": {
-    "label": "Просмотреть этот сайт в другом пресете",
-    "current": "текущий"
-  },
+  },
   "location": {
     "label": "Регион",
     "unspecified": "Глобальный"

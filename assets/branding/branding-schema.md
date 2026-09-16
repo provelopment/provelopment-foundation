@@ -34,10 +34,10 @@ editing components.
 
 | Role | Color Name | Hex Code | Purpose & Usage |
 | --- | --- | --- | --- |
-| **Primary** | Foundation Blue Strong | `#3F6791` | The Foundation THEME colour (`--ui-brand-accent`): brand wordmark/eyebrow text, primary action CTAs, active/selected states, focus rings, selector emphasis. |
-| **Primary Hover** | Foundation Blue Deep | `#33557A` | Hover and active tap states on primary interactive elements. |
+| **Primary** | Foundation Blue Strong | `#3F6791` | The ONE hardcoded Foundation accent (`--ui-foundation-accent`): brand wordmark/eyebrow text, primary action CTAs, active/selected states, focus rings, selector emphasis. |
+| **Primary Hover** | Foundation Blue Deep | *derived* | Hover and active tap states on primary interactive elements — `color-mix(in srgb, var(--ui-foundation-accent) 85%, #0f172a)`. |
 | **Identity** | Foundation Blue (canonical) | `#4F7CAC` | Emblem/lockup ARTWORK only (the identity geometry): the approved canonical expression colour. Not used for text — 4.37:1 on white is below the WCAG AA text minimum this token set guarantees. |
-| **Dark canvas theme** | Foundation Blue (lifted) | `#8FB4D9` | The same ONE theme colour, lifted for the dark scheme (8.25:1 on `#0F172A`). |
+| **Dark canvas theme** | Foundation Blue (lifted) | *derived* | `--ui-brand-accent` under `prefers-color-scheme: dark`: `color-mix(in srgb, var(--ui-foundation-accent) 50%, #ffffff)` = `#9FB3C8` (8.29:1 on `#0F172A`). Derived, never a second brand hex. |
 | **Neutral Dark** | Dark Slate Navy | `#0F172A` / `#1E293B` | Main typography, primary wordmark, dark-mode backgrounds, deep headers. |
 | **Accent / Auxiliary** | Regulatory Amber Gold | `#B45309` | Trust badges, statutory fee tags, credential verifications, secondary highlights. |
 | **Accent Hover** | Deep Amber | `#92400E` | Hover states for auxiliary badges and interactive tags. |
@@ -46,13 +46,14 @@ editing components.
 | **Border / Divider** | Crisp Slate Border | `#E2E8F0` | Separation lines, input borders, structured grid dividers. |
 | **Body Text** | Slate Gray | `#334155` | Paragraphs, documentation prose, body copy. |
 
-> **The Foundation theme colour is ONE value.** It is declared once per scheme as
-> `--ui-brand-accent` in `src/app/globals.css`, and the brand-text token
-> (`--primary`) and the focus/selection token (`--ring`) are INDIRECTIONS of it —
-> so changing that one line re-colours the wordmark and every theme-driven UI
-> highlight together. `#C5161D` (Provelopment Crimson) is the **provelopment.com**
-> expression, not a Foundation colour; `#DC2626` remains the separate
-> error/destructive role.
+> **The Foundation accent is ONE hardcoded value.** It is declared once as
+> `--ui-foundation-accent` in `src/app/globals.css`; the scheme-resolved token
+> (`--ui-brand-accent`), the brand-text token (`--primary`) and the focus/selection
+> token (`--ring`) are **indirections** of it, and the dark scheme's lifted tint is
+> **derived** from it with `color-mix()` — so changing that one line re-colours the
+> wordmark and every theme-driven UI highlight together. `#C5161D` (Provelopment
+> Crimson) is the **provelopment.com** expression, not a Foundation colour;
+> `#DC2626` remains the separate error/destructive role.
 
 ---
 

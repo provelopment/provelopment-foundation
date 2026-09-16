@@ -80,15 +80,20 @@ describe("P6-3B — rail CSS contract (derived width, icon sizes, full-height bo
     expect(globals).toMatch(new RegExp("\\.ui-sidebar-rail\\s*\\{[^}]*transition:\\s*width\\s+200ms"));
   });
 
-  it("collapsed rail uses its OWN approved geometry token (no hard-coded px, no control coupling)", () => {
+  it("collapsed rail uses its OWN symmetric geometry token (no hard-coded px)", () => {
     expect(globals).toMatch(new RegExp("\\.ui-sidebar-rail\\[data-collapsed=\"true\"\\]\\s*\\{[^}]*width:\\s*var\\(--ui-sidebar-rail-collapsed\\)"));
     expect(globals).toMatch(new RegExp("\\.ui-sidebar-rail\\[data-collapsed=\"true\"\\]\\s*\\{[^}]*padding-inline:\\s*var\\(--ui-sidebar-rail-collapsed-pad\\)"));
-    // 2026-09 closure pass — the APPROVED geometry (formerly "icon x 1.2" and
-    // "icon x 0.1") is preserved as its own token. The rail no longer borrows
-    // the control's icon size, because the control is 24px on EVERY breakpoint
-    // while the rail's tablet/desktop geometry differs.
-    expect(globals).toMatch(/--ui-sidebar-rail-collapsed:\s*2\.4rem/);
-    expect(globals).toMatch(/--ui-sidebar-rail-collapsed-pad:\s*0\.2rem/);
+    // Owner ruling (2026-09): the collapsed rail is the control icon plus EQUAL
+    // inline padding on both sides (one width for desktop and tablet), and the
+    // inline-end padding is reduced by the rail's own border so the contents
+    // centre between the rail's OUTER edges.
+    expect(globals).toMatch(
+      /--ui-sidebar-rail-collapsed:\s*calc\(\s*var\(--ui-sidebar-control-icon-size\)\s*\+\s*var\(--ui-sidebar-rail-collapsed-pad\)\s*\*\s*2\s*\)/,
+    );
+    expect(globals).toMatch(/--ui-sidebar-rail-collapsed-pad:\s*0\.375rem/);
+    expect(globals).toMatch(
+      /padding-inline:\s*var\(--ui-sidebar-rail-collapsed-pad\)\s*\n?\s*calc\(var\(--ui-sidebar-rail-collapsed-pad\)\s*-\s*var\(--ui-sidebar-rail-border\)\)/,
+    );
     expect(globals).not.toMatch(/--ui-sidebar-icon-size\s*:/);
   });
 

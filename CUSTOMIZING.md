@@ -22,30 +22,27 @@ placeholders, and the demonstration "operating regions" are **intentional
 placeholders** — a real deployment replaces them. Do not treat them as
 operational contacts or services.
 
-## The five-site model: one Foundation, five presentations
+## One Foundation, one canonical presentation
 
-The Foundation is presented through **five deployments that are five
-presentations of the SAME canonical site** — never five separate businesses:
+The Foundation ships **ONE canonical presentation** — the site produced by the
+shipped configuration. It is resolved by the **shared** token renderer described
+under *The `ui.presentation` block* below.
 
-| Deployment | Preset | What the visitor sees |
-| --- | --- | --- |
-| `foundation.provelopment.com` | Adaptive | the canonical Foundation baseline — balanced/presentation-neutral (sidebar ≥md, bottom-nav <md, neutral typography/surfaces) |
-| `classic.foundation.provelopment.com` | Classic | top navigation + drawer; **editorial** display scale, paper cards, rule header, split hero, small radius |
-| `focus.foundation.provelopment.com` | Focus | reduced navigation + prominent CTA; **minimal** typography, transparent surfaces, bare header, centered narrow hero, airy rhythm |
-| `workspace.foundation.provelopment.com` | Workspace | sidebar + drawer shell; **utility/dense** — wide column, squared instrument cards, compact header, concise hero |
-| `immersive.foundation.provelopment.com` | Immersive | floating rail + overlay mobile; **expressive** scale, layered shadow cards, elevated header, showcase hero, large radius |
+> **The former five-site model is retired (2026-09 owner decision).** The
+> Foundation used to be compared across five externally hosted presentations via
+> a header dropdown (`ui.presetComparison`). That feature is **removed**: there is
+> no preset selector, no preset switching and no deployment map. The
+> `adaptive.foundation.provelopment.com` family is not part of the Foundation
+> product surface.
 
-Each presentation is implemented by the **shared** token renderer described
-under *The `ui.presentation` block* below — the five rows here are five
-*distinct presentations of one content model*, not five website implementations.
+The presentation a visitor sees is a coherent intent (typography, rhythm, surface,
+header, hero, density, content width, radius) applied through `data-ui-*`
+attributes onto **one** content model — never a per-presentation fork.
 
-All five present the **same canonical content and configuration** (drawn from
-the same `site.config.json`, `content/`, `config/i18n/`, and `public/assets/`).
-Only the `ui.preset` (plus the presentation leaves that follow from it) differ.
-This is exactly what the **preset comparison dropdown** in the header shows:
-you are viewing the same Foundation content, switchable across presentations.
-`classic`, `focus`, `workspace`, and `immersive` are **not separate content
-authorities** — there is one content model, five ways to present it.
+There is **one** content model and **one** configuration set
+(`site.config.json`, `content/`, `config/i18n/`, `public/assets/`); the canonical
+presentation is what the shipped config resolves to. No other presentation is
+selectable, so nothing can diverge.
 
 ## Customization ownership boundary
 
@@ -311,18 +308,19 @@ distinct `floating` visual treatment and the `minimal` header treatment remain
 **UI-10** gate. Do not expect a distinct floating look or a reduced header in this
 release.
 
-**Behavioral & accessibility contract (UI-10):** the five presets share a
-browser-validated modal contract in the `Drawer` primitive (drawer, overlay, and
-Adaptive's More drawer all use it): **focus** moves into an opened disclosure and
-returns to the trigger on close (Escape / backdrop / trigger); Tab / Shift+Tab are
-contained; the background becomes **`inert`** while open and is restored on close;
-a dismissing **backdrop/scrim** is shown; background **scroll is locked**; and the
-global **`prefers-reduced-motion`** rule governs any motion (none is added). The
-active page is marked **`aria-current="page"`** on the internal nav link in every
-placement (header, sidebar bands, drawer/overlay, footer), and each disclosure's
-trigger owns the id the dialog is named by (`aria-controls`/`aria-labelledby`
-resolve to real elements). This is validated by the committed **CDP browser matrix**
-(`pnpm test:browser`, also run in CI) across all five presets × desktop/tablet/mobile.
+**Behavioral & accessibility contract (UI-10):** the canonical presentation's
+disclosures share a browser-validated modal contract in the `Drawer` primitive
+(the More drawer and any drawer/overlay composition use it): **focus** moves into
+an opened disclosure and returns to the trigger on close (Escape / backdrop /
+trigger); Tab / Shift+Tab are contained; the background becomes **`inert`** while
+open and is restored on close; a dismissing **backdrop/scrim** is shown; background
+**scroll is locked**; and the global **`prefers-reduced-motion`** rule governs any
+motion (none is added). The active page is marked **`aria-current="page"`** on the
+internal nav link in every placement (header, sidebar bands, drawer/overlay,
+footer), and each disclosure's trigger owns the id the dialog is named by
+(`aria-controls`/`aria-labelledby` resolve to real elements). This is validated by
+the committed **CDP browser matrix** (`pnpm test:browser`, also run in CI) across
+the canonical presentation × desktop/tablet/mobile.
 
 
 
@@ -510,31 +508,32 @@ and the same left-side vertical position.
 | State | Behavior |
 | --- | --- |
 | **Expanded** | Icons **and** labels, at the intended width (`13.75rem` / 220px rail; with the frame inset the total footprint is the previous 240px). |
-| **Collapsed** | The rail **remains visible** as a narrow column at its approved width (`--ui-sidebar-rail-collapsed`: `4.8rem`/77px at ≥`lg`, `2.4rem`/38px below — the former `icon × 1.2`, with `icon × 0.1` inline padding). Icons stay; labels are hidden from the visual layout. |
+| **Collapsed** | The rail **remains visible** as a narrow, symmetric icon column: `--ui-sidebar-rail-collapsed` = the 24px control icon + equal inline padding on both sides = **36px** (browser-measured `rail=36`). Icons stay; labels are hidden from the visual layout. |
 
 - **Horizontal only.** Collapse/expand is a **width** change
   (`transition: width 200ms`, stripped under `prefers-reduced-motion`) — never a
   vertical move, never a disappearance.
-- **The collapsed width is a geometry TOKEN, not a multiple of the control.**
-  It is the owner-approved geometry above; it is deliberately NOT derived from the
-  control icon's size (browser-measured: `rail=77` with a `24px` control at 1280,
-  `rail=38` at 800–1023). Changing the control size therefore cannot silently
-  shrink the rail.
-- **Icon sizes (2026-09 closure pass).** THREE separate contracts, one token each:
+- **The collapsed rail is centred by construction (2026-09 owner geometry).**
+  The inline-end padding is reduced by the rail's own 1px border, so the content
+  box is centred between the rail's OUTER edges: browser-measured
+  `left=18.00 right=18.00` around `controlCx=38` = `railCx=38`, with the page-icon
+  column on the **same** centreline (`navCx=38`). There is no inset and no
+  negative-margin compensation in the collapsed state.
+- **Icon sizes (2026-09).** THREE separate contracts, one token each:
   - **Show/Hide disclosure (CONTROL) icon:** **exactly 24×24 on desktop AND
     tablet** — `--ui-sidebar-control-icon-size: 1.5rem`, one value with **no
-    breakpoint override**. The control is **left-aligned** with the shared
-    `--ui-shell-control-inset` (≈5px) from the rail's inline edge, in **both**
-    states, so it never shifts when the rail collapses.
+    breakpoint override**. **Expanded** it is left-aligned with the shared
+    `--ui-shell-control-inset` (≈5px) from the rail's inline edge (unchanged);
+    **collapsed** it is **centred** on the rail's axis with no padding of its own.
   - **Sidebar navigation-item (page) icons:** **exactly 16×16 on desktop AND
     tablet**, expanded and collapsed, via one shared token
     `--ui-sidebar-nav-icon-size: 1rem` with **no breakpoint override**
     (2026-09 owner ruling; the former 32px-at-`lg` override is deliberately gone).
   - The **mobile** disclosure control icon renders **32×32** (unchanged). Top-nav /
     bottom-bar keep the shared `1em` base.
-- **The shell-top CTA shares the same inset.** `--ui-shell-control-inset` also
-  pads `.ui-shell-cta` (`Book Now`), so the action and the rail control line up on
-  one edge in every preset — from ONE value, never per-preset magic numbers.
+- **The shell-top CTA keeps the shared inset.** `--ui-shell-control-inset` also
+  pads `.ui-shell-cta` (`Book Now`) by ≈5px, so the action and the expanded rail
+  control line up on one edge — from ONE value, never per-view magic numbers.
 - **Full-height right border.** The rail's `border-inline-end` spans the whole
   sidebar/page-shell row (browser-measured `rail=774` vs `main=774` at 1280),
   not merely the navigation content.
@@ -1042,7 +1041,8 @@ toggle).
 | `--card` / `--card-foreground` | card surfaces (offerings, connect, FAQ) / text on them |
 | `--border` | hairline borders |
 | `--input` | form control borders |
-| `--ui-brand-accent` | **THE Foundation theme colour** — the ONE value that drives both the brand wordmark and every theme-driven UI highlight |
+| `--ui-foundation-accent` | **THE Foundation accent** — the ONE hardcoded brand value. Change this and the whole Foundation re-colours |
+| `--ui-brand-accent` | the scheme-resolved theme colour every consumer reads (identical to the accent in light; **derived** from it in dark) |
 | `--ring` | keyboard focus ring (**derived** from `--ui-brand-accent`) |
 | `--accent` | highlight / badge surfaces |
 | `--primary` / `--primary-foreground` | brand color / text on brand (**derived** from `--ui-brand-accent`) |
@@ -1059,43 +1059,51 @@ utilities referencing your `:root` values at runtime.
 
 ### One theme colour (required invariant)
 
-The Foundation has **exactly one** brand-accent value per scheme. It is declared
-once as `--ui-brand-accent`, and the two branded consumers are **indirections** of
-it rather than copies:
+The Foundation has **exactly ONE hardcoded brand value**. Everything else derives
+from it — including the dark scheme, which never stores a second brand hex:
 
 ```text
-        --ui-brand-accent: #3f6791;      ← the ONE value you change
-                   ↓
-        ┌──────────┴──────────┐
-   --primary              --ring
-   (wordmark, brand       (focus ring, selector
-    text, CTA fill)        emphasis, accent-color)
-                   ↕
+   --ui-foundation-accent: #3f6791;        ← the ONE value you change
+              ↓
+   --ui-brand-accent  (scheme-resolved)
+     light: var(--ui-foundation-accent)
+     dark : color-mix(in srgb, var(--ui-foundation-accent) 50%, #ffffff)
+              ↓
+      ┌───────┴────────┐
+ --primary           --ring
+ (wordmark, brand    (focus ring, selector
+  text, CTA fill)     emphasis, accent-color)
+                    ↕
    select[data-selector] { accent-color: var(--ui-brand-accent) }
 ```
 
 Setting that one value re-colours the Foundation wordmark **and** every
 application-controlled highlight together, so the two can never drift apart.
-`#3f6791` is the approved *functional* Foundation blue ("Foundation Blue Strong");
-the canonical identity colour `#4f7cac` is the **artwork** colour (emblem/lockup
-geometry) and is deliberately not used for text, because 4.37:1 on white is below
-the WCAG AA text minimum. The dark scheme declares its own lifted tint
-(`#8fb4d9`) for the same single concept. `#c5161d` (Provelopment Crimson) is the
-**provelopment.com** expression and must never appear in a Foundation
-branding/emphasis role.
+`#3f6791` is the approved *functional* Foundation blue (the DARKER blue —
+"Foundation Blue Strong", the tint the approved lockup artwork uses for its
+wordmark letterforms); the canonical identity colour `#4f7cac` is the **artwork**
+colour (emblem/lockup geometry) and is deliberately not used for text, because
+4.37:1 on white is below the WCAG AA text minimum. The dark scheme's lifted tint is
+**derived** (`color-mix(in srgb, var(--ui-foundation-accent) 50%, #ffffff)` =
+`#9fb3c8`, 8.29:1 on `#0F172A`) — never a second brand hex. `#c5161d`
+(Provelopment Crimson) is the **provelopment.com** expression and must never appear
+in a Foundation branding/emphasis role.
 
-`tests/unit/theme-color-contract.test.ts` enforces the relationship: one
-declaration per scheme, both consumers derived, no crimson declarations, and no
-component carrying its own brand colour.
+`tests/unit/theme-color-contract.test.ts` enforces the relationship: exactly one
+hardcoded accent declaration (the approved value), both consumers derived, a
+derived dark tint, no crimson declarations, and no component carrying its own brand
+colour. The browser matrix additionally proves the derived dark value in a real
+engine (`prefers-color-scheme: dark` emulation).
 
 ### Changing colors
 
-**To re-brand, change the ONE theme colour first.** Editing `--ui-brand-accent`
+**To re-brand, change the ONE Foundation accent.** Editing `--ui-foundation-accent`
 re-colours the Foundation wordmark, the focus ring, the selector emphasis and the
-CTA fill together (see "One theme colour" above) — that single edit is all a
-Foundation re-brand normally needs. Then, if you want a different treatment for
-any role, edit the other hex values in the light block and, for a proper dark
-experience, the corresponding values in the dark block — then run
+CTA fill together, and the dark scheme follows automatically (see "One theme
+colour" above) — that single edit is all a Foundation re-brand normally needs.
+Then, if you want a different treatment for any role, edit the other hex values in
+the light block and, for a proper dark experience, the corresponding values in the
+dark block — then run
 `pnpm exec tsc --noEmit && pnpm lint && pnpm test && pnpm build`.
 `tests/unit/design-tokens.test.ts` verifies the **default** token set meets
 WCAG 2.1 AA contrast (≥ 4.5:1) for every documented pair in both schemes, and

@@ -69,16 +69,6 @@ export const dictionarySchema = z.object({
     unspecified: z.string(),
   }),
   /**
-   * FS-3 — preset-comparison selector strings. The preset names themselves are
-   * proper-noun presentation labels from the configurable deployment map.
-   */
-  presetComparison: z.object({
-    /** Accessible label for the preset selector (which presentation is active). */
-    label: z.string(),
-    /** Localized suffix marking the currently active preset in the selector. */
-    current: z.string(),
-  }),
-  /**
    * Phase M — Connect page strings (configurable connection modes). The page
    * is a template demonstration of connection options; `demoNotice` and
    * `demoBadge` make that explicit to a visitor. `methods` are localized

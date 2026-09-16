@@ -163,22 +163,19 @@ describe("P6-3C/B — sidebar NAVIGATION-ITEM icons are exactly 16px on desktop 
     expect(navIconRule).not.toMatch(/var\(--ui-sidebar-control-icon-size\)/);
   });
 
-  it("keeps the approved rail geometry as an EXPLICIT token (no longer borrowed from the control)", () => {
+  it("keeps the collapsed rail as its OWN symmetric geometry token (no hard-coded px)", () => {
     const collapsed = /\.ui-sidebar-rail\[data-collapsed="true"\]\s*\{([^}]*)\}/.exec(globals)?.[1] ?? "";
-    // 2026-09 closure pass — the collapsed rail is the APPROVED geometry
-    // (formerly "icon x 1.2", i.e. 2rem→2.4rem below lg and 4rem→4.8rem at lg)
-    // but it is now spelled as its own token, because the control is 24px on
-    // EVERY breakpoint and can no longer be the rail's width basis.
+    // Owner ruling (2026-09): the collapsed rail is a SYMMETRIC icon column —
+    // the control icon plus equal inline padding on both sides — so ONE width
+    // serves desktop and tablet, and the control centres between the rail's
+    // outer edges. It is not derived from the control's rendered box by
+    // accident, and it is not the retired `icon x 1.2` geometry.
     expect(collapsed).toMatch(/width:\s*var\(--ui-sidebar-rail-collapsed\)/);
     expect(collapsed).toMatch(/padding-inline:\s*var\(--ui-sidebar-rail-collapsed-pad\)/);
-    expect(globals).toMatch(/--ui-sidebar-rail-collapsed:\s*2\.4rem/); // 2rem x 1.2
-    expect(globals).toMatch(/--ui-sidebar-rail-collapsed-pad:\s*0\.2rem/); // 2rem x 0.1
     expect(globals).toMatch(
-      new RegExp("@media \\(min-width: 1024px\\)[^}]*--ui-sidebar-rail-collapsed:\\s*4\\.8rem"),
-    ); // 4rem x 1.2
-    expect(globals).toMatch(
-      new RegExp("@media \\(min-width: 1024px\\)[^}]*--ui-sidebar-rail-collapsed-pad:\\s*0\\.4rem"),
-    ); // 4rem x 0.1
+      /--ui-sidebar-rail-collapsed:\s*calc\(\s*var\(--ui-sidebar-control-icon-size\)\s*\+\s*var\(--ui-sidebar-rail-collapsed-pad\)\s*\*\s*2\s*\)/,
+    );
+    expect(globals).toMatch(/--ui-sidebar-rail-collapsed-pad:\s*0\.375rem/);
     // The retired rail-basis token is no longer DECLARED anywhere (comments may
     // still explain the rename; only declarations matter).
     expect(globals).not.toMatch(/--ui-sidebar-icon-size\s*:/);

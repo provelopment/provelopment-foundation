@@ -8,17 +8,18 @@ Clone it, make it yours by editing **configuration, content, and assets
 only**, then deploy — [`CUSTOMIZING.md`](CUSTOMIZING.md) walks you through
 the whole process.
 
-## Five presentations, one Foundation
+## One canonical presentation, one Foundation
 
-The Foundation is demonstrated through **five deployments — five
-presentations of the SAME canonical site** (same `content/`, `config/i18n/`,
-`site.config.json`, `public/assets/`): **Adaptive** (the canonical
-`foundation.provelopment.com`), plus **Classic**, **Focus**, **Workspace** and
-**Immersive** preset demonstrations (`*.foundation.provelopment.com`). Each
-preset resolves a coherent presentation intent (typography, rhythm, surface,
-header, hero + density/content-width/radius) onto the **shared** renderer via
-`data-ui-*` attributes — no preset-specific CSS, no per-preset forks. See
+The Foundation ships **ONE canonical presentation** — the site you get from the
+shipped configuration. There is **no preset selector and no preset switching**:
+the presentation is resolved by the shared UI engine (typography, rhythm, surface,
+header, hero + density/content-width/radius) onto the renderer via `data-ui-*`
+attributes — no per-presentation CSS, no per-presentation forks. See
 `CUSTOMIZING.md` → *The `ui.presentation` block* for the full matrix.
+
+> The former five-preset comparison feature (a header dropdown linking five
+> externally hosted presentations) was **retired in 2026-09**; those sibling
+> deployments are not part of the Foundation product.
 
 ## Tech Stack
 

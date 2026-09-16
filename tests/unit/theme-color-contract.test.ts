@@ -1,133 +1,194 @@
-import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
+import { describe, expect, it } from "vitest";
+
+import {
+  contrastRatio,
+  declarations,
+  readGlobalsCss,
+  schemeScopes,
+  schemeTokens,
+} from "./support/theme-tokens";
 
 /**
- * FOUNDATION THEME COLOUR — the SINGLE-SOURCE contract (owner-directed, 2026-09).
+ * FOUNDATION SINGLE-SOURCE THEME COLOUR (owner-directed, 2026-09).
  *
- * The owner requirement is an architectural invariant, not a colour value:
+ * The owner's requirement is literal: there must be ONE place where the
+ * Foundation colour is set, so that one future colour change controls the
+ * wordmark/heading, the selector highlights, the focus emphasis and the branded
+ * CTA roles.
  *
- *   ONE configured Foundation theme colour
- *               ↓
- *        semantic theme token (--ui-brand-accent)
- *           ↙            ↘
- *    wordmark          UI highlights
+ *   ONE hardcoded Foundation accent  (#3F6791 — the darker Foundation blue)
+ *                    ↓
+ *        --ui-brand-accent  (semantic, scheme-resolved)
+ *         ↙        ↓         ↘
+ *    wordmark   selectors   focus/CTA
+ *                    ↓
+ *        derived dark tint via color-mix()  (no second brand hex)
  *
- * Changing that ONE value must re-colour the Foundation wordmark AND every
- * application-controlled selection/focus highlight, so a future deployment owner
- * cannot leave the two out of step. Crimson `#C5161D` is the provelopment.com
- * expression (brand-system governance maps `Provelopment Foundation ->
- * Foundation Blue`), so it must not appear in a Foundation branding/emphasis
- * role — while `--destructive` stays red for errors/danger.
- *
- * These assertions test the RELATIONSHIP, not one exact hex string: the value is
- * free to change, and when it does, both consumers must follow.
+ * These assertions inspect DECLARATIONS (not prose): a documentation comment that
+ * names a colour is not an independently maintained value.
  */
 const ROOT = process.cwd();
 const read = (...segments: string[]) => readFileSync(path.join(ROOT, ...segments), "utf8");
-const globals = read("src", "app", "globals.css");
+const css = readGlobalsCss();
+const { light, dark } = schemeScopes(css);
+const lightRaw = declarations(light);
+const darkRaw = declarations(dark);
 
-/** The two scheme scopes of globals.css, in declaration order. */
-function schemes(): { light: string; dark: string } {
-  const darkAt = globals.indexOf("@media (prefers-color-scheme: dark)");
-  expect(darkAt, "globals.css must declare a dark scheme block").toBeGreaterThan(0);
-  return { light: globals.slice(0, darkAt), dark: globals.slice(darkAt) };
-}
+/** The approved darker Foundation blue (brand pack: "Foundation Blue Strong"). */
+const APPROVED_ACCENT = "#3f6791";
 
-const accentValue = (block: string) =>
-  /--ui-brand-accent\s*:\s*(#[0-9a-fA-F]{6})\s*;/.exec(block)?.[1] ?? null;
+/** Count `--token: <value>;` declarations whose value is exactly `hex`. */
+const declarationsOf = (hex: string) =>
+  (css.match(new RegExp(`--[\\w-]+\\s*:\\s*${hex}\\s*;`, "gi")) ?? []).length;
 
 
-describe("Foundation theme colour — ONE authoritative source", () => {
-  it("declares the theme colour exactly ONCE per scheme (one place to change)", () => {
-    const { light, dark } = schemes();
-    const count = (block: string) => (block.match(/--ui-brand-accent\s*:/g) ?? []).length;
-    expect(count(light), "light scheme").toBe(1);
-    expect(count(dark), "dark scheme").toBe(1);
-    expect(accentValue(light)).toMatch(/^#[0-9a-fA-F]{6}$/);
-    expect(accentValue(dark)).toMatch(/^#[0-9a-fA-F]{6}$/);
-    // The dark canvas needs a lifted tint, so the two schemes may differ — but
-    // they must not collapse to one shared hex by accident (that is how
-    // inaccessible dark-mode brand text appears).
-    expect(accentValue(light)).not.toBe(accentValue(dark));
+describe("Foundation accent — exactly ONE hardcoded source", () => {
+  it("declares the approved darker Foundation blue as the single base value", () => {
+    expect(lightRaw["--ui-foundation-accent"]?.toLowerCase()).toBe(APPROVED_ACCENT);
+    // The value is written ONCE in the whole stylesheet…
+    expect((css.match(/--ui-foundation-accent\s*:/g) ?? []).length).toBe(1);
+    // …and no other declaration repeats that hex (a copy would silently freeze
+    // one of the consumers when the accent changes).
+    expect(declarationsOf(APPROVED_ACCENT), "copies of the accent hex").toBe(1);
   });
 
-  it("makes BOTH consumers DERIVE from it (wordmark + UI highlights)", () => {
-    const { light, dark } = schemes();
-    for (const [scheme, block] of Object.entries({ light, dark })) {
-      // The brand-text token and the focus/selection token are INDIRECTIONS, never
-      // copies — that is what makes a one-line re-brand propagate. A literal here
-      // would silently freeze one of the two roles.
-      expect(block, `${scheme} --primary`).toMatch(/--primary:\s*var\(--ui-brand-accent\)\s*;/);
-      expect(block, `${scheme} --ring`).toMatch(/--ring:\s*var\(--ui-brand-accent\)\s*;/);
-    }
+  it("keeps the retired separate dark brand hex out of the token set", () => {
+    // The dark scheme used to hardcode its own brand hex (#8fb4d9). It must no
+    // longer exist as a DECLARATION anywhere: dark derives from the one accent.
+    expect((css.match(/--[\w-]+\s*:\s*#8fb4d9\s*;/gi) ?? []).length).toBe(0);
   });
 
-  it("stores the theme value in exactly one DECLARATION (no copy a one-line change would miss)", () => {
-    const { light } = schemes();
-    const accent = accentValue(light) as string;
-    const declarations = globals.match(new RegExp(`--[\\w-]+\\s*:\\s*${accent}\\s*;`, "gi")) ?? [];
-    expect(
-      declarations,
-      `the Foundation theme value ${accent} must appear as exactly one declaration; found ${declarations.length}`,
-    ).toHaveLength(1);
+  it("resolves the scheme-resolved token from the base value (light)", () => {
+    expect(lightRaw["--ui-brand-accent"]?.trim()).toBe("var(--ui-foundation-accent)");
+    const { light: resolved } = schemeTokens();
+    expect(resolved["--ui-brand-accent"]).toBe(APPROVED_ACCENT);
   });
 
-  it("keeps the theme colour out of the semantic STATUS colours (errors stay red)", () => {
-    const { light, dark } = schemes();
-    expect(light).toMatch(/--destructive:\s*#dc2626\s*;/);
-    expect(dark).toMatch(/--destructive:\s*#[0-9a-fA-F]{6}\s*;/);
-    expect(accentValue(light)).not.toBe("#dc2626");
-    // Danger/destructive is a DISTINCT role from brand emphasis.
-    expect(light).not.toMatch(/--destructive:\s*var\(--ui-brand-accent\)/);
+  it("DERIVES the dark tint from the same value instead of storing a second hex", () => {
+    const darkAccent = darkRaw["--ui-brand-accent"]?.trim() ?? "";
+    // A color-mix that references the ONE accent — never a literal brand hex.
+    expect(darkAccent).toMatch(
+      /^color-mix\(in srgb,\s*var\(--ui-foundation-accent\)\s+[\d.]+%,\s*#[0-9a-fA-F]{6}\)$/,
+    );
+    expect(darkAccent.toLowerCase()).not.toContain(APPROVED_ACCENT);
+
+    const { light: l, dark: d } = schemeTokens();
+    expect(d["--ui-brand-accent"], "dark must be a lifted variant").not.toBe(l["--ui-brand-accent"]);
+    // …and the derived tint still meets WCAG AA as text on the dark canvas.
+    const ratio = contrastRatio(d["--ui-brand-accent"], d["--background"]);
+    expect(ratio, `derived dark accent contrast ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
   });
 
-  it("carries NO Provelopment Crimson in a Foundation branding/emphasis role", () => {
-    // No token DECLARATION may use the crimson brand hexes. Comments may name
-    // them (the governance mapping is worth documenting) — declarations may not.
-    const crimsonDeclarations = globals.match(/--[\w-]+\s*:\s*#(c5161d|a11217)\s*;/gi) ?? [];
-    expect(crimsonDeclarations).toEqual([]);
+  it("meets WCAG AA as text on the light canvas (the reason for the darker blue)", () => {
+    const { light: resolved } = schemeTokens();
+    const ratio = contrastRatio(resolved["--ui-brand-accent"], resolved["--background"]);
+    expect(ratio, `accent contrast ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
   });
 });
 
-describe("Foundation theme colour — the visible wordmark consumes it", () => {
+describe("Foundation accent — every branded consumer DERIVES from it", () => {
+  it("makes the brand-text token an indirection in BOTH schemes", () => {
+    for (const [scheme, raw] of Object.entries({ light: lightRaw, dark: darkRaw })) {
+      expect(raw["--primary"]?.trim(), `${scheme} --primary`).toBe("var(--ui-brand-accent)");
+    }
+  });
+
+  it("makes the focus/highlight token the same indirection in BOTH schemes", () => {
+    for (const [scheme, raw] of Object.entries({ light: lightRaw, dark: darkRaw })) {
+      expect(raw["--ring"]?.trim(), `${scheme} --ring`).toBe("var(--ui-brand-accent)");
+    }
+  });
+
+  it("paints application-controlled selector emphasis from the theme token", () => {
+    expect(css).toMatch(/select\[data-selector\]\s*\{[^}]*accent-color:\s*var\(--ui-brand-accent\)/);
+    expect(css).toMatch(
+      /select\[data-selector\]:hover[\s\S]{0,160}?border-color:\s*var\(--ui-brand-accent\)/,
+    );
+    expect(css).toMatch(
+      /select\[data-selector\]:focus-visible[\s\S]{0,160}?border-color:\s*var\(--ui-brand-accent\)/,
+    );
+    // The keyboard ring stays the single global :focus-visible rule.
+    expect(css).toMatch(/:focus-visible\s*\{[^}]*var\(--ring\)/);
+  });
+
+  it("keeps the destructive/error role OUT of the brand token", () => {
+    expect(lightRaw["--destructive"]?.toLowerCase()).toBe("#dc2626");
+    expect(css).not.toMatch(/--destructive:\s*var\(--ui-brand-accent\)/);
+    expect(lightRaw["--destructive"]?.toLowerCase()).not.toBe(APPROVED_ACCENT);
+  });
+
+  it("carries NO crimson brand token (provelopment.com's colour)", () => {
+    expect((css.match(/--[\w-]+\s*:\s*#(c5161d|a11217)\s*;/gi) ?? []).length).toBe(0);
+  });
+});
+
+describe("Foundation accent — the visible heading consumes it", () => {
   const home = read("src", "app", "[locale]", "page.tsx");
 
   it("renders the configured Foundation name through the brand text token", () => {
-    // The live defect was this exact element: the Foundation name rendered in
-    // crimson. It resolves through `text-primary` → `var(--ui-brand-accent)`.
     expect(home).toMatch(/text-primary[^>]*>\s*\{siteConfig\.name\}/);
   });
 
   it("does not carry its own brand colour (no crimson, no token copy)", () => {
-    expect(home).not.toMatch(/#c5161d|#a11217/i);
-    expect(home).not.toMatch(/--ui-brand-accent\s*:/);
+    expect(home).not.toMatch(/#c5161d|#a11217|#3f6791/i);
+    expect(home).not.toMatch(/--ui-foundation-accent\s*:|--ui-brand-accent\s*:/);
   });
 });
 
-describe("Foundation theme colour — the selector controls consume it", () => {
+describe("Foundation selectors — location + language only (preset feature retired)", () => {
   const SWITCHERS: ReadonlyArray<readonly [string, string]> = [
-    ["preset-switcher.tsx", "preset"],
     ["location-switcher.tsx", "location"],
     ["language-switcher.tsx", "language"],
   ];
 
-  it("paints application-controlled selection emphasis from the theme token", () => {
-    expect(globals).toMatch(/select\[data-selector\]\s*\{[^}]*accent-color:\s*var\(--ui-brand-accent\)/);
-    expect(globals).toMatch(
-      /select\[data-selector\]:hover[\s\S]{0,160}?border-color:\s*var\(--ui-brand-accent\)/,
-    );
-    expect(globals).toMatch(
-      /select\[data-selector\]:focus-visible[\s\S]{0,160}?border-color:\s*var\(--ui-brand-accent\)/,
-    );
-  });
-
-  it("keeps all three selectors on the shared hook, with no per-control colour", () => {
+  it("keeps the two remaining selectors on the shared theme hook", () => {
     for (const [file, value] of SWITCHERS) {
       const source = read("src", "components", "site", file);
       expect(source, `${file} must opt into the shared hook`).toContain(`data-selector="${value}"`);
-      expect(source, `${file} must not hardcode crimson`).not.toMatch(/#c5161d|#a11217/i);
-      expect(source, `${file} must not declare its own theme token`).not.toMatch(/--ui-brand-accent\s*:/);
+      expect(source, `${file} must not hardcode a brand colour`).not.toMatch(
+        /#c5161d|#a11217|#3f6791|#4f7cac/i,
+      );
+      expect(source, `${file} must not declare its own theme token`).not.toMatch(
+        /--ui-foundation-accent\s*:|--ui-brand-accent\s*:/,
+      );
     }
   });
+
+  it("has NO preset selector anywhere in the application source", () => {
+    // Owner decision (2026-09): the Foundation presents ONE canonical
+    // presentation, so the preset switcher and its wiring are gone — not hidden.
+    expect(existsSync(path.join(ROOT, "src", "components", "site", "preset-switcher.tsx"))).toBe(false);
+
+    const siteRoot = path.join(ROOT, "src");
+    const offenders: string[] = [];
+    const visit = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) visit(full);
+        else if (/\.(ts|tsx)$/.test(entry.name)) {
+          const source = readFileSync(full, "utf8");
+          if (/PresetSwitcher|data-selector="preset"|presetComparison/.test(source)) {
+            offenders.push(path.relative(ROOT, full));
+          }
+        }
+      }
+    };
+    visit(siteRoot);
+    expect(offenders, `preset-selection code must not remain: ${offenders.join(", ")}`).toEqual([]);
+  });
+
+  it("has NO preset-comparison configuration surface left", () => {
+    expect(read("site.config.json")).not.toContain("presetComparison");
+    expect(read("src", "config", "schema.ts")).not.toContain("presetComparison");
+    expect(read("src", "config", "site-config.ts")).not.toContain("presetComparison");
+    // The shipped config declares no preset either: the canonical presentation
+    // comes from the shared UI engine's default, not from a selection.
+    const config = JSON.parse(read("site.config.json")) as { ui?: Record<string, unknown> };
+    expect(config.ui).not.toHaveProperty("preset");
+    expect(config.ui).not.toHaveProperty("presetComparison");
+  });
 });
+
+

@@ -39,11 +39,7 @@
   },
   "language": {
     "label": "言語"
-  },
-  "presetComparison": {
-    "label": "このサイトを別のプリセットで表示",
-    "current": "現在"
-  },
+  },
   "location": {
     "label": "地域",
     "unspecified": "グローバル"

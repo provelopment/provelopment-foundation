@@ -39,11 +39,7 @@
   },
   "language": {
     "label": "语言"
-  },
-  "presetComparison": {
-    "label": "在另一种预设中查看此网站",
-    "current": "当前"
-  },
+  },
   "location": {
     "label": "位置",
     "unspecified": "全球"

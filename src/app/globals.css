@@ -45,39 +45,42 @@
   /* Highlight / badge surfaces — Surface Subtle. */
   --accent: #f8fafc;
 
-  /* ── FOUNDATION THEME COLOUR — THE single authoritative source ──────────
+  /* ══ FOUNDATION ACCENT — THE one hardcoded brand colour in the theme ═════
    *
-   * Foundation Blue. Brand-system governance maps the expressions as:
-   *   provelopment.com        -> Provelopment Crimson #C5161D
-   *   Provelopment Foundation -> Foundation Blue      #4F7CAC
-   * Crimson is therefore NOT a Foundation colour: it must never appear in a
-   * Foundation branding/emphasis role (errors/danger keep `--destructive`).
+   * This is the ONLY place a Foundation brand colour is written in the theme.
+   * Change this single value and the whole Foundation re-colours: the wordmark/
+   * heading text, the selector (location/language) emphasis, the focus ring and
+   * the branded CTA fill all resolve through it. The dark scheme DERIVES its
+   * lifted tint from this same value (see the dark block) — it never stores a
+   * second brand hex.
    *
-   * Change THIS ONE VALUE to re-colour BOTH the Foundation wordmark (the
-   * `text-primary` brand text, e.g. the home hero) AND every theme-driven UI
-   * highlight (the focus ring, the selector chrome and the branded CTA fill):
-   * they all consume the derived tokens below, never their own colour.
-   *
-   * The value is the approved *functional* Foundation blue — "Foundation Blue
-   * Strong `#3F6791`" (brand pack colour note: it "remains available where
-   * accessible text/control contrast requires it"). It is the same tint the
-   * approved lockup artwork uses for the FOUNDATION wordmark letterforms, so
-   * the text wordmark matches the logo it sits beside. The canonical identity
-   * colour `#4F7CAC` is the ARTWORK colour (emblem/lockup geometry) and is
-   * deliberately not used for text: it measures 4.37:1 on white, below the
-   * WCAG AA text minimum this token set guarantees (see design-tokens.test.ts).
+   * The value is the DARKER Foundation blue (owner-selected), verified against
+   * the Foundation brand pack and brand-system governance:
+   *   - the pack's colour note approves "Foundation Blue Strong `#3F6791`" as
+   *     the functional derivative for text/control use, and
+   *   - it is the tint the approved lockup artwork uses for the FOUNDATION
+   *     wordmark letterforms, so the text heading matches the logo beside it.
+   * `#4F7CAC` (the canonical identity blue) is the ARTWORK colour: 4.37:1 on
+   * white fails the WCAG AA text minimum this token set guarantees, so it is
+   * deliberately not used for text. Crimson `#C5161D` is the provelopment.com
+   * expression and must never appear in a Foundation branding/emphasis role
+   * (errors/danger keep the separate `--destructive` role).
    */
-  --ui-brand-accent: #3f6791;
+  --ui-foundation-accent: #3f6791;
+
+  /* The scheme-resolved theme colour every consumer reads. Identical to the
+   * accent in LIGHT; derived from it in DARK. Components must consume THIS. */
+  --ui-brand-accent: var(--ui-foundation-accent);
 
   /* ── Derived: uniform page/edge inset for shell controls ────────────────
    * One shared value (≈5px) for controls that sit against a page/shell edge:
-   * the sidebar show/hide control and the shell-top primary CTA. Derived from
+   * the shell-top primary CTA and the EXPANDED sidebar control. Derived from
    * Tailwind's spacing scale so it stays on the design system's rhythm. */
   --ui-shell-control-inset: calc(var(--spacing) * 1.25);
 
   /* Brand + on-brand text (wordmark, brand links, CTA fill) — DERIVED. */
   --primary: var(--ui-brand-accent);
-  --primary-hover: #33557a;
+  --primary-hover: color-mix(in srgb, var(--ui-foundation-accent) 85%, #0f172a);
   --primary-foreground: #ffffff;
 
   /* Secondary action surfaces — Accent / Auxiliary (Regulatory Amber Gold) / hover 92400E. */
@@ -105,12 +108,15 @@
  *
  * Brand hues are lifted (not reused verbatim) so every WCAG AA pair below
  * still meets >= 4.5:1 on the dark Neutral-Dark canvas — see
- * tests/unit/design-tokens.test.ts. Crimson `#C5161D` itself fails as TEXT
- * on `#0F172A` (2.98:1), and it is not a Foundation colour in any case. The
- * lifted Foundation-Blue tint below is used consistently as both the
- * accessible link/status color and the CTA fill (`--primary-foreground` is
- * the dark navy, keeping the same fill/on-fill pairing direction as the light
- * scheme), and it is derived from the SAME one theme-colour source above.
+ * tests/unit/design-tokens.test.ts. Crimson `#C5161D` fails as TEXT on
+ * `#0F172A` (2.98:1), and it is not a Foundation colour in any case.
+ *
+ * There is NO second brand hex here: the lifted tint is DERIVED from the single
+ * `--ui-foundation-accent` by mixing it halfway toward white
+ * (`color-mix(in srgb, ... 50%, #ffffff)` = `#9FB3C8`, 8.29:1 on `#0F172A` —
+ * equivalent contrast to the previously separate hand-picked tint, now derived).
+ * `--primary-foreground` stays the dark navy, keeping the same fill/on-fill
+ * pairing direction as the light scheme.
  */
 @media (prefers-color-scheme: dark) {
   :root {
@@ -123,11 +129,11 @@
     --border: #334155;
     --input: #334155;
     --accent: #1e293b;
-    /* FOUNDATION THEME COLOUR (dark canvas) — lifted Foundation-Blue tint
-       (8.25:1 on #0F172A). One value; the derived tokens below follow it. */
-    --ui-brand-accent: #8fb4d9;
+    /* DERIVED (never a second hardcoded brand hex): the one Foundation accent,
+       lifted toward white so it stays accessible as text on the dark canvas. */
+    --ui-brand-accent: color-mix(in srgb, var(--ui-foundation-accent) 50%, #ffffff);
     --primary: var(--ui-brand-accent);
-    --primary-hover: #a8c8e6;
+    --primary-hover: color-mix(in srgb, var(--ui-foundation-accent) 35%, #ffffff);
     --primary-foreground: #0f172a;
     --secondary: #92400e;
     --secondary-hover: #b45309;
@@ -725,20 +731,22 @@ html[data-ui-hero="showcase"] .home-hero {
  *    the navigation list).
  *  - `.ui-sidebar-rail` — the PERSISTENT left rail: expands/contracts
  *    HORIZONTALLY. Collapse is a width change (`data-collapsed`), never
- *    `display:none`. Collapsed geometry is APPROVED and preserved exactly:
- *    `--ui-sidebar-rail-collapsed` (= the former `icon x 1.2`) with
- *    `--ui-sidebar-rail-collapsed-pad` (= the former `icon x 0.1`).
+ *    `display:none`, and the collapsed rail is a SYMMETRIC icon column
+ *    (`--ui-sidebar-rail-collapsed` = the control icon + equal inline padding on
+ *    both sides, with the inline-end padding reduced by the rail's own border so
+ *    the contents centre between the rail's OUTER edges).
  *  - `.ui-sidebar-toggle-icon` (the show/hide CONTROL) renders at EXACTLY
  *    24x24 on desktop AND tablet (`--ui-sidebar-control-icon-size`, one value,
- *    no breakpoint override — owner ruling, 2026-09 closure pass). The control
- *    is LEFT-ALIGNED with the shared `--ui-shell-control-inset` (~5px) from the
- *    rail's inline edge, in both states, so it never shifts on collapse.
- *    It no longer derives the rail width: control size and rail geometry are
- *    two different contracts. `.ui-shell-sidebar .ui-nav-item-icon` (the sidebar
- *    LIST page icons) renders at EXACTLY 16x16 on every breakpoint and in both
- *    states (owner ruling, 2026-09) — it never shares the control token.
- *    State-paired `.ui-nav-item-icon-open/-closed` swap on the rail's
- *    `data-collapsed`.
+ *    no breakpoint override — owner ruling, 2026-09). Its two states differ by
+ *    design: EXPANDED it keeps the shared `--ui-shell-control-inset` (~5px) from
+ *    the rail's inline edge; COLLAPSED it is CENTRED on the rail's axis with no
+ *    visible padding of its own. It does not derive the rail width: control size
+ *    and rail geometry are separate contracts.
+ *    `.ui-shell-sidebar .ui-nav-item-icon` (the sidebar LIST page icons) renders
+ *    at EXACTLY 16x16 on every breakpoint and in both states (owner ruling,
+ *    2026-09) — it never shares the control token — and in the COLLAPSED rail the
+ *    page-icon column sits on the SAME centreline as the control. State-paired
+ *    `.ui-nav-item-icon-open/-closed` swap on the rail's `data-collapsed`.
  *
  * Token-only; the global :focus-visible ring covers keyboard focus. The
  * reduced-motion rule above strips transitions.
@@ -759,23 +767,23 @@ html[data-ui-hero="showcase"] .home-hero {
    * The CONTROL is the icon INSIDE this button; the rail's own inline padding
    * and the shared edge inset frame it (see `.ui-shell-sidebar .ui-sidebar-toggle`). */
   --ui-sidebar-control-icon-size: 1.5rem;
-  /* P6-3B — collapsed-rail GEOMETRY, approved and preserved exactly: the former
-   * `--ui-sidebar-icon-size x 1.2` width (2rem→2.4rem, 4rem→4.8rem) with the
-   * former `x 0.1` inline padding. Renamed because it now describes the RAIL,
-   * not the control: the control is 24px at every breakpoint, the rail is not. */
-  --ui-sidebar-rail-collapsed: 2.4rem;
-  --ui-sidebar-rail-collapsed-pad: 0.2rem;
+  /* The rail's inline-end border width — a token so the collapsed-state
+     centring below can compensate for the border box exactly. */
+  --ui-sidebar-rail-border: 1px;
+  /* Collapsed rail — a SYMMETRIC icon column (owner ruling, 2026-09):
+   * its contents are small (the 24px control and the 16px page icons), so ONE
+   * width serves desktop AND tablet: the control icon plus equal padding on both
+   * sides. `iconCenter - leftEdge` therefore equals `rightEdge - iconCenter`.
+   * Narrowest sensible value that keeps a >=24px control hit target and never
+   * clips: 24 + 6 + 6 = 36px. */
+  --ui-sidebar-rail-collapsed-pad: 0.375rem;
+  --ui-sidebar-rail-collapsed: calc(
+    var(--ui-sidebar-control-icon-size) + var(--ui-sidebar-rail-collapsed-pad) * 2
+  );
   /* The expanded rail's own inline padding (also frames the navigation list). */
   --ui-sidebar-rail-inline: 1.25rem;
   /* The intended EXPANDED sidebar rail width. */
   --ui-sidebar-rail-expanded: 13.75rem;
-}
-
-@media (min-width: 1024px) {
-  :root {
-    --ui-sidebar-rail-collapsed: 4.8rem;
-    --ui-sidebar-rail-collapsed-pad: 0.4rem;
-  }
 }
 
 .ui-shell-sidebar {
@@ -806,15 +814,13 @@ html[data-ui-hero="showcase"] .home-hero {
   padding-inline: var(--ui-sidebar-rail-collapsed-pad);
 }
 
-/* Owner ruling (2026-09 closure pass) — the sidebar show/hide CONTROL is
- * LEFT-ALIGNED with ONE small shared inset (≈5px) from the rail's inline edge,
- * in BOTH states, so the control never shifts as the rail collapses/expands.
- * The rail's own inline padding frames the navigation LIST (which keeps its
- * position), so the control cancels that padding and re-anchors by exactly
+/* Owner ruling (2026-09) — the EXPANDED sidebar CONTROL keeps its existing
+ * appearance: LEFT-ALIGNED with the one shared shell-control inset (≈5px) from
+ * the rail's inline edge (the same inset the shell-top CTA uses, so the action
+ * and the control line up on one edge). The rail's own inline padding frames the
+ * navigation LIST, so the control cancels that padding and re-anchors by exactly
  * `inset - rail padding`, taking back the freed inline width so its trailing
- * edge stays flush with the rail's content box. The inset is the SAME token the
- * shell-top CTA uses (`--ui-shell-control-inset`), so the rail control and the
- * action above it line up on one edge — in every preset, from one value. */
+ * edge stays flush with the rail's content box. */
 .ui-shell-sidebar .ui-sidebar-toggle {
   margin-inline-start: calc(
     var(--ui-shell-control-inset) - var(--ui-sidebar-rail-inline)
@@ -826,19 +832,35 @@ html[data-ui-hero="showcase"] .home-hero {
   justify-content: flex-start;
 }
 
-/* Collapsed rail: it frames itself with `x 0.1` instead of the expanded rail
- * padding, so the SAME re-anchoring is computed against that value. Alignment
- * stays `flex-start` (never `center`) so the control holds its left-anchored
- * position across the collapse transition. */
+/* COLLAPSED rail (owner ruling, 2026-09) — a symmetric icon column:
+ *  - the inline-end padding is reduced by the rail's own 1px inline-end border,
+ *    because that border lives inside the border box. The content box is then
+ *    centred between the rail's OUTER edges, so
+ *    `iconCenter - leftEdge === rightEdge - iconCenter` exactly;
+ *  - the OPEN control is CENTRED with no padding, margin or re-anchoring of its
+ *    own (the previous left inset and negative-margin compensation are gone);
+ *  - the page-icon column is centred on the SAME axis by making each collapsed
+ *    sidebar link a full-width centred row (the label is sr-only there, so only
+ *    the 16px icon contributes to the visible composition).
+ * The EXPANDED rail keeps its own geometry above — these rules are
+ * collapsed-state only. */
+.ui-sidebar-rail[data-collapsed="true"] {
+  width: var(--ui-sidebar-rail-collapsed);
+  padding-inline: var(--ui-sidebar-rail-collapsed-pad)
+    calc(var(--ui-sidebar-rail-collapsed-pad) - var(--ui-sidebar-rail-border));
+}
+
 .ui-sidebar-rail[data-collapsed="true"] .ui-sidebar-toggle {
-  margin-inline-start: calc(
-    var(--ui-shell-control-inset) - var(--ui-sidebar-rail-collapsed-pad)
-  );
-  width: calc(
-    100% + var(--ui-sidebar-rail-collapsed-pad) - var(--ui-shell-control-inset)
-  );
-  padding-inline-start: var(--ui-shell-control-inset);
-  justify-content: flex-start;
+  margin-inline: 0;
+  width: 100%;
+  padding-inline: 0;
+  justify-content: center;
+}
+
+.ui-sidebar-rail[data-collapsed="true"] li > a,
+.ui-sidebar-rail[data-collapsed="true"] li > span {
+  display: flex;
+  justify-content: center;
 }
 
 .ui-sidebar-rail-panel {
@@ -954,11 +976,22 @@ html[data-ui-hero="showcase"] .home-hero {
 
 /* ── P6-3B header logo + page banner ────────────────────────────────── */
 
+/* Brand logo DISPLAY size — ONE token governs BOTH logo roles, so the footer
+ * mark renders at the same visual size as the header mark (owner ruling,
+ * 2026-09). Aspect ratio is always preserved (`width: auto`) and the mark can
+ * never overflow its column (`max-width: 100%`), so narrow layouts are safe.
+ * The authoritative ARTWORK is untouched and both runtime files still derive
+ * from the one coloured source (see BRAND_ASSETS.md §10.1). */
+:root {
+  --ui-logo-display-size: 2rem;
+}
+
 /* The header brand mark (`site.assets.logo` → logo-header.svg). Intrinsic
  * aspect ratio preserved; responsive; never inflates the header height. */
-.ui-site-header-logo {
+.ui-site-header-logo,
+.ui-site-footer-logo {
   display: block;
-  height: 2rem;
+  height: var(--ui-logo-display-size);
   width: auto;
   max-width: 100%;
   object-fit: contain;

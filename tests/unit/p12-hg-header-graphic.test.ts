@@ -309,8 +309,12 @@ describe("P12-HG — separation + reusability contract", () => {
     expect(siteHeader).toContain("<ContextNavLinks");
     expect(siteHeader).toContain("aria-label={dictionary.navigation.primaryLabel}");
     // The band contributes no element that could sit over the links, and the
-    // interactive controls are all still emitted.
-    expect(siteHeader).toContain("<PresetSwitcher");
+    // interactive controls are all still emitted. The RETIRED preset selector is
+    // deliberately absent (owner decision, 2026-09): the header exposes the
+    // location and language selectors only.
+    expect(siteHeader).not.toContain("PresetSwitcher");
+    expect(siteHeader).not.toContain('data-selector="preset"');
+    expect(siteHeader).toContain("<LocationSwitcher");
     expect(siteHeader).toContain("<LanguageSwitcher");
     expect(componentCode).not.toMatch(/ContextNavLinks|nav-links|navigation/);
   });

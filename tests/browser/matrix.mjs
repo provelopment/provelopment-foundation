@@ -1,10 +1,13 @@
 // tests/browser/matrix.mjs
-// UI-10 D5: the committed cross-preset browser-validation matrix. It:
-//  - swaps `ui.preset` (plus a matrix CTA) in site.config.json per preset,
-//  - runs `next dev` for that preset,
+// UI-10 D5: the committed browser-validation matrix for the Foundation's ONE
+// canonical presentation (the selectable-preset feature was retired, 2026-09).
+// It:
+//  - writes the canonical UI configuration (matrix CTA only) into site.config.json,
+//  - runs `next dev`,
 //  - drives a real headless-Chrome/CDP session across desktop/tablet/mobile,
 //  - performs REAL interaction (clicks, Tab/Shift+Tab/Escape, backdrop taps,
-//    reduced-motion emulation) and asserts the shared behavioral contract,
+//    reduced-motion and dark-scheme emulation) and asserts the shared behavioral
+//    contract,
 //  - emits a machine-readable report and exits non-zero on any failure.
 // Run: `pnpm test:browser` (requires a local Chrome/Chromium/Edge binary).
 import { spawn } from "node:child_process";
@@ -37,20 +40,55 @@ const VIEWPORTS = {
 const CTR = { enabled: true, action: "book", label: "Book Now", href: "/en/contact" };
 
 /**
- * 2026-09 closure pass — the theme/control expectations are READ FROM THE APP'S OWN
- * SINGLE SOURCE (`src/app/globals.css` → `--ui-brand-accent`), never duplicated
- * here: the gate then proves the UI really consumes that one value instead of
- * merely agreeing with a copy of it.
+ * 2026-09 — the theme/control expectations are READ FROM THE APP'S OWN SINGLE
+ * SOURCE (`src/app/globals.css` → the one `--ui-foundation-accent` value), never
+ * duplicated here: the gate then proves the UI really consumes that one value
+ * instead of merely agreeing with a copy of it. The DARK tint is derived from it
+ * with the same `color-mix` the stylesheet declares.
  */
 const GLOBALS_CSS = readFileSync(join(ROOT, "src", "app", "globals.css"), "utf8");
-const ACCENT_HEX = /--ui-brand-accent\s*:\s*(#[0-9a-fA-F]{6})\s*;/.exec(GLOBALS_CSS)[1];
+const ACCENT_HEX = /--ui-foundation-accent\s*:\s*(#[0-9a-fA-F]{6})\s*;/.exec(GLOBALS_CSS)[1];
 const rgbOf = (hex) => {
   const n = Number.parseInt(hex.slice(1), 16);
   return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
 };
 const ACCENT_RGB = rgbOf(ACCENT_HEX);
+/**
+ * The DARK-scheme tint, derived from the same one accent exactly as the
+ * stylesheet declares it (`color-mix(in srgb, var(--ui-foundation-accent) p%,
+ * #ffffff)`) — evaluated here with the same per-channel srgb rounding, so the
+ * harness never carries a second hardcoded brand value.
+ */
+const DARK_MIX = /--ui-brand-accent:\s*color-mix\(in srgb,\s*var\(--ui-foundation-accent\)\s+([\d.]+)%,\s*(#[0-9a-fA-F]{6})\)/.exec(GLOBALS_CSS);
+if (!DARK_MIX) throw new Error("globals.css must derive the dark accent from --ui-foundation-accent");
+const mixSrgb = (base, p, other) => {
+  const a = Number.parseInt(base.slice(1), 16);
+  const b = Number.parseInt(other.slice(1), 16);
+  const channels = [16, 8, 0].map((shift) =>
+    Math.round((((a >> shift) & 255) * p) + (((b >> shift) & 255) * (1 - p))),
+  );
+  return `#${channels.map((c) => c.toString(16).padStart(2, "0")).join("")}`;
+};
+const DARK_ACCENT_RGB = rgbOf(mixSrgb(ACCENT_HEX, Number(DARK_MIX[1]) / 100, DARK_MIX[2]));
 /** The shared shell-control inset target (~5px) and its tolerance. */
 const INSET_TARGET = 5;
+
+/**
+ * Compare a browser-reported colour with an expected `rgb(...)` value.
+ *
+ * Engines serialise a `color-mix()` result as `color(srgb r g b)` (0–1 floats)
+ * rather than `rgb(...)`, so the values must be compared — not their spelling.
+ * Returns false for anything that is not the same colour.
+ */
+function sameColor(actual, expectedRgb) {
+  if (typeof actual !== "string" || !actual) return false;
+  if (actual === expectedRgb) return true;
+  const srgb = /^color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\)$/.exec(actual.trim());
+  if (!srgb) return false;
+  const [, r, g, b] = srgb;
+  const asRgb = `rgb(${[r, g, b].map((c) => Math.round(Number(c) * 255)).join(", ")})`;
+  return asRgb === expectedRgb;
+}
 
 /**
  * Probes everything the closure pass must hold in EVERY preset: the theme colour
@@ -58,24 +96,22 @@ const INSET_TARGET = 5;
  * logo roles. Returns a JSON string (CDP `returnByValue`).
  */
 const THEME_PROBE = `(() => {
+  const r2 = (v) => Math.round(v * 100) / 100;
+  const box = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return { l: r2(r.left), r: r2(r.right), t: r2(r.top), w: r2(r.width), h: r2(r.height), cx: r2(r.left + r.width / 2) }; };
   const rail = [...document.querySelectorAll('#shell-sidebar-desktop-rail, #shell-sidebar-tablet-rail')]
     .find((el) => el && el.getBoundingClientRect().width > 0) || null;
-  const rb = rail ? rail.getBoundingClientRect() : null;
   const toggle = rail ? rail.querySelector('.ui-sidebar-toggle') : null;
-  const tb = toggle ? toggle.getBoundingClientRect() : null;
   const tIcon = rail ? rail.querySelector('.ui-sidebar-toggle-icon') : null;
-  const ti = tIcon ? tIcon.getBoundingClientRect() : null;
   // The VISIBLE page icon: the state-paired open/closed pair swaps on collapse,
   // so the hidden variant must not be the one measured.
   const navIcon = rail
     ? [...rail.querySelectorAll('.ui-nav-item-icon')].find((el) => el.getBoundingClientRect().width > 0) || null
     : null;
-  const ni = navIcon ? navIcon.getBoundingClientRect() : null;
   const wordmark = document.querySelector('.home-hero-copy > p');
   const ctaWrap = document.querySelector('.ui-shell-header-row .ui-shell-cta');
   const ctaLink = ctaWrap ? ctaWrap.querySelector('a') : null;
-  const cb = ctaWrap ? ctaWrap.getBoundingClientRect() : null;
-  const cl = ctaLink ? ctaLink.getBoundingClientRect() : null;
+  const headerLogo = document.querySelector('.ui-site-header-logo');
+  const footerLogo = document.querySelector('.ui-site-footer-logo');
   const root = getComputedStyle(document.documentElement);
   const sels = {};
   for (const s of document.querySelectorAll('select[data-selector]')) {
@@ -85,31 +121,40 @@ const THEME_PROBE = `(() => {
     vw: window.innerWidth,
     hasRail: !!rail,
     hasToggle: !!toggle,
-    railLeft: rb ? Math.round(rb.left) : null,
+    rail: box(rail),
     collapsed: rail ? rail.getAttribute('data-collapsed') : null,
-    toggleLeft: tb ? Math.round(tb.left) : null,
-    toggleIconW: ti ? Math.round(ti.width) : null,
-    toggleIconH: ti ? Math.round(ti.height) : null,
-    navIconW: ni ? Math.round(ni.width) : null,
-    navIconH: ni ? Math.round(ni.height) : null,
+    toggle: box(toggle),
+    toggleIcon: box(tIcon),
+    navIcon: box(navIcon),
     wordmarkColor: wordmark ? getComputedStyle(wordmark).color : null,
-    ctaWrapLeft: cb ? Math.round(cb.left) : null,
-    ctaLinkLeft: cl ? Math.round(cl.left) : null,
+    ctaWrapLeft: ctaWrap ? r2(ctaWrap.getBoundingClientRect().left) : null,
+    ctaLinkLeft: ctaLink ? r2(ctaLink.getBoundingClientRect().left) : null,
     primary: root.getPropertyValue('--primary').trim(),
     ring: root.getPropertyValue('--ring').trim(),
     accent: root.getPropertyValue('--ui-brand-accent').trim(),
+    foundationAccent: root.getPropertyValue('--ui-foundation-accent').trim(),
     sels,
+    presetSelectorPresent: !!document.querySelector('select[data-selector="preset"]'),
+    headerLogo: box(headerLogo),
+    footerLogo: box(footerLogo),
     logos: [...document.querySelectorAll('img[src*="logo-"]')].map((i) => i.getAttribute('src')),
+    broken: [...document.images].filter((i) => i.complete && i.naturalWidth === 0).length,
   });
 })()`;
 
-const PRESETS = [
-  { name: "adaptive", ui: { preset: "adaptive", cta: { ...CTR, style: "standard" } } },
-  { name: "classic", ui: { preset: "classic", cta: { ...CTR, style: "standard" } } },
-  { name: "focus", ui: { preset: "focus", cta: { ...CTR, style: "prominent" } } },
-  { name: "workspace", ui: { preset: "workspace", cta: { ...CTR, style: "standard" } } },
-  { name: "immersive", ui: { preset: "immersive", cta: { ...CTR, style: "standard" } } },
-];
+/**
+ * The Foundation's ONE canonical presentation (owner decision, 2026-09).
+ *
+ * The selectable-preset feature is RETIRED, so the browser matrix exercises the
+ * canonical composition ONCE instead of multiplying every check across five
+ * presets. Nothing is overridden except the CTA destination (a real internal
+ * route, so CTA reachability can be asserted); the presentation itself comes
+ * from the shipped configuration.
+ */
+const CANONICAL = {
+  name: "canonical",
+  ui: { cta: { ...CTR, style: "standard" } },
+};
 
 function check(rows, name, ok, detail = "") {
   rows.push({ name, ok, detail });
@@ -271,74 +316,11 @@ async function runFocusVisibleRing(rows, cdp, label) {
   }
   check(rows, `${label}.focusVisible.link.ring`, !!keyboard && !!keyboard.ok, (keyboard && keyboard.detail) || `active=${keyboard && keyboard.tag}: ${keyboard && keyboard.style}`);
 }
-/** Header-slot presets (classic / focus) — desktop + tablet ≥md structure + C2 observation. */
-async function runHeaderPreset(rows, preset, prominent, cdp) {
-  for (const [vpName, vp] of [["desktop", VIEWPORTS.desktop], ["tablet", VIEWPORTS.tablet]]) {
-    await cdp.setViewport(vp.width, vp.height);
-    await cdp.navigate(`${BASE_URL}/en`);
-    await waitReady(cdp);
-    const s = await cdp.evaluate(`(() => ({
-      navVisible: ${visible('nav[aria-label="Primary navigation"]')},
-      navCurrent: !!document.querySelector('nav[aria-label="Primary navigation"] a[aria-current="page"]'),
-      // P0-5: the active item renders through the shared NavItem path — the
-      // item wrapper class 'aria-current-page' is emitted only by NavItem
-      // (ContextNavLinks, header + drawer/overlay placements, now compose it).
-      liSharedMarker: (() => { const a = document.querySelector('nav[aria-label="Primary navigation"] a[aria-current="page"]'); return !!a && !!a.parentElement && a.parentElement.classList.contains('aria-current-page'); })(),
-      ctaVisible: ${visible('.ui-shell-header-row .ui-shell-cta')},
-      ctaProminent: !!document.querySelector('.ui-shell-header-row .ui-cta-prominent'),
-      triggerHidden: (() => { const t = document.querySelector('#shell-mobile-nav'); return t && getComputedStyle(t).display === 'none'; })(),
-      dialogs: document.querySelectorAll('[role="dialog"]').length,
-      bottomBar: ${visible('.ui-shell-bottom-bar')},
-      aside: !!document.querySelector('.ui-shell-sidebar'),
-    }))()`);
-    check(rows, `${vpName}.nav.visible`, s.navVisible);
-    check(rows, `${vpName}.nav.ariaCurrent`, !!s.navCurrent);
-    check(rows, `${vpName}.nav.liSharedMarker`, !!s.liSharedMarker);
-    check(rows, `${vpName}.cta.reachable`, !!s.ctaVisible);
-    check(rows, `${vpName}.ctaProminent`, prominent ? !!s.ctaProminent : !s.ctaProminent);
-    check(rows, `${vpName}.mobile.triggerHidden`, !!s.triggerHidden);
-    check(rows, `${vpName}.no.dialog`, s.dialogs === 0);
-    check(rows, `${vpName}.no.bottomBar`, !s.bottomBar);
-    check(rows, `${vpName}.no.aside`, !s.aside);
-  }
-  // P6-3C — ONE authoritative Book Now: the single instance lives in the shell's
-  // TOP region (below the header, above <main>) and stays reachable at EVERY
-  // width, including below `md`. There is no per-viewport placement any more, so
-  // there is nothing to hide and nothing to duplicate.
-  await cdp.setViewport(VIEWPORTS.mobile.width, VIEWPORTS.mobile.height);
-  await cdp.navigate(`${BASE_URL}/en`);
-  await waitReady(cdp);
-  const mob = await cdp.evaluate(`(() => {
-    const cta = document.querySelector('.ui-shell-header-row .ui-shell-cta');
-    const cr = cta ? cta.getBoundingClientRect() : null;
-    const header = document.querySelector('.ui-site-header');
-    const hr = header ? header.getBoundingClientRect() : null;
-    const mr = document.querySelector('#main') ? document.querySelector('#main').getBoundingClientRect() : null;
-    const reachable = [...document.querySelectorAll('.nav-item-cta')].filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
-    return {
-      ctaVisible: !!cr && cr.width > 0 && cr.height > 0,
-      belowHeader: !!cr && !!hr && cr.top >= hr.bottom - 2,
-      aboveMain: !!cr && !!mr && cr.bottom <= mr.top + 2,
-      reachableCount: reachable.length,
-      inAside: reachable.some((el) => !!el.closest('.ui-shell-sidebar')),
-      inBottomBar: reachable.some((el) => !!el.closest('.ui-shell-bottom-bar')),
-      inDisclosure: reachable.some((el) => !!el.closest('[role="dialog"]')),
-    };
-  })()`);
-  check(rows, "mobile.cta.reachable", !!mob.ctaVisible);
-  check(rows, "mobile.cta.single", mob.reachableCount === 1, `count=${mob.reachableCount}`);
-  check(rows, "mobile.cta.belowHeader", !!mob.belowHeader);
-  check(rows, "mobile.cta.aboveMain", !!mob.aboveMain);
-  check(rows, "mobile.cta.notInAside", !mob.inAside);
-  check(rows, "mobile.cta.notInBottomBar", !mob.inBottomBar);
-  check(rows, "mobile.cta.notInDisclosure", !mob.inDisclosure);
-}
-
-/** Aside-slot presets (adaptive / workspace / immersive) — desktop + tablet bands. */
+/** The canonical presentation's desktop aside (bottom bar + More on mobile). */
 async function runAsidePreset(rows, preset, cdp) {
-  // P0-1: presets resolving `shell.sidebar.collapsible: true` get the SAME
-  // structural contract here (the harness drives per preset; runtime never does).
-  const collapsible = preset.name === "adaptive" || preset.name === "workspace";
+  // P0-1: the canonical presentation resolves `shell.sidebar.collapsible: true`,
+  // so the SAME structural contract applies here.
+  const collapsible = true;
   for (const [vpName, vp] of [["desktop", VIEWPORTS.desktop], ["tablet", VIEWPORTS.tablet]]) {
     await cdp.setViewport(vp.width, vp.height);
     await cdp.navigate(`${BASE_URL}/en`);
@@ -577,259 +559,6 @@ async function runAsideBoundaries(rows, preset, mobileBar, cdp) {
     else check(rows, `boundary.${width}.triggerResponsive`, width < 768 ? s.trigger : !s.trigger);
     check(rows, `boundary.${width}.no.dialog`, s.dialogs === 0);
   }
-}
-
-/** Drawer/overlay mobile path (classic/focus/workspace drawer; immersive overlay). */
-async function runDrawerOverlayMobile(rows, preset, prominent, cdp) {
-  const TRIGGER = "#shell-mobile-nav";
-  const PANEL = "#shell-mobile-nav-panel";
-  await cdp.setViewport(VIEWPORTS.mobile.width, VIEWPORTS.mobile.height);
-  await cdp.navigate(`${BASE_URL}/en`);
-  await waitReady(cdp);
-
-  const ids1 = await cdp.evaluate(`(() => [...document.querySelectorAll('[id]')].map((e) => e.id).sort().join('\\n'))()`);
-  const idArr = ids1 === "" ? [] : ids1.split("\n");
-  check(rows, "ids.unique", new Set(idArr).size === idArr.length && idArr.length > 0);
-  await cdp.reload();
-  await waitReady(cdp);
-  const ids2 = await cdp.evaluate(`(() => [...document.querySelectorAll('[id]')].map((e) => e.id).sort().join('\\n'))()`);
-  check(rows, "ids.deterministic", ids1 === ids2 && ids1.length > 0);
-
-  const closed = await cdp.evaluate(`(() => {
-    const t = document.querySelector(${JSON.stringify(TRIGGER)});
-    return {
-      dialogs: document.querySelectorAll('[role="dialog"]').length,
-      mainInert: !!document.querySelector('main').closest('[inert]'),
-      triggerId: t ? t.id : null,
-      expanded: t ? t.getAttribute('aria-expanded') : null,
-      controls: t ? t.getAttribute('aria-controls') : null,
-      triggerText: t ? t.textContent.trim() : null,
-      triggerIcon: !!t && !!t.querySelector('.ui-mobile-nav-icon'),
-      triggerIconLoaded: (() => { const ic = t ? t.querySelector('.ui-mobile-nav-icon') : null; return !!ic && ic.complete && ic.naturalWidth > 0; })(),
-      // P5-5 — the trigger icon is a CONFIGURABLE asset (the shipped default
-      // /assets/sidebar-open.svg) rendered with the shared ui-mobile-nav-icon
-      // marker; the adopter replaces the file or the configured filename.
-      triggerIconSrc: (() => { const ic = t ? t.querySelector('.ui-mobile-nav-icon') : null; return ic ? (ic.getAttribute('src') || '') : ''; })(),
-      // P5-5 — the resolved control/menu modes surface on <html> as the same
-      // generalized "data-ui-*" observability attributes as the presentation
-      // layer (no preset identity).
-      dataUiSidebar: document.documentElement.getAttribute('data-ui-sidebar-mode') || '',
-      dataUiTop: document.documentElement.getAttribute('data-ui-top-mode') || '',
-      dataUiBottom: document.documentElement.getAttribute('data-ui-bottom-mode') || '',
-      dataUiCtaState: document.documentElement.getAttribute('data-ui-cta-state') || '',
-      ariaCurrent: document.querySelectorAll('a[aria-current="page"]').length,
-    };
-  })()`);
-  check(rows, "closed.dialogs", closed.dialogs === 0);
-  check(rows, "closed.mainNotInert", closed.mainInert === false);
-  check(rows, "closed.trigger.id", closed.triggerId === "shell-mobile-nav");
-  check(rows, "closed.trigger.expanded", closed.expanded === "false");
-  check(rows, "closed.trigger.controls", closed.controls === "shell-mobile-nav-panel");
-  // P5-1/P6-1 — the closed mobile trigger is never a bare Primary
-  // navigation/icon-only control: it exposes the recognizable open-sidebar icon
-  // + the explicit label, using the ONE Show/Hide Sidebar vocabulary.
-  check(rows, "closed.trigger.label.showSidebar", closed.triggerText === "Show Sidebar");
-  check(rows, "closed.trigger.icon", !!closed.triggerIcon);
-  // P6-1 — a real, LOADED icon (never a broken-image element on the page).
-  check(rows, "closed.trigger.icon.loaded", !!closed.triggerIconLoaded);
-  // P5-5 — the icon is the replaceable default ASSET (not hard-coded SVG):
-  // file replacement or a configured filename changes it without source edits.
-  check(rows, "closed.trigger.icon.assetDefault", closed.triggerIconSrc === "/assets/sidebar-open.svg");
-  check(rows, "closed.ariaCurrent", closed.ariaCurrent >= 1);
-  // P5-5 — the resolved control/menu modes are observable per generalized
-  // vocabulary (the shipped canonical site uses the neutral open/open/default).
-  check(rows, "p5-5.ui.sidebar.mode", closed.dataUiSidebar === "open");
-  check(rows, "p5-5.ui.top.mode", closed.dataUiTop === "open");
-  check(rows, "p5-5.ui.bottom.mode", closed.dataUiBottom === "open");
-  check(rows, "p5-5.ui.cta.state", closed.dataUiCtaState === "default");
-
-  const opened = await openTrigger(cdp, TRIGGER, PANEL);
-  check(rows, "open.triggerOpens", opened);
-  const o = await cdp.evaluate(`(() => {
-    const d = document.querySelector(${JSON.stringify(PANEL)});
-    const t = document.querySelector(${JSON.stringify(TRIGGER)});
-    if (!d) return null;
-    const cc = t ? t.getAttribute('aria-controls') : null;
-    const lb = d.getAttribute('aria-labelledby');
-    const cta = d.querySelector('.nav-item-cta');
-    return {
-      role: d.getAttribute('role'),
-      modal: d.getAttribute('aria-modal'),
-      labelBy: lb,
-      labelResolves: lb === 'shell-mobile-nav' && document.getElementById(lb) === t,
-      controlsResolves: cc === 'shell-mobile-nav-panel' && document.getElementById(cc) === d,
-      tabIdx: d.getAttribute('tabindex'),
-      className: d.className || '',
-      backdrop: !!document.querySelector('.ui-drawer-backdrop'),
-      focusInside: d.contains(document.activeElement),
-      overflow: document.body.style.overflow,
-      mainInert: !!document.querySelector('main').closest('[inert]'),
-      panelInert: !!d.closest('[inert]'),
-      ctaInPanel: !!cta,
-      ctaReachableInPanel: !!cta && cta.getBoundingClientRect().width > 0,
-      prominentInPanel: !!d.querySelector('.ui-cta-prominent'),
-      currentInPanel: !!d.querySelector('a[aria-current="page"]'),
-      // P0-5: the active panel item renders through the shared NavItem path —
-      // only NavItem emits the 'aria-current-page' item-wrapper marker.
-      currentLiShared: (() => { const a = d.querySelector('a[aria-current="page"]'); return !!a && !!a.parentElement && a.parentElement.classList.contains('aria-current-page'); })(),
-      footerBadgeShared: (() => { const b = document.querySelector('footer .nav-item-badge'); return !!b && b.getBoundingClientRect().width > 0; })(),
-    };
-  })()`);
-  check(rows, "open.dialog.role", !!o && o.role === "dialog");
-  check(rows, "open.dialog.ariaModal", !!o && o.modal === "true");
-  check(rows, "open.dialog.labelBy", !!o && o.labelBy === "shell-mobile-nav" && o.labelResolves);
-  check(rows, "open.dialog.controlsResolves", !!o && o.controlsResolves);
-  check(rows, "open.dialog.focusablePanel", !!o && o.tabIdx === "-1");
-  check(rows, "open.dialog.panelClass", !!o && o.className.includes("ui-drawer-panel"));
-  check(rows, "open.dialog.backdrop", !!o && !!o.backdrop);
-  check(rows, "open.focus.entry", !!o && !!o.focusInside);
-  check(rows, "open.scroll.locked", !!o && o.overflow === "hidden");
-  check(rows, "open.inert.background", !!o && !!o.mainInert);
-  check(rows, "open.inert.notDialog", !!o && !o.panelInert);
-  // P6-3C — the disclosure carries NAVIGATION only: the ONE Book Now lives in the
-  // shell's top region (still visible while the disclosure is open), so it must
-  // never appear inside the dialog. `open.cta.single` still proves there is
-  // exactly one reachable action in total.
-  check(rows, "open.cta.notInPanel", !!o && !o.ctaInPanel);
-  check(rows, "open.cta.notReachableInPanel", !!o && !o.ctaReachableInPanel);
-  check(rows, "open.cta.notProminentInPanel", !!o && !o.prominentInPanel);
-  // P0-2: exactly ONE interactive CTA is reachable while the mobile disclosure
-  // is open (the ≥md header instance is hidden below md now; the aside bands
-  // are display:none at <md) — no duplicate desktop+mobile pair, no dual CTA.
-  const reachableCtasOpen = await cdp.evaluate(`(() => [...document.querySelectorAll('.nav-item-cta')].filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }).length)()`);
-  check(rows, "open.cta.single", !!o && reachableCtasOpen === 1);
-  check(rows, "open.ariaCurrent.inPanel", !!o && !!o.currentInPanel);
-  check(rows, "open.nav.liSharedMarker", !!o && !!o.currentLiShared);
-  check(rows, "open.footer.badgeShared", !!o && !!o.footerBadgeShared);
-
-  // P0-1/P5-1 — every drawer/overlay mobile disclosure follows the ONE shared
-  // sidebar contract: content-appropriate bounded width (never a full-viewport
-  // takeover), vertical navigation for the overlay pattern,and an explicit bottom
-  // Close Sidebar control with the recognizable close icon — for EVERY preset
-  // (P5-1 extended the previously immersive-only contract to the drawer presets).
-  if (preset.name !== "adaptive") {
-    const ov = await cdp.evaluate(`(() => {
-      const d = document.querySelector(${JSON.stringify(PANEL)});
-      if (!d) return null;
-      const ul = d.querySelector('ul');
-      const closeBtn = d.querySelector('.ui-drawer-close');
-      const pr = d.getBoundingClientRect();
-      const closeRect = closeBtn ? closeBtn.getBoundingClientRect() : null;
-      return {
-        navVertical: ul ? getComputedStyle(ul).flexDirection === 'column' : false,
-        // P5-4 — one navigation item per row (no two items share a line).
-        itemsPerRow: (() => { const lis = [...d.querySelectorAll('ul > li')].filter((li) => { const r = li.getBoundingClientRect(); return r.width > 0 && r.height > 0; }); if (lis.length === 0) return false; const tops = lis.map((li) => Math.round(li.getBoundingClientRect().top)); return new Set(tops).size === tops.length; })(),
-        panelWidth: Math.round(pr.width),
-        viewportWidth: document.documentElement.clientWidth,
-        closeLabel: closeBtn ? closeBtn.textContent.trim() : null,
-        closeVisible: !!closeBtn && closeRect.width > 0 && closeRect.height > 0,
-        closeBelowNav: !!closeBtn && !!ul && closeBtn.getBoundingClientRect().top > ul.getBoundingClientRect().bottom - 4,
-        closeIcon: !!closeBtn && !!closeBtn.querySelector('.ui-mobile-nav-icon'),
-        closeIconLoaded: (() => { const ic = closeBtn ? closeBtn.querySelector('.ui-mobile-nav-icon') : null; return !!ic && ic.complete && ic.naturalWidth > 0; })(),
-        closeIconSrc: (() => { const ic = closeBtn ? closeBtn.querySelector('.ui-mobile-nav-icon') : null; return ic ? (ic.getAttribute('src') || '') : ''; })(),
-      };
-    })()`);
-    check(rows, "panel.bounded", !!ov && ov.panelWidth >= 240 && ov.panelWidth < ov.viewportWidth && ov.panelWidth <= Math.min(288, ov.viewportWidth * 0.8) + 2, ov ? `w=${ov.panelWidth} vp=${ov.viewportWidth}` : "null");
-    check(rows, "panel.close.visible", !!ov && ov.closeVisible);
-    check(rows, "panel.close.label", !!ov && ov.closeLabel === "Hide Sidebar");
-    check(rows, "panel.close.belowNav", !!ov && ov.closeBelowNav);
-    check(rows, "panel.close.icon", !!ov && !!ov.closeIcon);
-    // P6-1 — the close icon is a real, loaded asset (never broken-image).
-    check(rows, "panel.close.icon.loaded", !!ov && !!ov.closeIconLoaded);
-    check(rows, "panel.close.icon.assetDefault", !!ov && ov.closeIconSrc === "/assets/sidebar-close.svg");
-    // P5-4 — the mobile sidebar disclosure is the SAME vertical list (one item
-    // per row) on EVERY drawer/overlay preset: the behavior previously unique
-    // to the immersive overlay is now the shared responsive nav contract.
-    check(rows, "mobile.nav.vertical", !!ov && ov.navVertical);
-    check(rows, "mobile.nav.onePerRow", !!ov && ov.itemsPerRow);
-  }
-
-  let trapped = true;
-  for (let i = 0; i < 6 && trapped; i += 1) {
-    await cdp.pressKey("Tab");
-    await sleep(30);
-    trapped = await cdp.evalBool(`document.querySelector(${JSON.stringify(PANEL)}).contains(document.activeElement)`);
-  }
-  check(rows, "open.tab.contained", trapped);
-  let trappedShift = true;
-  for (let i = 0; i < 6 && trappedShift; i += 1) {
-    await cdp.pressKey("Tab", { shift: true });
-    await sleep(30);
-    trappedShift = await cdp.evalBool(`document.querySelector(${JSON.stringify(PANEL)}).contains(document.activeElement)`);
-  }
-  check(rows, "open.shiftTab.contained", trappedShift);
-
-  await cdp.pressKey("Escape");
-  await sleep(200);
-  const esc = await cdp.evaluate(`(() => ({ dialogs: document.querySelectorAll('[role="dialog"]').length, activeId: document.activeElement && document.activeElement.id, mainInert: !!document.querySelector('main').closest('[inert]'), overflow: document.body.style.overflow }))()`);
-  check(rows, "escape.closed", esc.dialogs === 0);
-  check(rows, "escape.focusReturn", esc.activeId === "shell-mobile-nav");
-  check(rows, "escape.inertCleared", esc.mainInert === false);
-  check(rows, "escape.scrollRestored", esc.overflow === "");
-
-  await openTrigger(cdp, TRIGGER, PANEL);
-  await clickBackdrop(cdp);
-  await sleep(250);
-  const bd = await cdp.evaluate(`(() => ({ dialogs: document.querySelectorAll('[role="dialog"]').length, activeId: document.activeElement && document.activeElement.id, mainInert: !!document.querySelector('main').closest('[inert]') }))()`);
-  check(rows, "backdrop.closed", bd.dialogs === 0);
-  check(rows, "backdrop.focusReturn", bd.activeId === "shell-mobile-nav");
-  check(rows, "backdrop.inertCleared", bd.mainInert === false);
-
-  let clean = true;
-  for (let i = 0; i < 3 && clean; i += 1) {
-    await openTrigger(cdp, TRIGGER, PANEL);
-    await cdp.pressKey("Escape");
-    await sleep(150);
-    const s2 = await cdp.evaluate(`(() => ({ dialogs: document.querySelectorAll('[role="dialog"]').length, mainInert: !!document.querySelector('main').closest('[inert]'), overflow: document.body.style.overflow }))()`);
-    if (s2.dialogs !== 0 || s2.mainInert || s2.overflow !== "") clean = false;
-  }
-  check(rows, "cycles.clean", clean);
-
-  // P0-1/P5-1 — activating the explicit "Close Sidebar" control closes the mobile
-  // disclosure, returns focus to the trigger, and restores inert + scroll
-  // (the SAME Drawer close mechanism as Escape/backdrop — not a second path).
-  // P5-1: this behavioral coverage now runs for EVERY drawer/overlay preset
-  if (preset.name !== "adaptive") {
-    const reopen = await openTrigger(cdp, TRIGGER, PANEL);
-    check(rows, "closeBtn.opens", reopen);
-    const closeBtnClick = await cdp.clickCenter("#shell-mobile-nav-panel .ui-drawer-close");
-    await sleep(250);
-    const cc = await cdp.evaluate(`(() => ({ dialogs: document.querySelectorAll('[role="dialog"]').length, activeId: document.activeElement && document.activeElement.id, mainInert: !!document.querySelector('main').closest('[inert]'), overflow: document.body.style.overflow }))()`);
-    check(rows, "closeBtn.clicked", closeBtnClick);
-    check(rows, "closeBtn.closed", cc.dialogs === 0);
-    check(rows, "closeBtn.focusReturn", cc.activeId === "shell-mobile-nav");
-    check(rows, "closeBtn.inertCleared", cc.mainInert === false);
-    check(rows, "closeBtn.scrollRestored", cc.overflow === "");
-  }
-
-  // P5-5A — the P5-4 one-item-per-row contract must hold across the WHOLE <md
-  // range (the DO "~390/700/900" acceptance): re-verify the drawer/overlay
-  // disclosure at 700px (still mobile primitives below the md = 768 breakpoint).
-  await cdp.setViewport(VIEWPORTS.mobileWide.width, VIEWPORTS.mobileWide.height);
-  await cdp.navigate(`${BASE_URL}/en`);
-  await waitReady(cdp);
-  const wideOpened = await openTrigger(cdp, TRIGGER, PANEL);
-  check(rows, "wide700.open", wideOpened);
-  const w = await cdp.evaluate(`(() => {
-    const d = document.querySelector(${JSON.stringify(PANEL)});
-    if (!d) return null;
-    const t = document.querySelector(${JSON.stringify(TRIGGER)});
-    const ul = d.querySelector('ul');
-    const lis = [...d.querySelectorAll('ul > li')].filter((li) => { const r = li.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
-    if (lis.length === 0) return { triggerVisible: !!t && t.getBoundingClientRect().width > 0, navVertical: false, onePerRow: false, empty: true };
-    const tops = lis.map((li) => Math.round(li.getBoundingClientRect().top));
-    return {
-      triggerVisible: !!t && t.getBoundingClientRect().width > 0,
-      navVertical: ul ? getComputedStyle(ul).flexDirection === 'column' : false,
-      onePerRow: new Set(tops).size === tops.length,
-      empty: false,
-    };
-  })()`);
-  check(rows, "wide700.trigger.visible", !!w && w.triggerVisible);
-  check(rows, "wide700.nav.vertical", !!w && !!w.navVertical);
-  check(rows, "wide700.nav.onePerRow", !!w && !!w.onePerRow);
-  await cdp.pressKey("Escape");
-  await sleep(120);
 }
 
 /** Adaptive mobile: bottom bar + its More disclosure (the shared drawer path). */
@@ -1095,9 +824,18 @@ async function runReducedMotion(rows, trigger, panel, cdp) {
   await cdp.setReducedMotion(false);
 }
 
-/** Drive one preset: boot dev with its config, run its scenarios, stop the server. */
-async function runPreset(preset, chrome) {
-  const port = BASE_PORT + PRESETS.indexOf(preset);
+/**
+ * Drive the Foundation's ONE canonical presentation: boot the dev server with the
+ * canonical configuration, run every scenario against it, stop the server.
+ *
+ * There is no per-preset loop any more (owner decision, 2026-09): the retired
+ * feature meant the matrix used to multiply every check across five externally
+ * hosted presentations. The canonical composition is exercised in full — aside
+ * rail (desktop/tablet), bottom bar + More disclosure (mobile) — and the checks
+ * that only existed to compare presentations are gone with the feature.
+ */
+async function runCanonical(chrome) {
+  const port = BASE_PORT;
   // IMPORTANT: navigate over `localhost`, NOT `127.0.0.1`. Next.js's dev server
   // blocks JS/HMR chunks from `127.0.0.1` as a cross-origin dev request unless
   // `allowedDevOrigins` is set; `localhost` is an allowed dev origin by default.
@@ -1111,48 +849,33 @@ async function runPreset(preset, chrome) {
   try {
     await waitForServer(url);
     cdp = await Cdp.connect(chrome);
-    if (preset.name === "adaptive") {
-      await runAsidePreset(rows, preset, cdp);
-      await runAsideBoundaries(rows, preset, true, cdp);
-      await runAdaptiveMobile(rows, cdp);
-      await runReducedMotion(rows, "#shell-bottom-more", "#shell-bottom-more-panel", cdp);
-    } else if (preset.name === "classic" || preset.name === "focus") {
-      await runHeaderPreset(rows, preset, preset.name === "focus", cdp);
-      await runDrawerOverlayMobile(rows, preset, preset.name === "focus", cdp);
-      await runReducedMotion(rows, "#shell-mobile-nav", "#shell-mobile-nav-panel", cdp);
-    } else {
-      await runAsidePreset(rows, preset, cdp);
-      await runAsideBoundaries(rows, preset, false, cdp);
-      await runDrawerOverlayMobile(rows, preset, false, cdp);
-      await runReducedMotion(rows, "#shell-mobile-nav", "#shell-mobile-nav-panel", cdp);
-    }
+    await runAsidePreset(rows, CANONICAL, cdp);
+    await runAsideBoundaries(rows, CANONICAL, true, cdp);
+    await runAdaptiveMobile(rows, cdp);
+    await runReducedMotion(rows, "#shell-bottom-more", "#shell-bottom-more-panel", cdp);
     // P1-3 — visible focus-ring contract (link + pointer-distinction + keyboard Tab).
-    await runFocusVisibleRing(rows, cdp, `focus.${preset.name}`);
+    await runFocusVisibleRing(rows, cdp, "focus.canonical");
     // P1-4 — the shared Section + Button primitives render on a real route.
-    await runPagePrimitives(rows, cdp, `p14.${preset.name}`);
+    await runPagePrimitives(rows, cdp, "p14.canonical");
     // P1-7 — the shared Grid + Stack primitives render on real routes.
-    await runGridStack(rows, cdp, `p17.${preset.name}`);
-    // P6-3B — favicon / header logo / page banner (every preset); sidebar rail
-    // geometry only where the resolved composition actually has an aside rail.
-    await runBrandingChecks(rows, preset.name, cdp);
+    await runGridStack(rows, cdp, "p17.canonical");
+    // P6-3B — favicon / header logo / page banner + the aside rail geometry.
+    await runBrandingChecks(rows, CANONICAL.name, cdp);
     // P6-3C — banner scaling (three cases) + Book Now placement at every width.
-    await runP6cChecks(rows, preset.name, cdp);
-    // 2026-09 closure pass — the Foundation theme colour, the 24x24 sidebar
-    // CONTROL (left-aligned, shared inset), the CTA inset and the coloured footer
-    // logo, verified for EVERY preset at desktop AND tablet.
-    await runThemeClosureChecks(rows, preset.name, cdp);
-    if (preset.name === "adaptive" || preset.name === "workspace" || preset.name === "immersive") {
-      await runP6bSidebarChecks(rows, preset.name, cdp);
-      await runP6bCollapsedChecks(rows, preset.name, cdp);
-      await runP6bTabletSweep(rows, preset.name, cdp);
-    }
+    await runP6cChecks(rows, CANONICAL.name, cdp);
+    // 2026-09 — the ONE Foundation accent (light + dark), the two remaining
+    // selectors, the 24x24 sidebar CONTROL geometry and the footer logo size.
+    await runThemeClosureChecks(rows, CANONICAL.name, cdp);
+    await runP6bSidebarChecks(rows, CANONICAL.name, cdp);
+    await runP6bCollapsedChecks(rows, CANONICAL.name, cdp);
+    await runP6bTabletSweep(rows, CANONICAL.name, cdp);
   } catch (error) {
     check(rows, "scenario.error", false, String(error));
   } finally {
     if (cdp) await cdp.close();
     stopServer(server);
   }
-  return rows.map((r) => ({ preset: preset.name, ...r }));
+  return rows.map((r) => ({ preset: CANONICAL.name, ...r }));
 }
 
 /**
@@ -1182,12 +905,11 @@ async function runDuplicateNavScenario(chrome) {
   const original = await readFile(CONFIG_PATH, "utf8");
   const rows = [];
 
-  const bootPhase = async (preset, label, portSuffix) => {
+  const bootPhase = async (label, portSuffix) => {
     const port = BASE_PORT + 99 + portSuffix;
     const url = `http://localhost:${port}/en`;
     BASE_URL = `http://localhost:${port}`;
     const config = JSON.parse(original);
-    config.ui = { preset };
     config.navigation = DUP_NAV;
     await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n", "utf8");
     const server = startDevServer(port);
@@ -1201,7 +923,7 @@ async function runDuplicateNavScenario(chrome) {
       await cdp.navigate(url);
       await waitReady(cdp);
       const d = await cdp.evaluate(`(() => {
-        const root = ${preset === "classic"} ? document.querySelector("header nav ul") : document.querySelector("#shell-sidebar-desktop-panel ul");
+        const root = document.querySelector("#shell-sidebar-desktop-panel ul");
         if (!root) return null;
         const labels = [...root.querySelectorAll("li .ui-nav-item-label")].map((s) => s.textContent);
         const alpha = [...root.querySelectorAll("a")].find((a) => a.querySelector(".ui-nav-item-label")?.textContent === "Alpha");
@@ -1221,13 +943,13 @@ async function runDuplicateNavScenario(chrome) {
         check(rows, `${label}.desktop.beta.disabled.ownIcon`, d.betaDisabled && d.betaIcon);
         check(rows, `${label}.desktop.noDupKeyConsole`, d.warnings === 0);
       }
-      // Mobile 390 + 700: disclosure (drawer for classic, More for adaptive).
+      // Mobile 390 + 700: the canonical bottom-bar More disclosure.
       for (const w of [390, 700]) {
         await cdp.setViewport(w, 844);
         await cdp.navigate(url);
         await waitReady(cdp);
-        const trigger = preset === "adaptive" ? "#shell-bottom-more" : "#shell-mobile-nav";
-        const panel = preset === "adaptive" ? "#shell-bottom-more-panel" : "#shell-mobile-nav-panel";
+        const trigger = "#shell-bottom-more";
+        const panel = "#shell-bottom-more-panel";
         const opened = await openTrigger(cdp, trigger, panel);
         check(rows, `${label}.w${w}.opens`, opened);
         if (!opened) continue;
@@ -1260,8 +982,7 @@ async function runDuplicateNavScenario(chrome) {
     }
   };
 
-  await bootPhase("classic", "dup.classic", 1);
-  await bootPhase("adaptive", "dup.adaptive", 2);
+  await bootPhase("dup.canonical", 2);
   await writeFile(CONFIG_PATH, original, "utf8");
   return rows;
 }
@@ -1914,9 +1635,11 @@ async function runP6bSidebarChecks(rows, tag, cdp) {
  * asserted; everything the application controls is.
  */
 async function runThemeClosureChecks(rows, tag, cdp) {
-  /** The shared inset: ~5px, from an existing spacing token (never a literal). */
+  /** The shared inset (expanded control + CTA): ~5px, from a spacing token. */
   const nearInset = (value) =>
     value !== null && value >= INSET_TARGET - 1 && value <= INSET_TARGET + 1;
+  /** Subpixel/browser-rounding tolerance for a centring equality (owner §6). */
+  const centred = (value) => value !== null && Math.abs(value) <= 1;
 
   const assertProbe = (d, vpName, state) => {
     // ── ONE Foundation theme colour, consumed by both roles ────────────────
@@ -1929,49 +1652,89 @@ async function runThemeClosureChecks(rows, tag, cdp) {
     check(
       rows,
       `${tag}.${vpName}.${state}.theme.wordmarkBlue`,
-      d.wordmarkColor === ACCENT_RGB,
+      sameColor(d.wordmarkColor, ACCENT_RGB),
       `wordmark=${d.wordmarkColor} expected=${ACCENT_RGB}`,
     );
     const selectorNames = Object.keys(d.sels).sort();
     check(
       rows,
-      `${tag}.${vpName}.${state}.theme.selectorsPresent`,
-      selectorNames.join(",") === "language,location,preset",
+      `${tag}.${vpName}.${state}.selectors.locationLanguageOnly`,
+      selectorNames.join(",") === "language,location",
       `selectors=${selectorNames.join(",")}`,
+    );
+    check(
+      rows,
+      `${tag}.${vpName}.${state}.selectors.noPreset`,
+      d.presetSelectorPresent === false,
+      `presetSelectorPresent=${d.presetSelectorPresent}`,
     );
     for (const name of selectorNames) {
       check(
         rows,
         `${tag}.${vpName}.${state}.theme.sel.${name}`,
-        d.sels[name] === ACCENT_RGB,
+        sameColor(d.sels[name], ACCENT_RGB),
         `accent-color=${d.sels[name]} expected=${ACCENT_RGB}`,
       );
     }
-    // ── Sidebar CONTROL 24x24 + ~5px left inset; PAGE icons stay 16x16 ─────
-    // (A rail may legitimately have NO control: immersive's rail is not
-    // collapsible, so the control contract simply does not apply there.)
+    // ── CONTROL: 24x24; EXPANDED inset ~5px; COLLAPSED centred ─────────────
     if (d.hasToggle) {
       check(
         rows,
         `${tag}.${vpName}.${state}.sidebar.control24`,
-        d.toggleIconW === 24 && d.toggleIconH === 24,
-        `w=${d.toggleIconW} h=${d.toggleIconH}`,
-      );
-      check(
-        rows,
-        `${tag}.${vpName}.${state}.sidebar.controlInset`,
-        nearInset(d.toggleLeft === null || d.railLeft === null ? null : d.toggleLeft - d.railLeft),
-        `inset=${d.toggleLeft - d.railLeft} (target ~${INSET_TARGET})`,
+        d.toggleIcon?.w === 24 && d.toggleIcon?.h === 24,
+        `w=${d.toggleIcon?.w} h=${d.toggleIcon?.h}`,
       );
     }
     if (d.hasRail) {
       check(
         rows,
         `${tag}.${vpName}.${state}.sidebar.pageIcon16`,
-        d.navIconW === 16 && d.navIconH === 16,
-        `w=${d.navIconW} h=${d.navIconH}`,
+        d.navIcon?.w === 16 && d.navIcon?.h === 16,
+        `w=${d.navIcon?.w} h=${d.navIcon?.h}`,
       );
     }
+    if (d.hasToggle && d.collapsed === "true" && d.rail && d.toggleIcon) {
+      // Owner geometry: the collapsed rail is a symmetric icon column — the open
+      // control is centred on the rail's axis and its left/right distances are
+      // equal within browser rounding.
+      const leftDistance = d.toggleIcon.cx - d.rail.l;
+      const rightDistance = d.rail.r - d.toggleIcon.cx;
+      check(
+        rows,
+        `${tag}.${vpName}.${state}.sidebar.collapsedControlCentred`,
+        centred(d.toggleIcon.cx - d.rail.cx),
+        `controlCx=${d.toggleIcon.cx} railCx=${d.rail.cx}`,
+      );
+      check(
+        rows,
+        `${tag}.${vpName}.${state}.sidebar.collapsedCentreDistancesEqual`,
+        centred(leftDistance - rightDistance),
+        `left=${leftDistance.toFixed(2)} right=${rightDistance.toFixed(2)}`,
+      );
+    } else if (d.hasToggle && d.collapsed === "false" && d.rail) {
+      check(
+        rows,
+        `${tag}.${vpName}.${state}.sidebar.expandedControlInset`,
+        nearInset(d.toggle ? d.toggle.l - d.rail.l : null),
+        `inset=${d.toggle ? d.toggle.l - d.rail.l : null} (target ~${INSET_TARGET})`,
+      );
+    }
+    // ── Footer logo: same source AND same displayed size as the header ─────
+    check(
+      rows,
+      `${tag}.${vpName}.${state}.logo.footerMatchesHeaderSize`,
+      !!d.headerLogo && !!d.footerLogo &&
+        d.footerLogo.h === d.headerLogo.h && d.footerLogo.w === d.headerLogo.w,
+      `header=${d.headerLogo?.w}x${d.headerLogo?.h} footer=${d.footerLogo?.w}x${d.footerLogo?.h}`,
+    );
+    check(
+      rows,
+      `${tag}.${vpName}.${state}.logo.aspectPreserved`,
+      !!d.footerLogo &&
+        Math.abs(d.footerLogo.w / d.footerLogo.h - d.headerLogo.w / d.headerLogo.h) < 0.02,
+      `footerRatio=${d.footerLogo ? (d.footerLogo.w / d.footerLogo.h).toFixed(3) : "n/a"}`,
+    );
+    check(rows, `${tag}.${vpName}.${state}.images.notBroken`, d.broken === 0, `broken=${d.broken}`);
     // ── The shell CTA shares the same inset in every preset ────────────────
     check(
       rows,
@@ -1984,6 +1747,7 @@ async function runThemeClosureChecks(rows, tag, cdp) {
   for (const [vpName, viewport] of [
     ["desktop", VIEWPORTS.desktop],
     ["tablet", VIEWPORTS.tablet],
+    ["mobile", VIEWPORTS.mobile],
   ]) {
     await cdp.setViewport(viewport.width, viewport.height);
     await cdp.navigate(`${BASE_URL}/en`);
@@ -2015,15 +1779,62 @@ async function runThemeClosureChecks(rows, tag, cdp) {
         await sleep(450);
         const collapsed = JSON.parse(await cdp.evaluate(THEME_PROBE));
         assertProbe(collapsed, vpName, "collapsed");
-        check(
-          rows,
-          `${tag}.${vpName}.collapsed.theme.wordmarkBlue`,
-          collapsed.wordmarkColor === ACCENT_RGB,
-          `wordmark=${collapsed.wordmarkColor}`,
-        );
       }
     }
   }
+
+  // ── DARK SCHEME: the tint is DERIVED from the one accent, never a second hex ─
+  await cdp.setViewport(VIEWPORTS.desktop.width, VIEWPORTS.desktop.height);
+  await cdp.send("Emulation.setEmulatedMedia", {
+    features: [{ name: "prefers-color-scheme", value: "dark" }],
+  });
+  await cdp.navigate(`${BASE_URL}/en`);
+  await waitReady(cdp);
+  const dark = JSON.parse(await cdp.evaluate(THEME_PROBE));
+  await cdp.send("Emulation.setEmulatedMedia", { features: [] });
+
+  check(
+    rows,
+    `${tag}.dark.theme.baseAccentUnchanged`,
+    (dark.foundationAccent || "").toLowerCase() === ACCENT_HEX.toLowerCase(),
+    `--ui-foundation-accent=${dark.foundationAccent}`,
+  );
+  check(
+    rows,
+    `${tag}.dark.theme.derivedFromOneAccent`,
+    // The token is DERIVED (a color-mix of the one accent), never a second hex.
+    /^color-mix\(in srgb,/.test(dark.accent) &&
+      dark.accent.toLowerCase().includes(ACCENT_HEX) &&
+      !/^#[0-9a-f]{6}$/i.test(dark.accent),
+    `--ui-brand-accent=${dark.accent}`,
+  );
+  check(
+    rows,
+    `${tag}.dark.theme.derivedResolved`,
+    // …and the value the engine computes from it is the derived tint.
+    sameColor(dark.wordmarkColor, DARK_ACCENT_RGB),
+    `resolved=${dark.wordmarkColor} expected=${DARK_ACCENT_RGB}`,
+  );
+  check(
+    rows,
+    `${tag}.dark.theme.wordmarkDerived`,
+    sameColor(dark.wordmarkColor, DARK_ACCENT_RGB),
+    `wordmark=${dark.wordmarkColor} expected=${DARK_ACCENT_RGB}`,
+  );
+  for (const name of ["location", "language"]) {
+    check(
+      rows,
+      `${tag}.dark.theme.sel.${name}`,
+      sameColor(dark.sels[name], DARK_ACCENT_RGB),
+      `accent-color=${dark.sels[name]} expected=${DARK_ACCENT_RGB}`,
+    );
+  }
+  check(
+    rows,
+    `${tag}.dark.selectors.noPreset`,
+    dark.presetSelectorPresent === false,
+    `presetSelectorPresent=${dark.presetSelectorPresent}`,
+  );
 }
 
 
@@ -2047,9 +1858,18 @@ async function runP6bCollapsedChecks(rows, tag, cdp) {
     // navigation-item icons inside it are sized independently (32/16px).
     const toggleIcon = rail.querySelector('.ui-sidebar-toggle-icon');
     const tir = toggleIcon && getComputedStyle(toggleIcon).display !== 'none' ? toggleIcon.getBoundingClientRect() : null;
+    const railRect = rail.getBoundingClientRect();
+    const r2 = (v) => Math.round(v * 100) / 100;
+    const toggleIconVisible = rail.querySelector('.ui-sidebar-toggle-icon');
+    const toggleRect = toggleIconVisible ? toggleIconVisible.getBoundingClientRect() : null;
     return {
       dataCollapsed: rail.getAttribute('data-collapsed'),
-      railWidth: Math.round(rail.getBoundingClientRect().width),
+      railWidth: Math.round(railRect.width),
+      railLeft: r2(railRect.left),
+      railRight: r2(railRect.right),
+      railCx: r2(railRect.left + railRect.width / 2),
+      toggleIconCx: toggleRect ? r2(toggleRect.left + toggleRect.width / 2) : null,
+      navIconCx: ir ? r2(ir.left + ir.width / 2) : null,
       iconW: ir ? Math.round(ir.width) : null,
       toggleIconW: tir ? Math.round(tir.width) : null,
       strayLabels: items.filter((li) => { const l = li.querySelector('.ui-nav-item-label'); if (!l) return false; const r = l.getBoundingClientRect(); return r.width > 2 && r.height > 2; }).length,
@@ -2065,13 +1885,29 @@ async function runP6bCollapsedChecks(rows, tag, cdp) {
     };
   })()`);
   check(rows, `${tag}.p6b.collapsed.state`, !!col && col.dataCollapsed === "true");
-  // 2026-09 closure pass — the collapsed rail's width is its OWN approved
-  // geometry token, NOT a multiple of the control's icon size: the control is
-  // 24px at every breakpoint while the rail keeps its approved tablet/desktop
-  // widths (38.4px / 76.8px = the former `icon x 1.2`). Deriving the rail from
-  // the control would have silently shrunk it to 28.8px.
-  check(rows, `${tag}.p6b.collapsed.widthApproved`, !!col && col.railWidth >= 76 && col.railWidth <= 78, `rail=${col && col.railWidth} (approved desktop geometry)`);
-  check(rows, `${tag}.p6b.collapsed.widthIndependentOfControl`, !!col && col.toggleIconW != null && col.railWidth !== Math.round(col.toggleIconW * 1.2), `rail=${col && col.railWidth} control=${col && col.toggleIconW}`);
+  // Owner geometry (2026-09) — the collapsed rail is a SYMMETRIC icon column:
+  // width = the 24px control icon + equal inline padding on both sides
+  // (24 + 6 + 6 = 36px), so it is narrower than the former 76.8px geometry.
+  check(rows, `${tag}.p6b.collapsed.widthSymmetric`, !!col && col.railWidth >= 35 && col.railWidth <= 37, `rail=${col && col.railWidth} (control 24 + 2x6)`);
+  // …the OPEN control is centred on the rail's axis…
+  check(rows, `${tag}.p6b.collapsed.controlCentred`, !!col && col.toggleIconCx != null && Math.abs(col.toggleIconCx - col.railCx) <= 1, `controlCx=${col && col.toggleIconCx} railCx=${col && col.railCx}`);
+  // …its distances to the rail's OUTER edges are equal (the owner's stated
+  // equality, including the 1px inline-end border)…
+  check(
+    rows,
+    `${tag}.p6b.collapsed.centreDistancesEqual`,
+    !!col && col.toggleIconCx != null &&
+      Math.abs((col.toggleIconCx - col.railLeft) - (col.railRight - col.toggleIconCx)) <= 1,
+    `left=${col ? (col.toggleIconCx - col.railLeft).toFixed(2) : "n/a"} right=${col ? (col.railRight - col.toggleIconCx).toFixed(2) : "n/a"}`,
+  );
+  // …and the page-icon column shares that SAME centreline.
+  check(
+    rows,
+    `${tag}.p6b.collapsed.navIconSameAxis`,
+    !!col && col.navIconCx != null && col.toggleIconCx != null && Math.abs(col.navIconCx - col.toggleIconCx) <= 1,
+    `navCx=${col && col.navIconCx} controlCx=${col && col.toggleIconCx}`,
+  );
+  check(rows, `${tag}.p6b.collapsed.narrowerThanBefore`, !!col && col.railWidth < 45, `rail=${col && col.railWidth}`);
   // 2026-09 owner ruling — the collapsed rail still renders the page icons at
   // EXACTLY 16x16 (the single shared sizing contract), never the 32px desktop size.
   check(rows, `${tag}.p6c.collapsed.navIcon16`, !!col && col.iconW === 16, `navIcon=${col && col.iconW}`);
@@ -2125,12 +1961,9 @@ async function runP6bTabletSweep(rows, tag, cdp) {
     } else {
       check(rows, `${tag}.p6b.sweep.${width}.railBesideContent`, s.main != null && s.rail.right <= s.main.left + 2 && s.rail.width < s.vw * 0.6, `railRight=${s.rail.right} mainLeft=${s.main && s.main.left} railW=${s.rail.width}`);
     }
-    // The CONTROL (toggle) icon keeps its approved sizes — 32px below `lg`
-    // (tablet band) and 64px at `lg` — independently of the smaller
-    // navigation-item icons (P6-3C token split).
-    // 2026-09 closure pass — the show/hide CONTROL is exactly 24px x 24px at
-    // EVERY width (desktop and tablet, one token, no breakpoint override),
-    // independently of the smaller 16px page icons.
+    // 2026-09 — the show/hide CONTROL is exactly 24px x 24px at EVERY width
+    // (desktop and tablet, one token, no breakpoint override), independently of
+    // the smaller 16px page icons.
     if (s.toggleIcon) {
       check(rows, `${tag}.p6b.sweep.${width}.controlIcon24`, s.toggleIcon.w === 24 && s.toggleIcon.h === 24, `w=${s.toggleIcon.w} h=${s.toggleIcon.h}`);
     }
@@ -2256,7 +2089,6 @@ async function runConnectivityIconScenario(chrome) {
   const url = `http://localhost:${port}/en`;
   BASE_URL = `http://localhost:${port}`;
   const config = JSON.parse(original);
-  config.ui = { preset: "classic" };
   config.socialLinks = [
     { platform: "fixture-with-icon", label: "Icon Platform", href: "https://example.com/icon", icon: ICON },
     { platform: "fixture-missing-icon", label: "Missing Artwork Platform", href: "https://example.com/missing", icon: MISSING },
@@ -2533,37 +2365,29 @@ async function runConnectivityIconScenario(chrome) {
   return rows;
 }
 
-async function runMatrix(chrome, onlyPreset) {
-
+async function runMatrix(chrome) {
   let allRows = [];
   const original = await readFile(CONFIG_PATH, "utf8");
-  const toRun = onlyPreset ? PRESETS.filter((p) => p.name === onlyPreset) : PRESETS;
-  if (toRun.length === 0) throw new Error(`unknown preset: ${onlyPreset}`);
   try {
-    for (const preset of toRun) {
-      const config = JSON.parse(original);
-      config.ui = { ...config.ui, ...preset.ui };
-      await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n", "utf8");
-      const rows = await runPreset(preset, chrome);
-      allRows = allRows.concat(rows);
-      const fails = rows.filter((r) => !r.ok).length;
-      console.log(`[matrix] ${preset.name}: ${rows.length - fails}/${rows.length} checks passed${fails ? ` FAIL=${fails}` : ""}`);
-    }
-    // P5-6 — duplicate-destination acceptance (own servers, config restored below).
-    if (!onlyPreset) {
-      const dupRows = await runDuplicateNavScenario(chrome);
-      allRows = allRows.concat(dupRows.map((r) => ({ preset: "dup-nav", ...r })));
-      const dupFails = dupRows.filter((r) => !r.ok).length;
-      console.log(`[matrix] dup-nav: ${dupRows.length - dupFails}/${dupRows.length} checks passed${dupFails ? ` FAIL=${dupFails}` : ""}`);
-    }
+    // ONE canonical presentation (the retired feature's five-preset loop is gone).
+    const config = JSON.parse(original);
+    config.ui = { ...config.ui, ...CANONICAL.ui };
+    await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n", "utf8");
+    const rows = await runCanonical(chrome);
+    allRows = allRows.concat(rows);
+    const fails = rows.filter((r) => !r.ok).length;
+    console.log(`[matrix] ${CANONICAL.name}: ${rows.length - fails}/${rows.length} checks passed${fails ? ` FAIL=${fails}` : ""}`);
+    // P5-6 — duplicate-destination acceptance (own server, config restored below).
+    const dupRows = await runDuplicateNavScenario(chrome);
+    allRows = allRows.concat(dupRows.map((r) => ({ preset: "dup-nav", ...r })));
+    const dupFails = dupRows.filter((r) => !r.ok).length;
+    console.log(`[matrix] dup-nav: ${dupRows.length - dupFails}/${dupRows.length} checks passed${dupFails ? ` FAIL=${dupFails}` : ""}`);
     // CONNECTIVITY ICON SEAM — browser-real acceptance of the optional
     // connectivity icon contract (own server, config restored by the scenario).
-    if (!onlyPreset) {
-      const connectivityRows = await runConnectivityIconScenario(chrome);
-      allRows = allRows.concat(connectivityRows.map((r) => ({ preset: "connectivity-icons", ...r })));
-      const connectivityFails = connectivityRows.filter((r) => !r.ok).length;
-      console.log(`[matrix] connectivity-icons: ${connectivityRows.length - connectivityFails}/${connectivityRows.length} checks passed${connectivityFails ? ` FAIL=${connectivityFails}` : ""}`);
-    }
+    const connectivityRows = await runConnectivityIconScenario(chrome);
+    allRows = allRows.concat(connectivityRows.map((r) => ({ preset: "connectivity-icons", ...r })));
+    const connectivityFails = connectivityRows.filter((r) => !r.ok).length;
+    console.log(`[matrix] connectivity-icons: ${connectivityRows.length - connectivityFails}/${connectivityRows.length} checks passed${connectivityFails ? ` FAIL=${connectivityFails}` : ""}`);
   } finally {
     await writeFile(CONFIG_PATH, original, "utf8");
   }
@@ -2578,9 +2402,8 @@ async function main() {
     console.error("No Chrome/Chromium/Edge binary found. Install one or set CHROME_PATH.");
     process.exit(2);
   }
-  const onlyPreset = process.argv[2];
   process.exitCode = 0;
-  const failed = await runMatrix(chrome, onlyPreset);
+  const failed = await runMatrix(chrome);
   if (failed) process.exitCode = 1;
 }
 

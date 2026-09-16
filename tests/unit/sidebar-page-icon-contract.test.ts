@@ -112,11 +112,11 @@ describe("sidebar page icons — 16x16 on desktop AND tablet, in both states", (
       .map((match) => match[1])
       .join(" ");
     expect(collapsedBlocks).not.toMatch(/ui-nav-item-icon[^{]*\{[^}]*width/);
-    // The collapsed rail's own (approved) geometry, now an explicit token.
-    expect(globals).toMatch(/--ui-sidebar-rail-collapsed:\s*2\.4rem/);
+    // The collapsed rail's own symmetric geometry token (owner ruling, 2026-09).
     expect(globals).toMatch(
-      new RegExp("@media \\(min-width: 1024px\\)[^}]*--ui-sidebar-rail-collapsed:\\s*4\\.8rem"),
+      /--ui-sidebar-rail-collapsed:\s*calc\(\s*var\(--ui-sidebar-control-icon-size\)\s*\+\s*var\(--ui-sidebar-rail-collapsed-pad\)\s*\*\s*2\s*\)/,
     );
+    expect(globals).toMatch(/--ui-sidebar-rail-collapsed-pad:\s*0\.375rem/);
   });
 });
 
@@ -149,22 +149,29 @@ describe("sidebar open/close CONTROL — 24x24 on desktop AND tablet, distinct f
     expect(navIconRule).not.toMatch(/var\(--ui-sidebar-control-icon-size\)/);
   });
 
-  it("is LEFT-ALIGNED with the shared ~5px edge inset in BOTH states", () => {
+  it("keeps the EXPANDED control's ~5px inset; the COLLAPSED control is centred", () => {
     // One shared inset value, derived from the Tailwind spacing scale
     // (0.25rem x 1.25 = 5px) — never a per-preset magic number.
     expect(globals).toMatch(/--ui-shell-control-inset:\s*calc\(var\(--spacing\) \* 1\.25\)/);
-    for (const rule of [toggleRule, collapsedToggleRule]) {
-      expect(rule).toMatch(/justify-content:\s*flex-start/);
-      expect(rule).toMatch(/var\(--ui-shell-control-inset\)/);
-      // Re-anchored by exactly (inset - the rail padding in force), so the
-      // control's leading edge sits one inset in and its trailing edge stays
-      // flush with the rail's content box.
-      expect(rule).toMatch(/margin-inline-start:\s*calc\(/);
-    }
+
+    // EXPANDED (owner ruling, 2026-09): unchanged — left-aligned with the shared
+    // inset, re-anchored against the rail's own inline padding.
+    expect(toggleRule).toMatch(/justify-content:\s*flex-start/);
+    expect(toggleRule).toMatch(/var\(--ui-shell-control-inset\)/);
+    expect(toggleRule).toMatch(/margin-inline-start:\s*calc\(/);
     expect(toggleRule).toMatch(/var\(--ui-sidebar-rail-inline\)/);
-    expect(collapsedToggleRule).toMatch(/var\(--ui-sidebar-rail-collapsed-pad\)/);
-    // The old centred collapsed control is gone: it must not recentre on collapse.
-    expect(collapsedToggleRule).not.toMatch(/justify-content:\s*center/);
+
+    // COLLAPSED (owner ruling, 2026-09): the open control is CENTRED on the rail's
+    // axis with no inset, no re-anchoring and no compensating negative margin.
+    expect(collapsedToggleRule).toMatch(/justify-content:\s*center/);
+    expect(collapsedToggleRule).toMatch(/margin-inline:\s*0/);
+    expect(collapsedToggleRule).toMatch(/padding-inline:\s*0/);
+    expect(collapsedToggleRule).not.toMatch(/var\(--ui-shell-control-inset\)/);
+    expect(collapsedToggleRule).not.toMatch(/margin-inline-start:\s*calc\(/);
+    // …and the collapsed page-icon column shares that same axis.
+    expect(globals).toMatch(
+      /\.ui-sidebar-rail\[data-collapsed="true"\] li > a[\s\S]{0,120}?justify-content:\s*center/,
+    );
   });
 
   it("gives the shell-top CTA the SAME shared inset (one value, all presets)", () => {

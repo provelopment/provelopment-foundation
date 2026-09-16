@@ -37,7 +37,7 @@ new project repository (independent Git repo)
     ↓
 instruction-manuals distributed
     ↓
-project configuration (identity, navigation, CTA, preset)
+project configuration (identity, navigation, CTA, presentation)
     ↓
 business content + assets
     ↓
@@ -98,7 +98,7 @@ from its own copy.
 ### 6. Create the adopter configuration
 
 Establish the site's configuration from the Foundation's validated contract:
-identity, `site.url`, contact, navigation, enabled features, CTA, preset, theme.
+identity, `site.url`, contact, navigation, enabled features, CTA, theme.
 Follow `site-customization.md`. Everything here is **adopter-owned**.
 
 ### 7. Establish business-owned directories

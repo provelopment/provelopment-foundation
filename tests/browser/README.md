@@ -20,14 +20,13 @@ committed, reproducible version).
 pnpm test:browser
 ```
 
-For each of the five presets (Adaptive, Classic, Focus, Workspace, Immersive) the
-harness:
-1. swaps `ui.preset` (plus a matrix CTA) inside `site.config.json`;
-2. boots `next dev` for that preset;
+For the Foundation's **one canonical presentation** the harness:
+1. writes the canonical UI configuration (plus a matrix CTA) into `site.config.json`;
+2. boots `next dev`;
 3. drives a real CDP session across **desktop (1280) / tablet (900) / mobile
    (390)** and the md (768) / lg (1024) boundary widths;
 4. performs **real interaction**: clicks/taps, Tab / Shift+Tab / Escape,
-   backdrop dismissal, reduced-motion emulation;
+   backdrop dismissal, reduced-motion and dark-scheme emulation;
 5. writes a machine-readable JSON report to `%TEMP%/ui10-browser-report.json` and
    `tests/browser/.report/ui10-browser-report.json` (gitignored);
 6. exits non-zero on any failure (CI-friendly).

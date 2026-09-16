@@ -61,7 +61,6 @@ export function parseSiteConfig(raw: unknown): SiteConfig {
     navigation: json.navigation,
     connect: json.connect,
     ui: json.ui,
-    presetComparison: json.ui?.presetComparison,
     business,
     regions,
     pageBindings,

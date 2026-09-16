@@ -955,7 +955,7 @@ switches.
 
 | Key | Vocabulary | Meaning |
 | --- | --- | --- |
-| `preset` | `classic` \| `adaptive` \| `focus` \| `workspace` \| `immersive` | Explicit preset selection |
+| `preset` | `classic` \| `adaptive` \| `focus` \| `workspace` \| `immersive` | **Internal** presentation-profile selection. The Foundation ships ONE canonical presentation and declares no preset; the leaf exists only so the shared engine can resolve a profile (2026-09: the adopter-facing preset feature was retired) |
 | `shell.header` / `shell.footer` | `standard` \| `minimal` | Page-frame intent |
 | `navigation.desktop` | `top` \| `sidebar` \| `minimal` \| `floating` | Desktop composition override |
 | `navigation.tablet` | `top-compact` \| `collapsed-sidebar` \| `minimal` \| `floating` | Tablet composition override |
@@ -1328,14 +1328,20 @@ shipped `src/core/ui/vocabulary` enums. Violations throw `UiConfigResolutionErro
 listing exact leaf paths — future preset-profile or Foundation-default additions
 fail loudly at resolution time rather than silently resolving to `undefined`.
 
-### The five presets are composable configurations, not implementations
+### The presentation profiles are composable configurations, not implementations
 
-Each preset (`classic`, `adaptive`, `focus`, `workspace`, `immersive`) is a
-semantic profile in `src/core/ui/presets.ts`: its per-viewport navigation
-composition, shell intent, CTA prominence, and its row of the roadmap §24
-capability matrix. Presets describe what a UX personality means; later phases
-compose shared primitives (UI-03) under a shell engine (UI-04). No preset gets
-a bespoke implementation.
+Each presentation profile in `src/core/ui/presets.ts` is a semantic profile: its
+per-viewport navigation composition, shell intent, CTA prominence, and its row of
+the roadmap §24 capability matrix. Profiles describe what a UX personality means;
+shared primitives (UI-03) are composed under a shell engine (UI-04), so no
+profile gets a bespoke implementation.
+
+**The Foundation product surface ships ONE canonical presentation** (resolved from
+`FOUNDATION_UI_DEFAULTS.defaultPreset`, i.e. the `adaptive` profile). The former
+adopter-facing preset feature — a header selector that linked five externally
+hosted presentations — was **retired in 2026-09**: the switcher component, the
+`ui.presetComparison` deployment map and the five-preset browser permutations are
+gone. The profile table remains as the engine's internal composition vocabulary.
 
 ### The resolved default preset (UI-05 decision)
 

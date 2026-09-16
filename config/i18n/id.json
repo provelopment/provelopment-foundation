@@ -39,11 +39,7 @@
   },
   "language": {
     "label": "Bahasa"
-  },
-  "presetComparison": {
-    "label": "Lihat situs ini dalam prasetel lain",
-    "current": "saat ini"
-  },
+  },
   "location": {
     "label": "Lokasi",
     "unspecified": "Global"

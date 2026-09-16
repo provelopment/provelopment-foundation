@@ -185,11 +185,10 @@ describe("P6-3C/B — sidebar NAVIGATION-ITEM icons are exactly 16px on desktop 
 describe("P6-3C/C — the CTA resolves to ONE authoritative top slot (never inside navigation)", () => {
   it("every viewport (aside / bottom-bar / drawer / overlay) resolves the same top slot", () => {
     const cases: Array<Record<string, unknown>> = [
-      { preset: "adaptive" },
-      { preset: "classic" },
-      { preset: "focus" },
-      { preset: "workspace" },
-      { preset: "immersive" },
+      {},
+      { navigation: { desktop: "top", tablet: "top-compact", mobile: "drawer" } },
+      { navigation: { desktop: "minimal", tablet: "top-compact", mobile: "drawer" }, shell: { header: "minimal" } },
+      { navigation: { desktop: "sidebar", tablet: "collapsed-sidebar", mobile: "drawer" } },
       { navigation: { desktop: "sidebar", tablet: "collapsed-sidebar", mobile: "bottom-bar" } },
       { navigation: { desktop: "floating", tablet: "floating", mobile: "overlay" } },
     ];
@@ -210,7 +209,7 @@ describe("P6-3C/C — the CTA resolves to ONE authoritative top slot (never insi
   });
 
   it("resolves `none` (absent CTA) when the configuration does not enable one", () => {
-    const decision = resolveShellPattern(resolveUiConfig({ preset: "adaptive" }));
+    const decision = resolveShellPattern(resolveUiConfig({}));
     expect(decision.cta.present).toBe(false);
     expect([decision.desktop.ctaSlot, decision.tablet.ctaSlot, decision.mobile.ctaSlot]).toEqual([
       "none",

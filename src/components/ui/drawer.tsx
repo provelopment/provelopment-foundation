@@ -33,7 +33,7 @@ import { createPortal } from "react-dom";
  *  - D4 scroll lock: the body's overflow is locked while open and restored to
  *    its prior value on close (repeated open/close cycles leak nothing).
  *
- * Props-driven and preset-agnostic: no preset identity, no business rules.
+ * Props-driven and presentation-agnostic: no presentation identity, no business rules.
  * `id` is composer-provided (deterministic; avoids `useId` for SSR-safe tests).
  */
 export interface DrawerProps {

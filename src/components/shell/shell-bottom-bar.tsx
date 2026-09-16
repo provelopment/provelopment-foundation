@@ -25,7 +25,7 @@ import { ShellMobileNav } from "./shell-mobile-nav";
  *    `BottomNavigation` bar, the remainder (when non-empty) is exposed through
  *    a closed-by-default "More" drawer;
  *  - composes ONLY the shared primitives (`BottomNavigation`, `NavItem`,
- *    `ShellMobileNav`) — no preset identity, no business rules.
+ *    `ShellMobileNav`) — no presentation identity, no business rules.
  *
  * A11y contract: single `<nav>` landmark (the bar) at <md; the More drawer is
  * a `role=dialog` overlay (closed-by-default SSR, Escape closes) that is never

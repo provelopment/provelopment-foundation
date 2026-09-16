@@ -111,8 +111,8 @@ describe("P5-5 — region ordering (top → middle → bottom, middle default)",
 });
 
 describe("P5-5 — resolution of the new ui.navigation/* + ui.cta leaves", () => {
-  it("resolves neutral defaults for every preset (byte-identical baseline)", () => {
-    const r = resolveUiConfig({ preset: "adaptive" });
+  it("resolves the neutral control defaults (byte-identical baseline)", () => {
+    const r = resolveUiConfig({});
     expect(r.navigation.sidebar.mode).toBe("open");
     expect(r.navigation.sidebar.open).toEqual({ icon: undefined, text: undefined }); // falls back to shipped asset + dictionary label at composition
     expect(r.navigation.sidebar.close).toEqual({ icon: undefined, text: undefined });
@@ -150,35 +150,33 @@ describe("P5-5 — resolution of the new ui.navigation/* + ui.cta leaves", () =>
     ).toThrow(/cta\.state/);
   });
 
-  it("P5-5A — a downstream override wins over EVERY preset profile (precedence)", () => {
-    for (const preset of ["adaptive", "classic", "focus", "workspace", "immersive"] as const) {
-      const r = resolveUiConfig({
-        preset,
-        navigation: {
-          sidebar: { mode: "closed", open: { icon: "my-open.svg", text: "" }, close: { icon: "", text: "Shut" } },
-          top: { mode: "compact" },
-          bottom: { mode: "closed" },
-        },
-        cta: { icon: "cta.svg", iconPosition: "end", state: "disabled" },
-      });
-      expect(r.navigation.sidebar.mode, preset).toBe("closed");
-      expect(r.navigation.sidebar.open.icon, preset).toBe("my-open.svg");
-      expect(r.navigation.sidebar.open.text, preset).toBe("");
-      expect(r.navigation.sidebar.close.icon, preset).toBe("");
-      expect(r.navigation.top.mode, preset).toBe("compact");
-      expect(r.navigation.bottom.mode, preset).toBe("closed");
-      expect(r.cta.icon, preset).toBe("cta.svg");
-      expect(r.cta.iconPosition, preset).toBe("end");
-      expect(r.cta.state, preset).toBe("disabled");
-    }
+  it("P5-5A — a downstream override wins over the Foundation defaults (precedence)", () => {
+    const r = resolveUiConfig({
+      navigation: {
+        sidebar: { mode: "closed", open: { icon: "my-open.svg", text: "" }, close: { icon: "", text: "Shut" } },
+        top: { mode: "compact" },
+        bottom: { mode: "closed" },
+      },
+      cta: { icon: "cta.svg", iconPosition: "end", state: "disabled" },
+    });
+    expect(r.navigation.sidebar.mode).toBe("closed");
+    expect(r.navigation.sidebar.open.icon).toBe("my-open.svg");
+    expect(r.navigation.sidebar.open.text).toBe("");
+    expect(r.navigation.sidebar.close.icon).toBe("");
+    expect(r.navigation.top.mode).toBe("compact");
+    expect(r.navigation.bottom.mode).toBe("closed");
+    expect(r.cta.icon).toBe("cta.svg");
+    expect(r.cta.iconPosition).toBe("end");
+    expect(r.cta.state).toBe("disabled");
   });
 
-  it("P5-5A — the preset still supplies the pattern/profile leaves (override is scoped, not flattening)", () => {
-    const classic = resolveUiConfig({ preset: "classic", navigation: { sidebar: { mode: "closed" } } });
-    expect(classic.navigation.sidebar.mode).toBe("closed"); // P5-5 leaf overridden
-    expect(classic.navigation.desktop).toBe("top"); // profile leaf untouched
-    const workspace = resolveUiConfig({ preset: "workspace", cta: { state: "disabled" } });
-    expect(workspace.cta.state).toBe("disabled");
-    expect(workspace.navigation.desktop).toBe("sidebar"); // profile leaf untouched
+  it("P5-5A — an override is scoped: sibling leaves keep their resolved values (no flattening)", () => {
+    const controlled = resolveUiConfig({ navigation: { sidebar: { mode: "closed" } } });
+    expect(controlled.navigation.sidebar.mode).toBe("closed"); // overridden leaf
+    expect(controlled.navigation.desktop).toBe("sidebar"); // canonical default untouched
+    expect(controlled.navigation.tablet).toBe("collapsed-sidebar");
+    const withCtaState = resolveUiConfig({ cta: { state: "disabled" } });
+    expect(withCtaState.cta.state).toBe("disabled");
+    expect(withCtaState.navigation.mobile).toBe("bottom-bar"); // canonical default untouched
   });
 });

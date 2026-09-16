@@ -240,15 +240,15 @@ body {
  * Owner ruling (2026-09 closure pass) — the shell-top primary CTA sits on the
  * page/shell edge, so it takes the ONE shared shell-control inset (≈5px) that
  * the sidebar show/hide control also takes. Both read it from
- * `--ui-shell-control-inset`, so they align on one edge in every preset from a
- * single value — no per-preset magic numbers.
+ * `--ui-shell-control-inset`, so they align on one edge in every composition from a
+ * single value — no per-composition magic numbers.
  */
 .ui-shell-cta {
   padding-inline-start: var(--ui-shell-control-inset);
 }
 
 /*
- * Selector chrome (preset / location / language switchers) — the APPLICATION-
+ * Selector chrome (Presentation / location / language switchers) — the APPLICATION-
  * controlled selection/focus emphasis is painted from the ONE Foundation theme
  * colour (`--ui-brand-accent`), never from a second hardcoded brand value:
  *  - `accent-color` drives the control's native selection emphasis (the chosen
@@ -468,7 +468,7 @@ select[data-selector]:focus-visible {
  * The RENDERER implementation of the resolved `ui.presentation` intent. The
  * layout writes the generalized vocabulary values onto `<html>` as inert
  * `data-ui-*` attributes (see `src/app/[locale]/layout.tsx`); these rules
- * implement each value with semantic tokens only — NO preset-name selectors
+ * implement each value with semantic tokens only — NO Presentation-name selectors
  * ever appear here. The balanced/default values (Adaptive) emit nothing, so
  * the default mask is byte-identical to the pre-P5-3 appearance. Downstream
  * sites restyle by changing tokens/attributes, never components.
@@ -663,7 +663,7 @@ html[data-ui-hero="showcase"] .home-hero {
 /* ── P5-5 configurable controls & navigation-presentation layer ────────────
  *
  * The RENDERER for the P5-5 resolved control/menu intent. Shared semantic
- * class markers, token-only, NO preset-name selectors:
+ * class markers, token-only, NO Presentation-name selectors:
  *
  *  - `.ui-nav-item--has-icon` / `.ui-nav-item-icon` — configurable item icon
  *    (asset-replaceable) laid out inline with the label at a fixed control
@@ -1091,7 +1091,7 @@ html[data-ui-hero="showcase"] .home-hero {
  * root element propagates to the canvas) and below every in-flow element. The
  * flat `ui.theme.background` COLOUR token therefore still defines the page's
  * base colour — the graphic is layered OVER it, never substituted for it, so
- * presets and themes keep working with or without a configured graphic.
+ * Presentations and themes keep working with or without a configured graphic.
  *
  * DECORATIVE ONLY: `pointer-events: none` means the layer can never capture a
  * click, a text selection or focus — content stays fully interactive, selectable

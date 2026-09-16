@@ -1,6 +1,5 @@
 import { FOUNDATION_UI_DEFAULTS } from "./defaults";
 import { PRESENTATION_DEFAULTS, type UiPresentation } from "./presentation";
-import { uiPresetProfiles } from "./presets";
 import {
   CONTENT_WIDTHS,
   CTA_STATES,
@@ -37,7 +36,6 @@ import {
   type ThemeMode,
   type ThemeRadius,
   type UiDensity,
-  type UiPreset,
 } from "./vocabulary";
 
 /**
@@ -51,7 +49,6 @@ import {
  * validated UI configuration straight in.
  */
 export interface UiConfigInput {
-  readonly preset?: UiPreset;
   readonly shell?: {
     readonly header?: ShellVariant;
     readonly footer?: ShellVariant;
@@ -75,7 +72,7 @@ export interface UiConfigInput {
   };
   readonly density?: UiDensity;
   readonly content?: { readonly width?: ContentWidth };
-  /** P5-3 — generalized presentation intent (optional; preset profile supplies the rest). */
+  /** P5-3 — generalized presentation intent (optional; Foundation defaults supply the rest). */
   readonly presentation?: {
     readonly typography?: PresentationTypography;
     readonly rhythm?: PresentationRhythm;
@@ -109,30 +106,26 @@ export interface UiConfigInput {
  *
  * ```text
  * explicit override (input leaf)
- *         ↓        (only when an explicit preset is present)
- * preset profile leaf (uiPresetProfiles[preset])
  *         ↓
- * Foundation default (FOUNDATION_UI_DEFAULTS)
+ * Foundation canonical defaults (FOUNDATION_UI_DEFAULTS)
  *         ↓
  * completeness invariant (assertResolvedUiConfigComplete)
  * ```
  *
  * CONTRACT DECISIONS (locked, owner-approved; see .project-instructions/plan/archive/todo-milestone-ui-02.md,
- * amended at UI-05 — .project-instructions/plan/archive/todo-milestone-ui-05.md):
+ * amended by the single-presentation closure — .project-instructions/CHANGELOG.md):
  *
- * 1. ONE default preset. UI-05 fixes `FOUNDATION_UI_DEFAULTS.defaultPreset =
- *    "adaptive"` as the resolved default PERSONALITY. Selection happens at
- *    exactly ONE point here (`raw.preset ?? FOUNDATION_UI_DEFAULTS.defaultPreset`);
- *    the schema, loader, and every other module inject nothing. The default
- *    personality does NOT override explicit per-leaf values (overrides win) and
- *    does NOT prevent any other preset from being selected explicitly.
+ * 1. ONE canonical presentation. There is no presentation/profile selection
+ *    layer: resolution is exactly `override ?? FOUNDATION_UI_DEFAULTS.<leaf>`.
+ *    The retired `ui.preset` key is not part of the contract surface at all —
+ *    the configuration schema rejects it as an unknown key.
  * 2. Neutral CTA defaults. The Foundation never invents a business action:
  *     `cta.enabled` defaults to `false`; `action`/`label` are adopter-only
  *     strings and resolve to `undefined` when not configured（never invented）。
- * 3. Completeness is structural: every leaf that MUST resolve (all non-preset
- *     leaves except the adopter-only CTA strings `action`/`label`/`href`) must
+ * 3. Completeness is structural: every leaf that MUST resolve (all leaves except
+ *     the adopter-only CTA strings `action`/`label`/`href`) must
  *     be defined or resolution throws `UiConfigResolutionError` listing the
- *     missing leaf path — future vocabulary/profile growth fails loudly rather
+ *     missing leaf path — future vocabulary/default growth fails loudly rather
  *     than silently resolving to `undefined`.
  * 4. Framework-neutral: pure TS (no React/Next/Zod/adapters/configuration
  *     imports);the only config coupling is the structural `UiConfigInput`
@@ -161,12 +154,9 @@ export class UiConfigResolutionError extends Error {
  * The fully-resolved, deterministic UI configuration consumed by later phases.
  *
  * Same leaf shape as the input surface, but every leaf that must resolve is
- * non-optional and fully determined. `preset` is `undefined` when the adopter
- * omitted it — the resolved default preset is a UI-05 policy decision, never
- * injected here.
+ * non-optional and fully determined.
  */
 export interface ResolvedUiConfig {
-  readonly preset?: UiPreset;
   readonly shell: {
     readonly header: ShellVariant;
     readonly footer: ShellVariant;
@@ -228,12 +218,13 @@ const VOCAB_MEMBERSHIP: Readonly<Record<string, readonly string[]>> = {
   "presentation.hero": PRESENTATION_HEROES,
 };
 
-function resolveLeaf<T>(
-  override: T | undefined,
-  presetValue: T | undefined,
-  foundationValue: T,
-): T {
-  return override ?? presetValue ?? foundationValue;
+/**
+ * Resolves ONE leaf: an explicit override wins, otherwise the Foundation
+ * canonical default. There is no third (profile) layer — see the contract at the
+ * top of this module.
+ */
+function resolveLeaf<T>(override: T | undefined, foundationValue: T): T {
+  return override ?? foundationValue;
 }
 
 /**
@@ -242,9 +233,8 @@ function resolveLeaf<T>(
  * are intentionally optional) and that vocab-backed leaves are members of the
  * shipped vocabulary.
  *
- * Exported for testability: future preset-profile or Foundation-default
- * additions (new fields) fail loudly here rather than silently resolving to
- * `undefined`.
+ * Exported for testability: future Foundation-default additions (new fields)
+ * fail loudly here rather than silently resolving to `undefined`.
  */
 export function assertResolvedUiConfigComplete(
   resolved: Readonly<Partial<ResolvedUiConfig>>,
@@ -253,7 +243,7 @@ export function assertResolvedUiConfigComplete(
 
   const check = (path: string, value: unknown): void => {
     if (value === undefined) {
-      issues.push({ path, message: "missing resolved value (no override, preset profile, or Foundation default provided)" });
+      issues.push({ path, message: "missing resolved value (no override or Foundation default provided)" });
     } else {
       const members = VOCAB_MEMBERSHIP[path];
       if (members && !members.includes(value as string)) {
@@ -301,78 +291,68 @@ export function assertResolvedUiConfigComplete(
  * free of state and application/business assumptions.
  */
 export function resolveUiConfig(raw: UiConfigInput): ResolvedUiConfig {
-  // THE single default-preset selection point (UI-05, owner-approved): an
-  // explicit `ui.preset` wins; otherwise the Foundation's default personality
-  // (Adaptive) applies. The schema, loader, and every other module inject
-  // nothing — this is the one place a default preset enters resolution.
-  // Explicit per-leaf overrides still beat the (default or explicit) profile
-  // below via `resolveLeaf`.
-  const preset = raw.preset ?? FOUNDATION_UI_DEFAULTS.defaultPreset;
-  const profile = uiPresetProfiles[preset];
-
+  // ONE canonical presentation: there is no preset/profile selection step — a
+  // leaf resolves from an explicit override or from the Foundation canonical
+  // default (`FOUNDATION_UI_DEFAULTS`). The schema, loader and every other
+  // module inject nothing.
   const resolved: ResolvedUiConfig = {
-    preset,
     shell: {
-      header: resolveLeaf(raw.shell?.header, profile?.shell.header, FOUNDATION_UI_DEFAULTS.shell.header),
-      footer: resolveLeaf(raw.shell?.footer, profile?.shell.footer, FOUNDATION_UI_DEFAULTS.shell.footer),
+      header: resolveLeaf(raw.shell?.header, FOUNDATION_UI_DEFAULTS.shell.header),
+      footer: resolveLeaf(raw.shell?.footer, FOUNDATION_UI_DEFAULTS.shell.footer),
       sidebar: {
         collapsible: resolveLeaf(
           raw.shell?.sidebar?.collapsible,
-          profile?.shell.sidebar.collapsible,
           FOUNDATION_UI_DEFAULTS.shell.sidebar.collapsible,
         ),
       },
     },
     navigation: {
-      desktop: resolveLeaf(raw.navigation?.desktop, profile?.navigation.desktop, FOUNDATION_UI_DEFAULTS.navigation.desktop),
-      tablet: resolveLeaf(raw.navigation?.tablet, profile?.navigation.tablet, FOUNDATION_UI_DEFAULTS.navigation.tablet),
-      mobile: resolveLeaf(raw.navigation?.mobile, profile?.navigation.mobile, FOUNDATION_UI_DEFAULTS.navigation.mobile),
-      // P5-5 — sidebar/top/bottom presentation defaults come from the
-      // Foundation defaults (profiles deliberately leave them neutral so live
-      // preset appearances stay byte-identical; the capability is adopter
-      // configuration).
+      desktop: resolveLeaf(raw.navigation?.desktop, FOUNDATION_UI_DEFAULTS.navigation.desktop),
+      tablet: resolveLeaf(raw.navigation?.tablet, FOUNDATION_UI_DEFAULTS.navigation.tablet),
+      mobile: resolveLeaf(raw.navigation?.mobile, FOUNDATION_UI_DEFAULTS.navigation.mobile),
+      // P5-5 — sidebar/top/bottom presentation values are adopter configuration
+      // with Foundation defaults (the canonical composition leaves them open).
       sidebar: {
-        mode: resolveLeaf(raw.navigation?.sidebar?.mode, undefined, FOUNDATION_UI_DEFAULTS.navigation.sidebar.mode),
+        mode: resolveLeaf(raw.navigation?.sidebar?.mode, FOUNDATION_UI_DEFAULTS.navigation.sidebar.mode),
         open: {
-          icon: resolveLeaf(raw.navigation?.sidebar?.open?.icon, undefined, FOUNDATION_UI_DEFAULTS.navigation.sidebar.open.icon),
-          text: resolveLeaf(raw.navigation?.sidebar?.open?.text, undefined, FOUNDATION_UI_DEFAULTS.navigation.sidebar.open.text),
+          icon: resolveLeaf(raw.navigation?.sidebar?.open?.icon, FOUNDATION_UI_DEFAULTS.navigation.sidebar.open.icon),
+          text: resolveLeaf(raw.navigation?.sidebar?.open?.text, FOUNDATION_UI_DEFAULTS.navigation.sidebar.open.text),
         },
         close: {
-          icon: resolveLeaf(raw.navigation?.sidebar?.close?.icon, undefined, FOUNDATION_UI_DEFAULTS.navigation.sidebar.close.icon),
-          text: resolveLeaf(raw.navigation?.sidebar?.close?.text, undefined, FOUNDATION_UI_DEFAULTS.navigation.sidebar.close.text),
+          icon: resolveLeaf(raw.navigation?.sidebar?.close?.icon, FOUNDATION_UI_DEFAULTS.navigation.sidebar.close.icon),
+          text: resolveLeaf(raw.navigation?.sidebar?.close?.text, FOUNDATION_UI_DEFAULTS.navigation.sidebar.close.text),
         },
       },
-      top: { mode: resolveLeaf(raw.navigation?.top?.mode, undefined, FOUNDATION_UI_DEFAULTS.navigation.top.mode) },
-      bottom: { mode: resolveLeaf(raw.navigation?.bottom?.mode, undefined, FOUNDATION_UI_DEFAULTS.navigation.bottom.mode) },
+      top: { mode: resolveLeaf(raw.navigation?.top?.mode, FOUNDATION_UI_DEFAULTS.navigation.top.mode) },
+      bottom: { mode: resolveLeaf(raw.navigation?.bottom?.mode, FOUNDATION_UI_DEFAULTS.navigation.bottom.mode) },
     },
-    density: resolveLeaf(raw.density, profile?.density, FOUNDATION_UI_DEFAULTS.density),
+    density: resolveLeaf(raw.density, FOUNDATION_UI_DEFAULTS.density),
     content: {
-      width: resolveLeaf(raw.content?.width, profile?.content.width, FOUNDATION_UI_DEFAULTS.content.width),
+      width: resolveLeaf(raw.content?.width, FOUNDATION_UI_DEFAULTS.content.width),
     },
     presentation: {
       typography: resolveLeaf(
         raw.presentation?.typography,
-        profile?.presentation.typography,
         PRESENTATION_DEFAULTS.typography,
       ),
-      rhythm: resolveLeaf(raw.presentation?.rhythm, profile?.presentation.rhythm, PRESENTATION_DEFAULTS.rhythm),
-      surface: resolveLeaf(raw.presentation?.surface, profile?.presentation.surface, PRESENTATION_DEFAULTS.surface),
-      header: resolveLeaf(raw.presentation?.header, profile?.presentation.header, PRESENTATION_DEFAULTS.header),
-      hero: resolveLeaf(raw.presentation?.hero, profile?.presentation.hero, PRESENTATION_DEFAULTS.hero),
+      rhythm: resolveLeaf(raw.presentation?.rhythm, PRESENTATION_DEFAULTS.rhythm),
+      surface: resolveLeaf(raw.presentation?.surface, PRESENTATION_DEFAULTS.surface),
+      header: resolveLeaf(raw.presentation?.header, PRESENTATION_DEFAULTS.header),
+      hero: resolveLeaf(raw.presentation?.hero, PRESENTATION_DEFAULTS.hero),
     },
     cta: {
-      enabled: resolveLeaf(raw.cta?.enabled, undefined, FOUNDATION_UI_DEFAULTS.cta.enabled),
-      action: resolveLeaf(raw.cta?.action, undefined, FOUNDATION_UI_DEFAULTS.cta.action),
-      label: resolveLeaf(raw.cta?.label, undefined, FOUNDATION_UI_DEFAULTS.cta.label),
-      href: resolveLeaf(raw.cta?.href, undefined, FOUNDATION_UI_DEFAULTS.cta.href),
-      style: resolveLeaf(raw.cta?.style, profile?.cta.style, FOUNDATION_UI_DEFAULTS.cta.style),
-      icon: resolveLeaf(raw.cta?.icon, undefined, FOUNDATION_UI_DEFAULTS.cta.icon),
-      iconPosition: resolveLeaf(raw.cta?.iconPosition, undefined, FOUNDATION_UI_DEFAULTS.cta.iconPosition),
-      state: resolveLeaf(raw.cta?.state, undefined, FOUNDATION_UI_DEFAULTS.cta.state),
+      enabled: resolveLeaf(raw.cta?.enabled, FOUNDATION_UI_DEFAULTS.cta.enabled),
+      action: resolveLeaf(raw.cta?.action, FOUNDATION_UI_DEFAULTS.cta.action),
+      label: resolveLeaf(raw.cta?.label, FOUNDATION_UI_DEFAULTS.cta.label),
+      href: resolveLeaf(raw.cta?.href, FOUNDATION_UI_DEFAULTS.cta.href),
+      style: resolveLeaf(raw.cta?.style, FOUNDATION_UI_DEFAULTS.cta.style),
+      icon: resolveLeaf(raw.cta?.icon, FOUNDATION_UI_DEFAULTS.cta.icon),
+      iconPosition: resolveLeaf(raw.cta?.iconPosition, FOUNDATION_UI_DEFAULTS.cta.iconPosition),
+      state: resolveLeaf(raw.cta?.state, FOUNDATION_UI_DEFAULTS.cta.state),
     },
     theme: {
-      mode: resolveLeaf(raw.theme?.mode, undefined, FOUNDATION_UI_DEFAULTS.theme.mode),
-      radius: resolveLeaf(raw.theme?.radius, profile?.theme.radius, FOUNDATION_UI_DEFAULTS.theme.radius),
+      mode: resolveLeaf(raw.theme?.mode, FOUNDATION_UI_DEFAULTS.theme.mode),
+      radius: resolveLeaf(raw.theme?.radius, FOUNDATION_UI_DEFAULTS.theme.radius),
       // FS-5 — background is ADOPTER-OWNED presentation (an optional hex color).
       // Absent → undefined → the existing `--background` design token renders.
       // Validated by the config schema (COLOR_HEX_PATTERN); the resolver only

@@ -24,7 +24,7 @@ import type { ComponentPropsWithoutRef } from "react";
  *  - ACCESSIBILITY: visible keyboard focus is provided by the ONE global
  *    `:focus-visible` rule (P1-3) — this primitive adds NO focus CSS and never
  *    strips the keyboard indicator cosmetically.
- *  - PRESET-agnostic: no preset-name branches; no configuration leaf.
+ *  - PRESENTATION-agnostic: no presentation-name branches; no configuration leaf.
  *
  * Deliberately NOT consumed by `global-error.tsx`'s reset button — that root
  * fallback renders inside its own inline-styled `<html>` and therefore outside

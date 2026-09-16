@@ -20,7 +20,7 @@ import { NavItem, type NavItemModel } from "./nav-item";
  *
  * The panel `id` is composer-provided (deterministic and SSR-safe; avoids
  * `useId`, which is unavailable under `renderToStaticMarkup`). Props-driven
- * and preset-agnostic: the composer decides when/where a group is collapsible.
+ * and presentation-agnostic: the composer decides when/where a group is collapsible.
  */
 export interface NavGroupProps {
   /** Group heading (visible label). */

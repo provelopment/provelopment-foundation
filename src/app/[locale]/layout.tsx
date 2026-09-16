@@ -51,10 +51,10 @@ const geistMono = Geist_Mono({
 const localeCodes = siteConfig.locales.map((locale) => locale.code);
 
 // UI-04/UI-05/UI-06: the single resolved UI configuration (UI-02) drives the
-// shell. The SHIPPED demo config explicitly selects the classic preset (UI-06)
-// and keeps its explicit classic leaves (which repeat the profile), so the
-// effective composition stays top-bar ≥md + drawer <md — byte-identical to the
-// pre-UI-06 demo. `resolved.preset` == "classic" (truthful personality).
+// shell. The values come from the Foundation canonical presentation defaults
+// (`@/core/ui` FOUNDATION_UI_DEFAULTS) plus the site's own explicit config
+// leaves — a collapsible sidebar ≥md, a collapsed rail on tablet, a bottom bar
+// <md. There is no presentation/profile selection key and no default to inject.
 const resolvedUi = resolveUiConfig(siteConfig.ui ?? {});
 // P6-1 — every configured UI icon leaf must be backed by a real
 // `public/assets/` file (or deliberately ""). Loud at build time (server-only
@@ -252,10 +252,10 @@ export default async function LocaleLayout({
   // P5-3 — the RESOLVED presentation intent flows into the shared renderer as
   // inert `data-ui-*` attributes on `<html>` (see globals.css — P5-3
   // presentation tokens). These are generalized vocabulary values (never
-  // preset names), so the CSS token layer implements presentation without any
-  // preset identity. Static SSR strings; no hydration risk.
+  // presentation names), so the CSS token layer implements presentation without
+  // any identity coupling. Static SSR strings; no hydration risk.
   // P5-5 — the resolved control/menu modes join the same `data-ui-*` surface
-  // for the same reason (single observability + test hook, no preset CSS).
+  // for the same reason (single observability + test hook, no presentation CSS).
   const htmlPresentationAttrs = {
     ...presentationDataAttributes(resolvedUi.presentation),
     ...radiusDataAttribute(resolvedUi.theme.radius),

@@ -1,12 +1,12 @@
 /**
  * Shared UI primitives (UI-03).
  *
- * Barrel for the preset-agnostic, prop-driven presentation primitives the
- * Shell Engine (UI-04) will compose and the presets (UI-05+) will reuse.
+ * Barrel for the presentation-agnostic, prop-driven presentation primitives the
+ * Shell Engine (UI-04) will compose and the Presentations (UI-05+) will reuse.
  *
  * IMPORTANT: importing from this barrel is allowed at the FRAMEWORK/UI layer
  * only. These components never import configuration, core, adapters, the
- * resolved UI configuration, or any preset — the architectural boundary tests
+ * resolved UI configuration, or any Presentation — the architectural boundary tests
  * in `tests/architecture/boundaries.test.ts` enforce this.
  */
 export { AppShell } from "./app-shell";

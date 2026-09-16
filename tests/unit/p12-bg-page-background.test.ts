@@ -10,7 +10,7 @@ vi.mock("next/navigation", () => ({ usePathname: () => mockPath }));
 import { availableBackgroundMap, availableBannerPath } from "@/config/assets";
 import { siteAssetsSchema } from "@/config/schema";
 import { siteConfig } from "@/config";
-import { resolveUiConfig, UI_PRESETS } from "@/core/ui";
+import { resolveUiConfig } from "@/core/ui";
 import { PageBanner, pageSlugFromPathname } from "@/components/site/page-banner";
 import {
   GLOBAL_BACKGROUND_KEY,
@@ -203,11 +203,13 @@ describe("P12-BG — resolution contract: background-<page> → background-all �
 
 describe("P12-BG — coexistence: the flat colour token and the banner seam are unchanged", () => {
   it("9. the flat `ui.theme.background` colour still works (the graphic layers OVER it)", () => {
-    // The flat colour is still configuration-first and preset-agnostic …
-    for (const preset of UI_PRESETS) {
-      const resolved = resolveUiConfig({ preset, theme: { background: "#123456" } });
-      expect(resolved.theme.background).toBe("#123456");
-    }
+    // The flat colour is still configuration-first and identity-free …
+    const explicit = resolveUiConfig({
+      navigation: { desktop: "top", tablet: "top-compact", mobile: "drawer" },
+      theme: { background: "#123456" },
+    });
+    expect(explicit.theme.background).toBe("#123456");
+    expect(resolveUiConfig({ theme: { background: "#123456" } }).theme.background).toBe("#123456");
     expect(resolveUiConfig({}).theme.background).toBeUndefined();
 
     // … still emitted as the `--background` token on the root element …

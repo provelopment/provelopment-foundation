@@ -52,13 +52,13 @@ The boundary between "Foundation-owned" and "downstream/user-owned" is:
 
 | Foundation-owned (do not edit for customization) | Downstream/user-owned (edit freely) |
 | --- | --- |
-| `src/**` — application code, components, framework wiring | `site.config.json` — site identity, navigation, features, UI preset, theme, assets |
+| `src/**` — application code, components, framework wiring | `site.config.json` — site identity, navigation, features, UI composition, theme, assets |
 | configuration **schema + loaders** (`src/config/`) | `content/**` — Markdown pages, offerings, portfolio, posts, testimonials, legal |
-| UI/preset engine (`src/core/ui/`, `src/components/ui/`) | `config/i18n/<locale>.json` — localized interface strings |
+| UI engine (`src/core/ui/`, `src/components/ui/`) | `config/i18n/<locale>.json` — localized interface strings |
 | design-system implementation (`src/app/globals.css` tokens) | `assets/**` — the source asset tree; `public/assets/*` is its mirrored runtime derivative |
 | localization infrastructure + dictionary schema | asset URL values you supply through `site.assets.*` |
 | build/deploy machinery, tests, proofs-of-consistency | feature/provider switches (`features.*`, `provider: "none"`) you choose |
-| Foundation **defaults** (what the layers above fall back to) | presentation values you expose through the configuration contract (preset, `ui.theme.background`, …) |
+| Foundation **defaults** (what the layers above fall back to) | presentation values you expose through the configuration contract (`ui.presentation`, `ui.theme.background`, …) |
 
 The Foundation default asset files themselves live under Foundation ownership
 because they ship with the template; **replacing them** is the downstream
@@ -80,7 +80,7 @@ action (see the Assets section below). The **values** you configure in
   and validated, your existing values keep working; a genuinely conflicting
   key is a real merge you should read.
 - **The re-vendor step is deliberate, not automatic:** if you maintain a
-  `FoundationDemos`-style preset deployment, the canonical content/config/assets
+  Foundation-derived deployment workspace, the canonical content/config/assets
   must be re-vendored through that repository's `setup`/`generate` machinery
   and re-verified — a manual step, not a merge.
 - **Where a change is structural** (e.g. a new required configuration key),
@@ -107,7 +107,7 @@ fail the build with actionable error messages.
 | `socialLinks` | Outbound profile links (`platform`, `label`, `href`, optional `icon`) rendered as **text links** in the footer Connect column; `icon` is the **generic optional connectivity icon/mark seam** — one leaf for every platform, supplementary and decorative; see *Connectivity icons* below |
 | `navigation` | Header navigation entries (label + href) |
 | `features` | Feature flags, e.g. `analytics.provider` |
-| `ui` | Intent-level UI namespace — presets, navigation patterns, density, CTA, theme; see below |
+| `ui` | Intent-level UI namespace — shell, navigation patterns, density, CTA, theme, presentation; see below |
 
 Set `site.url` to your final production origin before go-live — it drives
 the sitemap, canonical URLs, and hreflang alternates.
@@ -115,221 +115,114 @@ the sitemap, canonical URLs, and hreflang alternates.
 Read configuration only through the loader exports from `src/config`; never
 import the JSON file directly from components.
 
-### The `ui` namespace (UI-05/P5-3 — presets are live; the resolved default personality is Adaptive)
+### The `ui` namespace (one canonical presentation, configuration-first)
 
 The optional top-level `ui` key is the intent-level UI configuration namespace
-(preset, shell, navigation, density, content width, CTA, theme,
-**presentation** — P5-3), validated at build time. `resolveUiConfig` resolves it
-deterministically: **explicit developer overrides → preset profile (explicit
-preset OR the resolved default personality) → neutral Foundation defaults →
-completeness guard.**
+(shell, navigation, density, content width, CTA, theme, **presentation** —
+P5-3), validated at build time. `resolveUiConfig` resolves it deterministically:
+**explicit configuration overrides → Foundation canonical defaults →
+completeness guard.** There is no presentation/profile selection layer: the
+Foundation ships **exactly ONE canonical presentation**, and `ui.preset` is not
+part of the accepted surface (a configuration that still carries it fails
+validation as an unknown key).
 
-**You configure semantic intent, never component internals or CSS.** One JSON
-switch selects a complete modern UI personality:
+**The canonical composition** — what the reference site renders, and what any
+deployment gets when it omits the `ui` block entirely:
 
-```jsonc
-// Adaptive (the resolved Foundation default personality): expanded collapsible
-// sidebar on desktop, compact sidebar rail on tablet, bottom navigation + "More"
-// drawer on mobile.
-{ "ui": { "preset": "adaptive" } }
-```
+| Dimension | Value | Effect |
+| --- | --- | --- |
+| `navigation.desktop` | `sidebar` | expanded collapsible rail ≥`lg` |
+| `navigation.tablet` | `collapsed-sidebar` | centred icon rail ≥`md` |
+| `navigation.mobile` | `bottom-bar` | bottom navigation + "More" drawer <`md` |
+| `shell.sidebar.collapsible` | `true` | the rail collapses to an icon column and restores |
+| `shell.header` / `shell.footer` | `standard` | standard chrome |
+| `presentation` (5 leaves) | balanced/default | typography · rhythm · surface · header · hero |
+| `density` | `comfortable` | |
+| `content.width` | `standard` | |
+| `theme.radius` / `theme.mode` | `medium` / `system` | |
+| `cta.enabled` | `false` | the Foundation never invents a business action |
 
-Individual JSON switches override any dimension without canceling the preset:
+**You configure semantic intent, never component internals or CSS.** Any single
+leaf may be overridden; every other leaf keeps its canonical value:
 
 ```jsonc
 {
   "ui": {
-    "preset": "adaptive",
-    "navigation": { "mobile": "drawer" },   // override one dimension
+    "navigation": { "mobile": "drawer" },   // override one dimension only
     "density": "compact"
   }
 }
 ```
 
-**Preset personality ≠ effective composition.** `resolved.preset` identifies the
-selected/default UI personality; the resolved leaves are the effective behavior.
-An override does not cancel the preset — it overrides a single dimension:
-
 ```jsonc
-{ "ui": { "navigation": { "desktop": "top" } } }
-// → preset = "adaptive" (personality), desktop = "top", tablet = "collapsed-sidebar",
-//   mobile = "bottom-bar" (adaptive profile fills the remaining dimensions)
+{ "ui": { "navigation": { "desktop": "top", "tablet": "top-compact" } } }
+// → a header-slot composition; mobile keeps the canonical bottom bar
 ```
 
-**Default:** omitting `preset` resolves the **Adaptive default personality**
-(`FOUNDATION_UI_DEFAULTS.defaultPreset`, selected at the resolver's single
-`raw.preset ?? …` point). The canonical **Foundation reference site at
-`foundation.provelopment.com` explicitly selects `"preset": "adaptive"`**
-(FS-2), so it demonstrates the balanced/presentation-neutral baseline; the other four
-presets demonstrate the differentiated presentations described next.
+Every value comes from the closed vocabulary in `src/core/ui/vocabulary.ts`
+(per-viewport navigation patterns, shell variants, densities, content widths,
+menu modes, CTA styles/states, theme modes/radii, presentation dimensions). An
+invalid value fails the build with the full list of allowed values, and an
+unknown key is rejected outright.
 
-### The `ui.presentation` block (P5-3 — generalized preset differentiation)
+> **Retired: selectable presentations (2026-09).** Earlier releases let a
+> configuration select one of five presentation *profiles*
+> (`classic` / `adaptive` / `focus` / `workspace` / `immersive`), and the project
+> ran five demo deployments. That feature is **gone**: the profile table
+> (`src/core/ui/presets.ts`), the `ui.preset` key, the `ui.presetComparison`
+> deployment map and the five-presentation browser permutations were removed.
+> The composition values the canonical presentation used are now ordinary entries
+### The `ui.presentation` block (P5-3 — presentation intent)
 
-Each preset profile owns a coherent **presentation intent**: its default
-density, content width, and corner radius, plus the generalized `presentation`
-block (typography / rhythm / surface / header / hero). These resolve onto the
-shared design-token renderer as inert `data-ui-*` attributes on `<html>` — no
-preset CSS components, no per-preset forks. When a preset is active, its
-profile supplies these values unless an explicit leaf overrides them:
-
-```jsonc
-//  Adaptive   → balanced / general-purpose (the neutral baseline)
-//  Classic    → editorial typography, structured rhythm, paper cards,
-//               rule header, split hero, small radius
-//  Focus      → minimal typography, airy rhythm, minimal surfaces, bare
-//               header, centered hero, narrow column
-//  Workspace  → utility typography, dense rhythm, instrument/squared cards,
-//               compact header, concise hero, wide column
-//  Immersive  → expressive typography, spacious rhythm, layered shadow cards,
-//               elevated header, showcase hero, large radius
-{ "ui": { "preset": "classic" } }
-```
-
-The `presentation` leaves are GENERALIZED vocabulary (never preset names), so
-custom configurations can compose the same intent without selecting a preset:
+The `presentation` block carries the site's visual intent (the HOW of styling):
+`typography`, `rhythm`, `surface`, `header`, `hero`. Each leaf is a generalized
+vocabulary value, and the resolved intent is applied as inert `data-ui-*`
+attributes on `<html>` — the shared design-token renderer implements the look
+(no presentation-specific CSS components, no forks):
 
 ```jsonc
 {
   "ui": {
     "presentation": {
-      "typography": "editorial",
-      "rhythm": "structured",
-      "surface": "paper",
-      "header": "rule",
-      "hero": "split"
+      "typography": "editorial",   // balanced | editorial | minimal | utility | expressive
+      "rhythm":     "structured",  // balanced | structured | airy | dense | spacious
+      "surface":    "paper",       // default | paper | minimal | instrument | layered
+      "header":     "rule",        // default | rule | bare | compact | elevated
+      "hero":       "split"        // default | split | center | concise | showcase
     }
   }
 }
 ```
 
-Any single leaf may be overridden without canceling the preset (explicit
-leaves win per-leaf, exactly like the other dimensions).
+The canonical values are `balanced` / `balanced` / `default` / `default` /
+`default`, so omitting the block changes nothing. Each leaf is independent: an
+override applies to that dimension only, and any combination of vocabulary values
+is valid.
 
 P5-4/P6-1 — the responsive mobile sidebar navigation (the "Show Sidebar" drawer /
-overlay disclosure) always renders ONE navigation item per line on every
-preset and custom composition; follow the shared list composition in
-`site-header.tsx` rather than per-preset styling.
+overlay disclosure) always renders ONE navigation item per line in every
+composition; follow the shared list composition in `site-header.tsx` rather than
+adding composition-specific styling.
 
-The four other preset deployments each select one of the other four presets; a
-fresh clone that omits `preset` behaves exactly like the Adaptive reference
-site.
-
-Every other preset stays explicitly selectable and unaffected:
-
-```jsonc
-{ "ui": { "preset": "classic" } }     // top navigation + drawer (one of the five preset deployments)
-{ "ui": { "preset": "focus" } }       // minimal nav + prominent CTA style
-{ "ui": { "preset": "workspace" } }   // sidebar + collapsed-sidebar + drawer shell (UI-08: grouped nav + secondary panel deferred)
-{ "ui": { "preset": "immersive" } }   // floating nav + overlay menu (UI-09: overlay CTA proven; distinct floating/minimal treatments deferred)
-```
-
-**Classic (UI-06) is the declarative proof:** it required zero Foundation code
-changes — the profile → resolver → engine pipeline built in UI-01–05 already
-composes top navigation + the mobile drawer. The pattern for any preset is the
-same: `"preset": "<name>"` plus optional explicit leaves that override
-individual dimensions of the profile (used by the five preset deployments).
-
-**Focus (UI-07) is conversion-first with a prominent primary CTA.** It required
-the smallest declarative extension — one adopter-owned `cta.href` destination and
-the vocabulary-driven `prominent` treatment (the mobile drawer consumer was
-retired in P6-3C: the CTA is placed once in the shell's top region):
-
-```jsonc
-{
-  "ui": {
-    "preset": "focus",
-    "cta": {
-      "enabled": true,
-      "action": "book",          // semantic action (never auto-routed)
-      "label": "Book Now",
-      "href": "/booking"         // adopter-owned destination (UI-07 D1)
-    }
-  }
-}
-```
-
-- **P6-3C — one authoritative placement.** The CTA renders **once**, in the
-  shell's **top region** (below the header, above `<main>`), at **every** width.
-  It is structurally outside the aside rail and outside the mobile disclosure, so
-  no sidebar state (expanded/collapsed) can contain, clip, or obscure it, and
-  there is no duplicated responsive button.
-- `cta.href` is optional and NEVER inferred from `action`. An enabled CTA
-  without label+href renders nothing (the Foundation never invents a destination
-  or route).
-- `style: \"prominent\"` (the Focus default) applies a filled, token-pure
-  treatment; `standard` stays a plain link. The `minimal` header/navigation
-  values resolve but their chrome/content treatment is **deferred** (no
-  doc-established contract; see ARCHITECTURE — Focus preset).
-
-**Workspace (UI-08) is an information-rich shell** — the third declarative proof
-after Classic and Focus. It required **zero production-code change**: the
-profile → resolver → engine pipeline already composes the sidebar ≥md,
-collapsed-sidebar tablet, drawer <md shell (shared with Adaptive):
-
-```jsonc
-{
-  "ui": {
-    "preset": "workspace",
-    "cta": { "enabled": true, "action": "book", "label": "Book Now", "href": "/booking" }
-  }
-}
-```
-
-The CTA renders **once** in the shell's **top region** (below the header, above
-`<main>`) — never inside the aside rail and never inside the mobile disclosure
-(P6-3C). **Truthful scope:** the **Workspace shell** is
-implemented and proven; **grouped navigation** and the **optional secondary/context
-panel** remain **deferred pending explicit contracts** (no group data shape, no
-content source, no consumer as of UI-08 — see ARCHITECTURE — Workspace preset). Do
-not expect `navigation.groups` / `secondaryPanel` configuration in this release.
-
-
-**Immersive (UI-09) is the visual-first shell.** It required **one minimal,
-vocabulary-driven content-layer consumer fix** (not a new architecture) to make the
-already-declared mobile **overlay** CTA observable:
-
-```jsonc
-{
-  "ui": {
-    "preset": "immersive",
-    "cta": { "enabled": true, "action": "book", "label": "Book Now", "href": "/booking" }
-  }
-}
-```
-
-Desktop/tablet `floating` resolves through the existing **aside** (sidebar)
-composition; mobile `overlay` uses the existing `OverlayNavigation` path. The CTA
-renders **once** in the shell's **top region** (below the header, above `<main>`)
-at every width — never in the aside and never inside the open overlay (P6-3C).
-`disabled`/no-`href` → no CTA (never invented). **Truthful scope:** a
-distinct `floating` visual treatment and the `minimal` header treatment remain
-**deferred** (no concrete contract defines them); **overlay interaction behavior**
-(animation, backdrop, dismissal, Escape, focus, reduced motion) remains the
-**UI-10** gate. Do not expect a distinct floating look or a reduced header in this
-release.
-
-**Behavioral & accessibility contract (UI-10):** the canonical presentation's
-disclosures share a browser-validated modal contract in the `Drawer` primitive
-(the More drawer and any drawer/overlay composition use it): **focus** moves into
-an opened disclosure and returns to the trigger on close (Escape / backdrop /
-trigger); Tab / Shift+Tab are contained; the background becomes **`inert`** while
-open and is restored on close; a dismissing **backdrop/scrim** is shown; background
-**scroll is locked**; and the global **`prefers-reduced-motion`** rule governs any
-motion (none is added). The active page is marked **`aria-current="page"`** on the
-internal nav link in every placement (header, sidebar bands, drawer/overlay,
-footer), and each disclosure's trigger owns the id the dialog is named by
+**Behavioral & accessibility contract (UI-10):** the disclosures share a
+browser-validated modal contract in the `Drawer` primitive (the More drawer and
+any drawer/overlay composition use it): **focus** moves into an opened disclosure
+and returns to the trigger on close (Escape / backdrop / trigger); Tab / Shift+Tab
+are contained; the background becomes **`inert`** while open and is restored on
+close; a dismissing **backdrop/scrim** is shown; background **scroll is locked**;
+and the global **`prefers-reduced-motion`** rule governs any motion (none is
+added). The active page is marked **`aria-current="page"`** on the internal nav
+link in every placement (header, sidebar bands, drawer/overlay, footer), and each
+disclosure's trigger owns the id the dialog is named by
 (`aria-controls`/`aria-labelledby` resolve to real elements). This is validated by
-the committed **CDP browser matrix** (`pnpm test:browser`, also run in CI) across
-the canonical presentation × desktop/tablet/mobile.
+the committed **CDP browser matrix** (`pnpm test:browser`, also run in CI) at
+desktop / tablet / mobile.
 
-
-
-**Responsive behavior (owner-applied wording):** desktop/tablet (≥`md`)
-preserves the existing composition for header-slot layouts; mobile (<`md`) is
-intentionally modernized to the declared mobile pattern (Classic drawer, or
-Adaptive bottom bar + More drawer). The bottom bar's content rule is
-deterministic: the first **4** configured `navigation` items render in the bar;
-the remainder (when non-empty) is exposed through the "More" drawer.
+**Responsive behavior:** desktop/tablet (≥`md`) uses the canonical aside
+composition (collapsible rail ≥`lg`, collapsed rail ≥`md`); mobile (<`md`) is the
+bottom navigation. The bottom bar's content rule is deterministic: the first
+**4** configured `navigation` items render in the bar; the remainder (when
+non-empty) is exposed through the "More" drawer.
 
 `cta.enabled` resolves `false` by default — the shell renders no CTA, and the
 Foundation never invents a business action. When you enable a CTA, supply
@@ -337,6 +230,9 @@ Foundation never invents a business action. When you enable a CTA, supply
 semantic (`standard`/`prominent`). The Foundation never derives `href` from
 `action` — an enabled CTA without label+href renders nothing.
 
+> in `FOUNDATION_UI_DEFAULTS` (`src/core/ui/defaults.ts`), so the resolved
+> configuration and the rendered site are unchanged. Historical records of the
+> feature remain under `.project-instructions/`.
 ### Configurable controls, assets & presentation modes (P5-5)
 
 P5-5 makes the "change the configuration, not the Foundation" experience real
@@ -578,13 +474,13 @@ and the same left-side vertical position.
 - **Labels.** In the collapsed rail labels are hidden with the `sr-only`
   technique — absent from the visual layout yet still the item's accessible name —
   never clipped by the rail edge and never partially visible (browser-verified:
-  zero stray labels in every aside preset).
+  zero stray labels in the aside composition).
 - **Responsive breakpoint (P6-3B).** The aside page frame is a wrapping row from
   **`md` (768px)** upward, so a composed rail is always laid out BESIDE `<main>`
   and never becomes a stacked vertical list at the top of the content. Verified
   across the transition: 767 / 800 / 900 / 1000 / 1023 / 1024px.
 - **Mobile is unchanged.** The `<md` navigation architecture (bottom bar /
-  drawer / overlay, per preset) is **out of scope** for P6-3A/P6-3B and unchanged.
+  drawer / overlay) is **out of scope** for P6-3A/P6-3B and unchanged.
 - **`mode: closed`** (below) still removes the rail entirely — a deliberate
   config choice, distinct from *collapse* (which now never removes it).
 
@@ -697,7 +593,7 @@ destination and never ships an empty accessible label.
 
 **Placement (P6-3C).** The CTA's position is not a per-viewport decision: the
 shell composes it **once** in its top region (`ui-shell-header-row`, below the
-header and above `<main>`), at every width and for every preset. It is never
+header and above `<main>`), at every width and in every composition. It is never
 composed into the aside rail, the bottom bar, or a mobile drawer/overlay, so the
 action cannot be duplicated, collapsed away, or obscured (browser-verified:
 `count=1` reachable action at 220–1280px). `ui.cta.enabled: false` (or an
@@ -747,8 +643,8 @@ with the localized label (P0-1: a collapsible rail is never a dead-end — see
 
 The resolved modes are observable on `<html>` as `data-ui-sidebar-mode`,
 `data-ui-top-mode`, `data-ui-bottom-mode`, `data-ui-cta-state` — the same
-generalized attribute surface as the P5-3 presentation layer (no preset
-identity, so downstream CSS may key on vocabulary values if desired).
+generalized attribute surface as the P5-3 presentation layer (no identity
+coupling, so downstream CSS may key on vocabulary values if desired).
 
 ### Theme presentation — `ui.theme`
 
@@ -768,20 +664,19 @@ identity, so downstream CSS may key on vocabulary values if desired).
   over this colour**; it never replaces or overrides the colour token.
 
 ```jsonc
-// Adaptive reference, default background (nothing added).
-{ "ui": { "preset": "adaptive", "theme": { "mode": "system", "radius": "medium" } } }
+// Reference site, default background (nothing added).
+{ "ui": { "theme": { "mode": "system", "radius": "medium" } } }
 
 // A downstream site changing its page background via configuration only:
 {
   "ui": {
-    "preset": "adaptive",
     "theme": { "mode": "system", "radius": "medium", "background": "#faf7f2" }
   }
 }
 ```
 
-The background is a **configuration value, not a preset-name branch**: it
-behaves identically under every preset and is applied through the established
+The background is a **configuration value, not an identity branch**: it
+behaves identically in every composition and is applied through the established
 token mechanism — no components need to change. Invalid values (a non-hex
 string, wrong length) fail the build with an actionable message.
 ## 2. Content — Markdown Pages
@@ -1023,8 +918,8 @@ surface**: the design-token section at the top of `src/app/globals.css`
 (colors, radius, container width) plus the brand font mapping (below) and
 `public/` assets. You change values in `globals.css` — never in components.
 
-> **Same components, different tokens.** There is no theme switcher, marker
-> class, or preset mechanism — the same Foundation components read the same
+> **Same components, different tokens.** There is no theme switcher or marker
+> class — the same Foundation components read the same
 > semantic tokens, and a downstream site re-brands by changing token values.
 
 ### Design tokens (`src/app/globals.css`)
@@ -2389,10 +2284,10 @@ The areas that require a **deliberate merge** rather than automatic acceptance:
 2. A new `site.assets.*`/`ui.theme.*` leaf whose **default** you did not
    override — your existing values keep working, but read the release notes to
    see what the new default is;
-3. If you maintain a `FoundationDemos`-style set of preset deployments, the
-   canonical content/config/assets must be **re-vendored** through that
-   repository's `setup`/`generate` scripts and re-verified — that is a manual,
-   deliberate step (see the five-site model above).
+3. If you maintain a Foundation-derived deployment workspace, the canonical
+   content/config/assets must be **re-vendored** through that repository's
+   `setup`/`generate` scripts and re-verified — that is a manual, deliberate
+   step.
 
 In short: the Foundation is designed so your customization survives upstream
 updates, but it does not pretend to be a merge engine. Real structural changes

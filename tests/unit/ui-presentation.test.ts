@@ -11,56 +11,39 @@ import {
   presentationDataAttributes,
   radiusDataAttribute,
   resolveUiConfig,
-  uiPresetProfiles,
-  UI_PRESETS,
 } from "@/core/ui";
 
 /**
- * P5-3 — Preset differentiation (generalized presentation intent).
+ * P5-3 — Presentation intent (generalized, configuration-first).
  *
  * Contract:
- *  1. Each preset OWNs a coherent presentation intent (typography, rhythm,
- *     surface, header, hero) PLUS default density/content-width/radius — this
- *     is the VOLUNTARY visual differentiation, expressed through generalized
- *     vocabulary (never preset-name switches).
- *  2. The five presets NEVER collapse to identical presentation — the guard
- *     that a reviewer could tell them apart without the selector.
+ *  1. One canonical presentation: the resolved intent IS the Foundation default
+ *     (`PRESENTATION_DEFAULTS`), with the canonical density/content-width/radius.
+ *  2. Presentation is expressed through generalized vocabulary (typography,
+ *     rhythm, surface, header, hero) — never a presentation-name switch; the
+ *     retired selectable-profile layer is gone.
  *  3. The `ui.presentation` namespace is a generalized, validated config
- *     surface: any vocabulary value is valid, custom (non-preset) config
- *     expresses the same intent, and invalid values are rejected safely.
+ *     surface: any vocabulary value is valid, custom configuration expresses any
+ *     combination, and invalid values are rejected safely.
  *  4. The resolved presentation maps to inert `data-ui-*` renderer attributes
  *     (framework-neutral; the renderer implements them, not the components).
  */
-describe("P5-3 — each preset resolves a distinct presentation intent", () => {
-  it("every preset resolves its own presentation profile + density/content/radius", () => {
-    for (const preset of UI_PRESETS) {
-      const resolved = resolveUiConfig({ preset });
-      const profile = uiPresetProfiles[preset];
-      expect(resolved.presentation).toEqual(profile.presentation);
-      expect(resolved.density).toBe(profile.density);
-      expect(resolved.content.width).toBe(profile.content.width);
-      expect(resolved.theme.radius).toBe(profile.theme.radius);
-    }
-  });
-
-  it("the five presets do NOT collapse to identical presentation (checkpoint guard)", () => {
-    const signatures = UI_PRESETS.map((preset) => {
-      const r = resolveUiConfig({ preset });
-      return JSON.stringify({ presentation: r.presentation, density: r.density, width: r.content.width, radius: r.theme.radius });
-    });
-    expect(new Set(signatures).size).toBe(UI_PRESETS.length);
-  });
-
-  it("Adaptive is the balanced/general-purpose baseline (matches the Foundation defaults)", () => {
-    const resolved = resolveUiConfig({ preset: "adaptive" });
+describe("P5-3 — the canonical presentation intent", () => {
+  it("the canonical composition resolves the balanced presentation + canonical density/content/radius", () => {
+    const resolved = resolveUiConfig({});
     expect(resolved.presentation).toEqual(PRESENTATION_DEFAULTS);
     expect(resolved.density).toBe("comfortable");
     expect(resolved.content.width).toBe("standard");
     expect(resolved.theme.radius).toBe("medium");
   });
 
-  it("Classic is structured/editorial: editorial type, structured rhythm, paper surfaces, rule header, split hero", () => {
-    const resolved = resolveUiConfig({ preset: "classic" });
+  it("an explicit presentation configuration replaces the default intent leaf by leaf", () => {
+    const resolved = resolveUiConfig({
+      presentation: { typography: "editorial", rhythm: "structured", surface: "paper", header: "rule", hero: "split" },
+      density: "compact",
+      content: { width: "wide" },
+      theme: { radius: "large" },
+    });
     expect(resolved.presentation).toEqual({
       typography: "editorial",
       rhythm: "structured",
@@ -68,41 +51,21 @@ describe("P5-3 — each preset resolves a distinct presentation intent", () => {
       header: "rule",
       hero: "split",
     });
-  });
-
-  it("Focus is minimal/content-first: minimal type, airy rhythm, minimal surfaces, bare header, center hero, narrow", () => {
-    const resolved = resolveUiConfig({ preset: "focus" });
-    expect(resolved.presentation.typography).toBe("minimal");
-    expect(resolved.presentation.rhythm).toBe("airy");
-    expect(resolved.presentation.surface).toBe("minimal");
-    expect(resolved.presentation.header).toBe("bare");
-    expect(resolved.presentation.hero).toBe("center");
-    expect(resolved.content.width).toBe("narrow");
-  });
-
-  it("Workspace is dense/utility: utility type, dense rhythm, instrument surfaces, compact header, concise hero, wide", () => {
-    const resolved = resolveUiConfig({ preset: "workspace" });
-    expect(resolved.presentation.typography).toBe("utility");
-    expect(resolved.presentation.rhythm).toBe("dense");
-    expect(resolved.presentation.surface).toBe("instrument");
-    expect(resolved.presentation.header).toBe("compact");
-    expect(resolved.presentation.hero).toBe("concise");
     expect(resolved.density).toBe("compact");
     expect(resolved.content.width).toBe("wide");
-  });
-
-  it("Immersive is spacious/visual: expressive type, spacious rhythm, layered surfaces, elevated header, showcase", () => {
-    const resolved = resolveUiConfig({ preset: "immersive" });
-    expect(resolved.presentation.typography).toBe("expressive");
-    expect(resolved.presentation.rhythm).toBe("spacious");
-    expect(resolved.presentation.surface).toBe("layered");
-    expect(resolved.presentation.header).toBe("elevated");
-    expect(resolved.presentation.hero).toBe("showcase");
-    expect(resolved.density).toBe("spacious");
     expect(resolved.theme.radius).toBe("large");
   });
-});
 
+  it("a PARTIAL presentation override leaves the other dimensions at their canonical defaults", () => {
+    const resolved = resolveUiConfig({ presentation: { typography: "utility" } });
+    expect(resolved.presentation.typography).toBe("utility"); // override wins
+    expect(resolved.presentation.rhythm).toBe(PRESENTATION_DEFAULTS.rhythm); // default
+    expect(resolved.presentation.surface).toBe(PRESENTATION_DEFAULTS.surface);
+    expect(resolved.presentation.header).toBe(PRESENTATION_DEFAULTS.header);
+    expect(resolved.presentation.hero).toBe(PRESENTATION_DEFAULTS.hero);
+    expect(resolved.density).toBe("comfortable"); // untouched sibling leaf
+  });
+});
 describe("P5-3 — generalized `ui.presentation` configuration surface", () => {
   it("the schema admits every presentation vocabulary value", () => {
     for (const typography of PRESENTATION_TYPOGRAPHIES) {
@@ -131,11 +94,10 @@ describe("P5-3 — generalized `ui.presentation` configuration surface", () => {
     expect(uiConfigSchema.safeParse({ presentation: { trad: "editorial" } }).success).toBe(false);
   });
 
-  it("custom (non-preset) configuration expresses the same generalized presentation", () => {
+  it("custom configuration expresses the same generalized presentation", () => {
     const resolved = resolveUiConfig({
       presentation: { typography: "editorial", rhythm: "airy", surface: "paper", header: "rule", hero: "center" },
     });
-    expect(resolved.preset).toBe("adaptive"); // personality still Adaptive
     expect(resolved.presentation).toEqual({
       typography: "editorial",
       rhythm: "airy",
@@ -145,17 +107,16 @@ describe("P5-3 — generalized `ui.presentation` configuration surface", () => {
     });
   });
 
-  it("an explicit presentation override wins per-leaf without canceling the preset", () => {
+  it("an explicit presentation override wins per leaf without disturbing the sibling leaves", () => {
     const resolved = resolveUiConfig({
-      preset: "classic",
-      presentation: { typography: "utility" },
+      presentation: { typography: "editorial" },
       density: "compact",
     });
-    expect(resolved.preset).toBe("classic"); // personality preserved
-    expect(resolved.presentation.typography).toBe("utility"); // override wins
-    expect(resolved.presentation.rhythm).toBe("structured"); // profile
-    expect(resolved.presentation.surface).toBe("paper"); // profile
+    expect(resolved.presentation.typography).toBe("editorial"); // override wins
+    expect(resolved.presentation.rhythm).toBe(PRESENTATION_DEFAULTS.rhythm); // default
+    expect(resolved.presentation.surface).toBe(PRESENTATION_DEFAULTS.surface);
     expect(resolved.density).toBe("compact"); // override wins
+    expect(resolved.content.width).toBe("standard"); // sibling leaf untouched
   });
 });
 
@@ -182,11 +143,21 @@ describe("P5-3 — renderer data-attribute mapping (framework-neutral)", () => {
     expect(radiusDataAttribute("large")).toEqual({ "data-ui-radius": "large" });
   });
 
-  it("each preset resolves distinct renderer attributes (no two presets share a mask)", () => {
-    const masks = UI_PRESETS.map((preset) => {
-      const r = resolveUiConfig({ preset });
-      return JSON.stringify({ ...presentationDataAttributes(r.presentation), ...radiusDataAttribute(r.theme.radius) });
+  it("the canonical presentation resolves the deterministic renderer attribute mask", () => {
+    const r = resolveUiConfig({});
+    const mask = { ...presentationDataAttributes(r.presentation), ...radiusDataAttribute(r.theme.radius) };
+    expect(mask).toEqual({
+      "data-ui-typography": "balanced",
+      "data-ui-rhythm": "balanced",
+      "data-ui-surface": "default",
+      "data-ui-header": "default",
+      "data-ui-hero": "default",
+      "data-ui-radius": "medium",
     });
-    expect(new Set(masks).size).toBe(UI_PRESETS.length);
+    // A custom presentation yields a different mask from the same code path.
+    const custom = resolveUiConfig({ presentation: { typography: "expressive", rhythm: "spacious" } });
+    const customMask = { ...presentationDataAttributes(custom.presentation), ...radiusDataAttribute(custom.theme.radius) };
+    expect(customMask).not.toEqual(mask);
+    expect(customMask["data-ui-typography"]).toBe("expressive");
   });
 });

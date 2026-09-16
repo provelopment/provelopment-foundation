@@ -13,7 +13,7 @@ import { Drawer } from "./drawer";
  * same closed-by-default SSR behavior — only the visual treatment (full-screen
  * panel vs partial drawer) differs, and that belongs to the composer/theme.
  *
- * No preset/breakpoint policy lives here.
+ * No presentation/breakpoint policy lives here.
  */
 export interface OverlayNavigationProps {
   readonly open: boolean;

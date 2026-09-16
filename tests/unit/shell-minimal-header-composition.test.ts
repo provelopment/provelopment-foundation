@@ -39,7 +39,57 @@ vi.mock("next/navigation", () => ({
 import { SiteHeader } from "@/components/site/site-header";
 import { ShellEngine } from "@/components/shell";
 import { getDictionary } from "@/config/i18n";
-import { resolveShellPattern, resolveUiConfig } from "@/core/ui";
+import { resolveShellPattern, resolveUiConfig, type UiConfigInput } from "@/core/ui";
+/**
+ * The configuration leaves for the top-bar composition family (explicit engine
+ * configuration; the Foundation's canonical presentation is separate).
+ */
+const TOP_BAR_UI = {
+  navigation: { desktop: "top", tablet: "top-compact", mobile: "drawer" },
+  shell: { header: "standard", footer: "standard", sidebar: { collapsible: false } },
+  cta: { style: "standard" },
+  presentation: { typography: "editorial", rhythm: "structured", surface: "paper", header: "rule", hero: "split" },
+  density: "comfortable",
+  content: { width: "standard" },
+  theme: { radius: "small" },
+} satisfies UiConfigInput;
+
+
+/**
+ * The configuration leaves for this composition family (explicit adopter/engine
+ * configuration — the Foundation's canonical presentation is separate).
+ */
+const MINIMAL_HEADER_UI = {
+  "navigation": {
+    "desktop": "minimal",
+    "tablet": "top-compact",
+    "mobile": "drawer"
+  },
+  "shell": {
+    "header": "minimal",
+    "footer": "standard",
+    "sidebar": {
+      "collapsible": false
+    }
+  },
+  "cta": {
+    "style": "prominent"
+  },
+  "presentation": {
+    "typography": "minimal",
+    "rhythm": "airy",
+    "surface": "minimal",
+    "header": "bare",
+    "hero": "center"
+  },
+  "density": "comfortable",
+  "content": {
+    "width": "narrow"
+  },
+  "theme": {
+    "radius": "medium"
+  }
+} satisfies UiConfigInput;
 
 beforeEach(() => {
   mockForcedOpen = false;
@@ -49,16 +99,16 @@ afterEach(() => {
 });
 
 /**
- * UI-07 — Focus preset through the Shell Engine + content layer.
+ * UI-07 — Minimal-header preset through the Shell Engine + content layer.
  *
- * These server-render tests prove Focus with the SMALLEST declarative
+ * These server-render tests prove Minimal-header with the SMALLEST declarative
  * extension (D1/D2/D3), with no engine-architecture change:
- *  - the decision core maps Focus to header-slot trajectories
+ *  - the decision core maps Minimal-header to header-slot trajectories
  *    (minimal ≥md, top-compact tablet, closed drawer <md) — no sidebar,
  *    no bottom bar;
  *  - the engine's CTA appears exactly once in the header slot for an
  *    enabled + label + href CTA, with `ui-cta-prominent` ONLY for `style:
- *    "prominent"` (a vocabulary-value branch, never preset identity);
+ *    "prominent"` (a vocabulary-value branch, never identity);
  *  - missing href/label/disabled produces NO CTA anywhere — the Foundation
  *    never invents a destination;
  *  - the CTA resolves to the ONE top slot for every viewport (P6-3C): it is
@@ -66,8 +116,8 @@ afterEach(() => {
  *    (the content layer) composes NO CTA at all — closed SSR contributes nothing
  *    focusable and opening the drawer exposes navigation only;
  *  - the consumer branches purely on decision-core VALUES — the same consumer
- *    serves a Classic config with a complete CTA (not Focus-specific);
- *  - D3: `moreMenu`/Show-Hide vocabulary values stay absent from the Focus
+ *    serves a Minimal-header config with a complete CTA (not Minimal-header-specific);
+ *  - D3: `moreMenu`/Show-Hide vocabulary values stay absent from the Minimal-header
  *    assembly.
  */
 
@@ -82,9 +132,9 @@ const base = { locale: "en", pageBindings: [] };
 
 const allIds = (html: string) => [...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]);
 
-describe("ShellEngine — Focus decision trajectories (no aside, no bottom bar)", () => {
+describe("ShellEngine — Minimal-header decision trajectories (no aside, no bottom bar)", () => {
   it("resolveShellPattern(focus) = minimal/header, top-compact/header, drawer/header+trigger", () => {
-    const d = resolveShellPattern(resolveUiConfig({ preset: "focus" }));
+    const d = resolveShellPattern(resolveUiConfig(MINIMAL_HEADER_UI));
     expect(d.desktop.primitiveKind).toBe("minimal");
     expect(d.desktop.slot).toBe("header");
     expect(d.desktop.ctaSlot).toBe("none");
@@ -99,7 +149,7 @@ describe("ShellEngine — Focus decision trajectories (no aside, no bottom bar)"
 
   it("P6-3C — focus + complete CTA: the ONE top slot at every viewport (no aside, no bottom)", () => {
     const d = resolveShellPattern(
-      resolveUiConfig({ preset: "focus", cta: { enabled: true, action: "book", label: "Book", href: "/booking", style: "prominent" } }),
+      resolveUiConfig({ ...MINIMAL_HEADER_UI, cta: { enabled: true, action: "book", label: "Book", href: "/booking", style: "prominent" } }),
     );
     expect(d.desktop.ctaSlot).toBe("top");
     expect(d.tablet.ctaSlot).toBe("top");
@@ -108,12 +158,12 @@ describe("ShellEngine — Focus decision trajectories (no aside, no bottom bar)"
   });
 });
 
-describe("ShellEngine — Focus SSR shell (no sidebar, no bottom bar, neutral CTA)", () => {
+describe("ShellEngine — Minimal-header SSR shell (no sidebar, no bottom bar, neutral CTA)", () => {
   it("renders the plain flex-column wrapper with NO sidebar bands / NO bottom bar", () => {
     const html = renderToStaticMarkup(
-      ShellEngine({ resolved: resolveUiConfig({ preset: "focus" }), header: headerPlain, main, footer, mainId: "main", ...base }),
+      ShellEngine({ resolved: resolveUiConfig(MINIMAL_HEADER_UI), header: headerPlain, main, footer, mainId: "main", ...base }),
     );
-    // P5-3 — Focus resolves the narrow content column, so the wrapper carries
+    // P5-3 — Minimal-header resolves the narrow content column, so the wrapper carries
     // `max-w-screen-md` (the narrow intent), not the plain default wrapper.
     expect(html).toContain('class="flex flex-col flex-1 max-w-screen-md"');
     expect(html).not.toContain("shell-sidebar");
@@ -123,16 +173,16 @@ describe("ShellEngine — Focus SSR shell (no sidebar, no bottom bar, neutral CT
     expect(html).toContain('<main id="main">');
   });
 
-  it("renders NO CTA for preset-only focus even when label+href are supplied (enabled false)", () => {
+  it("renders NO CTA for defaults-only focus even when label+href are supplied (enabled false)", () => {
     const html = renderToStaticMarkup(
-      ShellEngine({ resolved: resolveUiConfig({ preset: "focus" }), header: headerPlain, main, footer, mainId: "main", ctaLabel: "Book", ctaHref: "/booking", ...base }),
+      ShellEngine({ resolved: resolveUiConfig(MINIMAL_HEADER_UI), header: headerPlain, main, footer, mainId: "main", ctaLabel: "Book", ctaHref: "/booking", ...base }),
     );
     expect(html).not.toContain("nav-item-cta");
     expect(html).not.toContain("/booking");
   });
 
   it("enabled + label but NO href renders nothing — a destination is never inferred", () => {
-    const resolved = resolveUiConfig({ preset: "focus", cta: { enabled: true, action: "book", label: "Book Now" } });
+    const resolved = resolveUiConfig({ ...MINIMAL_HEADER_UI, cta: { enabled: true, action: "book", label: "Book Now" } });
     const html = renderToStaticMarkup(
       ShellEngine({ resolved, header: headerPlain, main, footer, mainId: "main", ctaLabel: "Book Now", ...base }),
     );
@@ -140,11 +190,14 @@ describe("ShellEngine — Focus SSR shell (no sidebar, no bottom bar, neutral CT
   });
 });
 
-describe("ShellEngine — Focus desktop/tablet CTA (header slot, D3 prominent)", () => {
+describe("ShellEngine — Minimal-header desktop/tablet CTA (header slot, D3 prominent)", () => {
   it("enabled + label + href renders EXACTLY ONE CTA in the header path with the prominent treatment", () => {
     const resolved = resolveUiConfig({
-      preset: "focus",
-      cta: { enabled: true, action: "book", label: "Book Now", href: "/booking" },
+      ...MINIMAL_HEADER_UI,
+      // P5-3 — the prominent CTA treatment is this composition's declared style
+      // (it used to be supplied by the retired presentation profile; an explicit
+      // `cta` object replaces the whole block, so it must be stated here).
+      cta: { enabled: true, action: "book", label: "Book Now", href: "/booking", style: "prominent" },
     });
     const html = renderToStaticMarkup(
       ShellEngine({ resolved, header: headerPlain, main, footer, mainId: "main", ctaLabel: "Book Now", ctaHref: "/booking", ...base }),
@@ -152,14 +205,14 @@ describe("ShellEngine — Focus desktop/tablet CTA (header slot, D3 prominent)",
     expect(html).toContain("ui-shell-header-row");
     expect(html.match(/nav-item-cta/g) ?? []).toHaveLength(1);
     expect(html).toContain("/booking");
-    expect(html).toContain("ui-cta-prominent"); // profile style = prominent
+    expect(html).toContain("ui-cta-prominent"); // declared composition style
     const ids = allIds(html);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
   it("standard-style override renders the CTA WITHOUT the prominent treatment", () => {
     const resolved = resolveUiConfig({
-      preset: "focus",
+      ...MINIMAL_HEADER_UI,
       cta: { enabled: true, action: "book", label: "Book", href: "/book", style: "standard" },
     });
     const html = renderToStaticMarkup(
@@ -171,7 +224,7 @@ describe("ShellEngine — Focus desktop/tablet CTA (header slot, D3 prominent)",
 
   it("disabled + label + href renders nothing", () => {
     const resolved = resolveUiConfig({
-      preset: "focus",
+      ...MINIMAL_HEADER_UI,
       cta: { enabled: false, action: "book", label: "Book", href: "/booking" },
     });
     const html = renderToStaticMarkup(
@@ -183,7 +236,7 @@ describe("ShellEngine — Focus desktop/tablet CTA (header slot, D3 prominent)",
 
   it("enabled + href but MISSING label renders nothing", () => {
     const resolved = resolveUiConfig({
-      preset: "focus",
+      ...MINIMAL_HEADER_UI,
       cta: { enabled: true, action: "book", href: "/booking" },
     });
     const html = renderToStaticMarkup(
@@ -192,9 +245,9 @@ describe("ShellEngine — Focus desktop/tablet CTA (header slot, D3 prominent)",
     expect(html).not.toContain("nav-item-cta");
   });
 });
-describe("SiteHeader — Focus mobile drawer (navigation only; P6-3C: no CTA in the disclosure)", () => {
+describe("SiteHeader — Minimal-header mobile drawer (navigation only; P6-3C: no CTA in the disclosure)", () => {
   const resolvedCta = resolveUiConfig({
-    preset: "focus",
+    ...MINIMAL_HEADER_UI,
     cta: { enabled: true, action: "book", label: "Book Now", href: "/booking" },
   });
 
@@ -207,7 +260,7 @@ describe("SiteHeader — Focus mobile drawer (navigation only; P6-3C: no CTA in 
     expect(html).not.toContain('id="shell-mobile-nav-panel"');
     expect(html).toContain('aria-expanded="false"');
     expect(html).toContain("md:hidden");
-    // One ≥md nav landmark (Focus desktop `minimal` renders the full list in
+    // One ≥md nav landmark (Minimal-header desktop `minimal` renders the full list in
     // the header slot — no invented "minimalization", D4).
     expect(html.match(/aria-label="Primary navigation"/g) ?? []).toHaveLength(1);
     // Closed drawer contributes no dialog, no CTA, no drawer links/focusables:
@@ -241,7 +294,7 @@ describe("SiteHeader — Focus mobile drawer (navigation only; P6-3C: no CTA in 
   it("OPEN drawer with enabled + label but NO href: still no CTA inside the dialog (never invented)", () => {
     mockForcedOpen = true;
     const resolvedNoHref = resolveUiConfig({
-      preset: "focus",
+      ...MINIMAL_HEADER_UI,
       cta: { enabled: true, action: "book", label: "Book Now" },
     });
     const html = renderToStaticMarkup(SiteHeader({ locale: "en", resolved: resolvedNoHref }));
@@ -249,27 +302,27 @@ describe("SiteHeader — Focus mobile drawer (navigation only; P6-3C: no CTA in 
     expect(html).not.toContain("nav-item-cta");
   });
 
-  it("the disclosure consumer is generic (vocabulary-driven), NOT Focus-specific: a Classic config's open drawer is CTA-free too", () => {
+  it("the disclosure consumer is generic (vocabulary-driven), NOT Minimal-header-specific: a Minimal-header config's open drawer is CTA-free too", () => {
     mockForcedOpen = true;
-    const resolvedClassic = resolveUiConfig({
-      preset: "classic",
+    const resolvedMinimalHeader = resolveUiConfig({
+      ...TOP_BAR_UI,
       cta: { enabled: true, action: "book", label: "Book", href: "/book", style: "standard" },
     });
-    const html = renderToStaticMarkup(SiteHeader({ locale: "en", resolved: resolvedClassic }));
+    const html = renderToStaticMarkup(SiteHeader({ locale: "en", resolved: resolvedMinimalHeader }));
     expect(html).toContain('role="dialog"');
-    // P6-3C — no CTA is composed into ANY disclosure, for any preset: the one
+    // P6-3C — no CTA is composed into ANY disclosure, for any composition: the one
     // action always lives in the shell's top region instead.
     expect(html).not.toContain("nav-item-cta");
     expect(html).not.toContain("/book");
   });
 });
 
-describe("SiteHeader — D3 genericity: Focus never emits the adaptive-only desktop rail", () => {
-  it("the Focus assembly has no rail disclosure, no adaptive bottom-bar label, and no close-control text in SSR", () => {
+describe("SiteHeader — D3 genericity: Minimal-header never emits the adaptive-only desktop rail", () => {
+  it("the Minimal-header assembly has no rail disclosure, no adaptive bottom-bar label, and no close-control text in SSR", () => {
     const dictionary = getDictionary("en");
-    const html = renderToStaticMarkup(SiteHeader({ locale: "en", resolved: resolveUiConfig({ preset: "focus" }) }));
+    const html = renderToStaticMarkup(SiteHeader({ locale: "en", resolved: resolveUiConfig(MINIMAL_HEADER_UI) }));
     // P6-1 — the Show/Hide Sidebar vocabulary is SHARED (not adaptive-only):
-    // the Focus drawer trigger correctly says "Show Sidebar" in the header.
+    // the Minimal-header drawer trigger correctly says "Show Sidebar" in the header.
     expect(html).toContain(dictionary.navigation.showSidebar);
     // What MUST stay absent: the adaptive bottom-bar label + the desktop rail
     // disclosure control (and its "Hide Sidebar" close text only exists inside

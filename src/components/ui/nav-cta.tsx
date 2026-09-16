@@ -8,7 +8,7 @@ import { NavItem, type NavItemModel } from "./nav-item";
  * semantics (link/active/external/badge) stay identical to any other NavItem.
  *
  * Deliberately NO action/pixel/placement policy: the composer decides what
- * the CTA points to and where it sits; the shell engine (UI-04) and presets
+ * the CTA points to and where it sits; the shell engine (UI-04) and Presentations
  * (UI-05+) decide prominence/responsive treatment.
  */
 export interface NavCtaProps {

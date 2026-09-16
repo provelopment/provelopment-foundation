@@ -9,7 +9,7 @@
  *
  * UI-03 contract: markup/ARIA semantics are verified by render-time tests;
  * full keyboard/focus/Escape/scroll-lock behavior is validated in a real
- * browser at UI-10 (Cross-Preset Validation, mandatory behavioral gate).
+ * browser at UI-10 (Cross-Presentation Validation, mandatory behavioral gate).
  */
 
 export const DISCLOSURE_OPEN = "open" as const;

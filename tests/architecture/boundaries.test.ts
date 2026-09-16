@@ -1018,11 +1018,9 @@ describe("Phase UI-06 — classic preset is purely declarative", () => {
     }
   });
 
-  it("the classic profile is data, not code — no classic branch in the core", () => {
+  it("the top-bar composition is data, not code — no branch in the core", () => {
     const shellCore = readFileSync(path.join(srcDirectory, "core", "ui", "shell.ts"), "utf8");
     expect(shellCore).not.toMatch(/classic/);
-    const presets = readFileSync(path.join(srcDirectory, "core", "ui", "presets.ts"), "utf8");
-    expect(presets).toMatch(/classic:\s*\{/); // profile row only
   });
 });
 
@@ -1038,11 +1036,9 @@ describe("Phase UI-07 — focus preset stays fully declarative at the architectu
     }
   });
 
-  it("the focus profile is data, not code — no focus branch in the core decision layer", () => {
+  it("the minimal-header composition is data, not code — no branch in the core decision layer", () => {
     const shellCore = readFileSync(path.join(srcDirectory, "core", "ui", "shell.ts"), "utf8");
     expect(shellCore).not.toMatch(/["']focus["']/);
-    const presets = readFileSync(path.join(srcDirectory, "core", "ui", "presets.ts"), "utf8");
-    expect(presets).toMatch(/focus:\s*\{/); // profile row only
   });
 
   it("the `prominent` VOCABULARY BRANCH lives in the shared CTA capability — never preset identity", () => {
@@ -1073,9 +1069,9 @@ describe("Phase UI-08 — workspace preset stays fully declarative at the archit
     expect(shellCore).not.toMatch(/["']workspace["']/);
   });
 
-  it("the workspace profile is data, not code (presets.ts profile row only; no workspace branch in core)", () => {
-    const presets = readFileSync(path.join(srcDirectory, "core", "ui", "presets.ts"), "utf8");
-    expect(presets).toMatch(/workspace:\s*\{/); // profile row only
+  it("the sidebar-drawer composition is data, not code (no workspace branch in core)", () => {
+    const defaults = readFileSync(path.join(srcDirectory, "core", "ui", "defaults.ts"), "utf8");
+    expect(defaults).toMatch(/collapsible:\s*true/); // declaration only
     const shellCore = readFileSync(path.join(srcDirectory, "core", "ui", "shell.ts"), "utf8");
     expect(shellCore).not.toMatch(/["']workspace["']/);
   });
@@ -1096,9 +1092,9 @@ describe("Phase UI-09 — immersive preset stays fully declarative at the archit
     expect(shellCore).not.toMatch(/["']immersive["']/);
   });
 
-  it("the immersive profile is data, not code (presets.ts profile row only; no immersive branch in core)", () => {
-    const presets = readFileSync(path.join(srcDirectory, "core", "ui", "presets.ts"), "utf8");
-    expect(presets).toMatch(/immersive:\s*\{/); // profile row only
+  it("the floating-overlay composition is data, not code (no immersive branch in core)", () => {
+    const vocabulary = readFileSync(path.join(srcDirectory, "core", "ui", "vocabulary.ts"), "utf8");
+    expect(vocabulary).toMatch(/["']floating["']/); // vocabulary value only
     const shellCore = readFileSync(path.join(srcDirectory, "core", "ui", "shell.ts"), "utf8");
     expect(shellCore).not.toMatch(/["']immersive["']/);
   });
@@ -1138,10 +1134,10 @@ describe("Phase UI-10 — the shared behavioral/accessibility contract stays pre
 
 describe("Phase UI-01 — UI architecture contract boundaries", () => {
   const UI_CORE_DIRECTORY = path.join(srcDirectory, "core", "ui");
-  const UI_CORE_MODULES = ["vocabulary.ts", "presets.ts", "index.ts"];
-  const UI_CORE_RESOLUTION_MODULES = ["defaults.ts", "resolve.ts", "shell.ts"];
+  const UI_CORE_MODULES = ["vocabulary.ts", "presentation.ts", "index.ts"];
+  const UI_CORE_RESOLUTION_MODULES = ["defaults.ts", "resolve.ts", "shell.ts", "controls.ts"];
 
-  it("the UI vocabulary and preset profiles are framework-, config- and adapter-free", () => {
+  it("the UI vocabulary and presentation contracts are framework-, config- and adapter-free", () => {
     for (const name of UI_CORE_MODULES) {
       const source = readFileSync(path.join(UI_CORE_DIRECTORY, name), "utf8");
       expect(source, name).not.toMatch(/from ["']next/);

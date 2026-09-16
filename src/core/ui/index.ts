@@ -1,8 +1,9 @@
 /**
  * UI system architecture contract (UI-01).
  *
- * Barrel for the framework-neutral UI vocabulary and preset profiles. Import
- * from `@/core/ui`; never import the inner modules directly from consumers.
+ * Barrel for the framework-neutral UI vocabulary, the canonical Foundation
+ * defaults and the resolution machinery. Import from `@/core/ui`; never import
+ * the inner modules directly from consumers.
  */
 export {
   COLOR_HEX_PATTERN,
@@ -27,7 +28,6 @@ export {
   THEME_MODES,
   THEME_RADII,
   UI_DENSITIES,
-  UI_PRESETS,
 } from "./vocabulary";
 export type {
   ContentWidth,
@@ -49,11 +49,7 @@ export type {
   ThemeMode,
   ThemeRadius,
   UiDensity,
-  UiPreset,
 } from "./vocabulary";
-
-export { uiPresetProfiles } from "./presets";
-export type { UiCapabilityLevel, UiPresetCapabilities, UiPresetProfile } from "./presets";
 
 export {
   PRESENTATION_DEFAULTS,
@@ -62,8 +58,8 @@ export {
 } from "./presentation";
 export type { UiPresentation } from "./presentation";
 
-export { FOUNDATION_UI_DEFAULTS } from "./defaults";
-export type { UiFoundationDefaults } from "./defaults";
+export { FOUNDATION_UI_CAPABILITIES, FOUNDATION_UI_DEFAULTS } from "./defaults";
+export type { UiCapabilityLevel, UiFoundationCapabilities, UiFoundationDefaults } from "./defaults";
 
 export {
   assertResolvedUiConfigComplete,
@@ -72,6 +68,7 @@ export {
 } from "./resolve";
 export type {
   ResolvedUiConfig,
+  UiConfigInput,
   UiConfigResolutionIssue,
 } from "./resolve";
 

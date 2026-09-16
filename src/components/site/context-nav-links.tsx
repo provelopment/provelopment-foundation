@@ -102,7 +102,7 @@ export function ContextNavLinks({
 
   // P5-5 — sidebar surfaces order by configured region (top → middle → bottom),
   // stable within each group: predictable, keyboard/AT natural, no absolute
-  // positioning, no preset dependence.
+  // positioning, no presentation dependence.
   const ordered = sortByRegion
     ? [...resolvedWithActive].sort(
         (a, b) => regionOrder(a.position) - regionOrder(b.position),

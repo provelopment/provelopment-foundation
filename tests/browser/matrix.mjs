@@ -91,7 +91,8 @@ function sameColor(actual, expectedRgb) {
 }
 
 /**
- * Probes everything the closure pass must hold in EVERY preset: the theme colour
+ * Probes everything the closure pass must hold in the canonical presentation: the
+ * theme colour
  * consumers, the sidebar CONTROL size/alignment, the shell CTA inset and the
  * logo roles. Returns a JSON string (CDP `returnByValue`).
  */
@@ -249,7 +250,7 @@ async function writeReport(rows, totalFails) {
   console.log(`REPORT=${tmp}`);
   console.log(`TOTAL=${rows.length} PASSED=${rows.length - totalFails} FAILED=${totalFails}`);
   const fails = rows.filter((r) => !r.ok);
-  for (const f of fails) console.log(`  FAIL [${f.preset}/${f.name}] ${f.detail}`);
+  for (const f of fails) console.log(`  FAIL [${f.presentation}/${f.name}] ${f.detail}`);
 }
 /**
  * P1-3 — the VISIBLE focus-ring contract (the single global `:focus-visible`
@@ -261,7 +262,7 @@ async function writeReport(rows, totalFails) {
  *    `:focus-visible` heuristic: mouse interaction does not match);
  *  - a keyboard Tab sweep lands on an interactive element (button/select/a)
  *    that carries the visible ring.
- * No configuration, no preset branching — the single global rule applies to
+ * No configuration, no presentation branching — the single global rule applies to
  * whichever interactive elements each composition renders.
  */
 async function runFocusVisibleRing(rows, cdp, label) {
@@ -317,7 +318,7 @@ async function runFocusVisibleRing(rows, cdp, label) {
   check(rows, `${label}.focusVisible.link.ring`, !!keyboard && !!keyboard.ok, (keyboard && keyboard.detail) || `active=${keyboard && keyboard.tag}: ${keyboard && keyboard.style}`);
 }
 /** The canonical presentation's desktop aside (bottom bar + More on mobile). */
-async function runAsidePreset(rows, preset, cdp) {
+async function runAsidePresentation(rows, presentation, cdp) {
   // P0-1: the canonical presentation resolves `shell.sidebar.collapsible: true`,
   // so the SAME structural contract applies here.
   const collapsible = true;
@@ -541,7 +542,7 @@ const s = await cdp.evaluate(`(() => ({
 }
 
 /** Responsive landmark exclusivity across the md (768) and lg (1024) boundaries. */
-async function runAsideBoundaries(rows, preset, mobileBar, cdp) {
+async function runAsideBoundaries(rows, presentation, mobileBar, cdp) {
   for (const width of [767, 768, 1023, 1024]) {
     await cdp.setViewport(width, 820);
     await cdp.reload();
@@ -744,7 +745,7 @@ async function runAdaptiveMobile(rows, cdp) {
  * `/en/contact` route renders the page-content frame (`<Section as="article">`,
  * an `<article>` with the shared frame class) and the contact submit action
  * (the shared `Button`, a NATIVE `<button type="submit">`, never a link)
- * in EVERY preset composition. This proves the primitives are actually
+ * in every composition. This proves the primitives are actually
  * composed and rendering — not source-only.
  */
 async function runPagePrimitives(rows, cdp, label) {
@@ -770,7 +771,7 @@ async function runPagePrimitives(rows, cdp, label) {
  * P1-7 — real-usage proof for the shared Grid + Stack primitives. The
  * `/en/offerings` route renders the shared collection `<Grid>` (a semantic
  * `<ul>` with the responsive columns class) and the `/en` page header renders
- * the shared `<Stack>` (a `flex` alignment row) in every preset composition.
+ * the shared `<Stack>` (a `flex` alignment row) in every composition.
  * This proves the layout primitives are actually composed and rendering —
  * not source-only.
  */
@@ -849,7 +850,7 @@ async function runCanonical(chrome) {
   try {
     await waitForServer(url);
     cdp = await Cdp.connect(chrome);
-    await runAsidePreset(rows, CANONICAL, cdp);
+    await runAsidePresentation(rows, CANONICAL, cdp);
     await runAsideBoundaries(rows, CANONICAL, true, cdp);
     await runAdaptiveMobile(rows, cdp);
     await runReducedMotion(rows, "#shell-bottom-more", "#shell-bottom-more-panel", cdp);
@@ -875,7 +876,7 @@ async function runCanonical(chrome) {
     if (cdp) await cdp.close();
     stopServer(server);
   }
-  return rows.map((r) => ({ preset: CANONICAL.name, ...r }));
+  return rows.map((r) => ({ presentation: CANONICAL.name, ...r }));
 }
 
 /**
@@ -885,7 +886,7 @@ async function runCanonical(chrome) {
  * real dev renders: desktop header (classic) + aside rail (adaptive) render
  * BOTH same-href entries with OWN label/icon/disabled state; mobile drawer +
  * bottom-More (390/700) keep both one-per-row; no duplicate-key console
- * warnings anywhere. Own dev server per preset; config restored after.
+ * warnings anywhere. Own dev server; config restored after.
  */
 async function runDuplicateNavScenario(chrome) {
   // P6-1: the fixture icons must be REAL shipped assets (a configured icon with
@@ -1024,7 +1025,7 @@ async function captureReadabilityEvidence(cdp, tag) {
   return dir;
 }
 
-/** P6-3B — favicon / header logo / page banner contract (every preset). */
+/** P6-3B — favicon / header logo / page banner contract (canonical presentation). */
 async function runBrandingChecks(rows, tag, cdp) {
   await cdp.setViewport(VIEWPORTS.desktop.width, VIEWPORTS.desktop.height);
   await cdp.navigate(`${BASE_URL}/en`);
@@ -1498,7 +1499,7 @@ async function runBrandingChecks(rows, tag, cdp) {
     `headingTop=${nb.headingRect ? nb.headingRect.top : "n/a"}`,
   );
   // APPROVED-ASSET INTEGRATION — capture the readability EVIDENCE once, for the
-  // canonical (default) preset, so the visual gate is backed by real artefacts.
+  // canonical presentation, so the visual gate is backed by real artefacts.
   if (tag === "adaptive") {
     const dir = await captureReadabilityEvidence(cdp, "canonical");
     check(rows, `${tag}.readability.evidenceCaptured`, true, `screenshots -> ${dir}`);
@@ -1615,15 +1616,15 @@ async function runP6bSidebarChecks(rows, tag, cdp) {
 
 
 /**
- * 2026-09 CLOSURE PASS — theme + control contract for EVERY preset.
+ * 2026-09 CLOSURE PASS — theme + control contract for the canonical presentation.
  *
  * The owner's requirements are cross-cutting, so they are verified from the ONE
- * theme token OUTWARD and for every configured preset at desktop AND tablet —
- * never per-preset by hand:
+ * theme token OUTWARD for the canonical presentation at desktop AND tablet —
+ * never by hand:
  *   theme      the wordmark renders in the Foundation theme colour, and
  *              `--primary`/`--ring` are computed INDIRECTIONS of
  *              `--ui-brand-accent` (not copies of the value);
- *   selectors  preset/location/language opt into the shared hook and their
+ *   selectors  location/language opt into the shared hook and their
  *              application-controlled emphasis (accent-color, hover border) is
  *              that same colour;
  *   sidebar    the show/hide CONTROL is 24x24 with a ~5px left inset, in BOTH
@@ -1735,7 +1736,7 @@ async function runThemeClosureChecks(rows, tag, cdp) {
       `footerRatio=${d.footerLogo ? (d.footerLogo.w / d.footerLogo.h).toFixed(3) : "n/a"}`,
     );
     check(rows, `${tag}.${vpName}.${state}.images.notBroken`, d.broken === 0, `broken=${d.broken}`);
-    // ── The shell CTA shares the same inset in every preset ────────────────
+    // ── The shell CTA keeps the same inset in every composition ────────────
     check(
       rows,
       `${tag}.${vpName}.${state}.cta.inset`,
@@ -2067,7 +2068,7 @@ async function runP6cChecks(rows, tag, cdp) {
  * Connect page) on ONE dedicated dev server with a fixture config.
  *
  * The canonical deployment configures NO social accounts and NO connectivity
- * icons, so canonical text-only behavior is asserted by the five preset passes
+ * icons, so canonical text-only behavior is asserted by the canonical pass
  * (footer links/geometry/`noBrokenImages`); THIS pass proves the OPTIONAL icon
  * contract itself, using an EXISTING generic shipped asset (`sidebar-open.svg`).
  * No platform mark artwork is created, downloaded or installed anywhere here.
@@ -2379,13 +2380,13 @@ async function runMatrix(chrome) {
     console.log(`[matrix] ${CANONICAL.name}: ${rows.length - fails}/${rows.length} checks passed${fails ? ` FAIL=${fails}` : ""}`);
     // P5-6 — duplicate-destination acceptance (own server, config restored below).
     const dupRows = await runDuplicateNavScenario(chrome);
-    allRows = allRows.concat(dupRows.map((r) => ({ preset: "dup-nav", ...r })));
+    allRows = allRows.concat(dupRows.map((r) => ({ presentation: "dup-nav", ...r })));
     const dupFails = dupRows.filter((r) => !r.ok).length;
     console.log(`[matrix] dup-nav: ${dupRows.length - dupFails}/${dupRows.length} checks passed${dupFails ? ` FAIL=${dupFails}` : ""}`);
     // CONNECTIVITY ICON SEAM — browser-real acceptance of the optional
     // connectivity icon contract (own server, config restored by the scenario).
     const connectivityRows = await runConnectivityIconScenario(chrome);
-    allRows = allRows.concat(connectivityRows.map((r) => ({ preset: "connectivity-icons", ...r })));
+    allRows = allRows.concat(connectivityRows.map((r) => ({ presentation: "connectivity-icons", ...r })));
     const connectivityFails = connectivityRows.filter((r) => !r.ok).length;
     console.log(`[matrix] connectivity-icons: ${connectivityRows.length - connectivityFails}/${connectivityRows.length} checks passed${connectivityFails ? ` FAIL=${connectivityFails}` : ""}`);
   } finally {

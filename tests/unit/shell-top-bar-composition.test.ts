@@ -27,14 +27,50 @@ vi.mock("react", async (importOriginal) => {
 import { siteConfig } from "@/config";
 import { getDictionary } from "@/config/i18n";
 import { ShellEngine, ShellMobileNav } from "@/components/shell";
-import { resolveShellPattern, resolveUiConfig } from "@/core/ui";
+import { resolveShellPattern, resolveUiConfig, type UiConfigInput } from "@/core/ui";
 
 /**
- * UI-06 — Classic preset through the Shell Engine (declarative proof).
+ * The configuration leaves for this composition family (explicit adopter/engine
+ * configuration — the Foundation's canonical presentation is separate).
+ */
+const TOP_BAR_UI = {
+  "navigation": {
+    "desktop": "top",
+    "tablet": "top-compact",
+    "mobile": "drawer"
+  },
+  "shell": {
+    "header": "standard",
+    "footer": "standard",
+    "sidebar": {
+      "collapsible": false
+    }
+  },
+  "cta": {
+    "style": "standard"
+  },
+  "presentation": {
+    "typography": "editorial",
+    "rhythm": "structured",
+    "surface": "paper",
+    "header": "rule",
+    "hero": "split"
+  },
+  "density": "comfortable",
+  "content": {
+    "width": "standard"
+  },
+  "theme": {
+    "radius": "small"
+  }
+} satisfies UiConfigInput;
+
+/**
+ * UI-06 — Top-bar preset through the Shell Engine (declarative proof).
  *
- * These server-render tests prove that Classic (the first non-default preset)
- * requires ZERO Classic-specific engine logic:
- *  - the decision core maps Classic to the long-shipped header-slot trajectories
+ * These server-render tests prove that Top-bar (the first non-default preset)
+ * requires ZERO Top-bar-specific engine logic:
+ *  - the decision core maps Top-bar to the long-shipped header-slot trajectories
  *    (top-bar ≥md, closed drawer <md) — no sidebar, no bottom bar;
  *  - `ShellEngine` SSR for `{"preset":"classic"}` is BYTE-IDENTICAL to SSR for
  *    the explicit classic leaves (same machinery, both paths);
@@ -43,7 +79,7 @@ import { resolveShellPattern, resolveUiConfig } from "@/core/ui";
  *    contract — inactive drawer contributes no links or focusables at SSR;
  *  - CTA stays neutral (no label/href → nothing), and a complete CTA lands in
  *    the header slot only.
- *  - D3: the Classic assembly never emits the adaptive-only i18n values
+ *  - D3: the Top-bar assembly never emits the adaptive-only i18n values
  *    (`moreMenu`, the Show/Hide vocabulary).
  */
 
@@ -61,7 +97,7 @@ const navList = el(
   el("li", null, el("a", { href: "/en/about" }, "About")),
 );
 
-/** Mirrors the SiteHeader wiring for a header-slot composition (Classic). */
+/** Mirrors the SiteHeader wiring for a header-slot composition (Top-bar). */
 function classicHeader() {
   return el(
     "header",
@@ -81,9 +117,9 @@ const allIds = (html: string) => [...html.matchAll(/\sid="([^"]+)"/g)].map((m) =
 
 const base = { locale: "en", pageBindings: [] };
 
-describe("ShellEngine — Classic decision trajectories (no aside, no bottom bar)", () => {
+describe("ShellEngine — Top-bar decision trajectories (no aside, no bottom bar)", () => {
   it("resolveShellPattern(classic) = header/header/drawer with no aside/bottom", () => {
-    const d = resolveShellPattern(resolveUiConfig({ preset: "classic" }));
+    const d = resolveShellPattern(resolveUiConfig(TOP_BAR_UI));
     expect(d.desktop.primitiveKind).toBe("top-bar");
     expect(d.desktop.slot).toBe("header");
     expect(d.tablet.primitiveKind).toBe("top-bar");
@@ -96,7 +132,7 @@ describe("ShellEngine — Classic decision trajectories (no aside, no bottom bar
 
   it("P6-3C — classic + enabled CTA: EVERY viewport resolves the ONE top CTA slot", () => {
     const d = resolveShellPattern(
-      resolveUiConfig({ preset: "classic", cta: { enabled: true, action: "book", label: "Book", style: "standard" } }),
+      resolveUiConfig({ ...TOP_BAR_UI, cta: { enabled: true, action: "book", label: "Book", style: "standard" } }),
     );
     expect(d.desktop.ctaSlot).toBe("top");
     expect(d.tablet.ctaSlot).toBe("top");
@@ -106,7 +142,7 @@ describe("ShellEngine — Classic decision trajectories (no aside, no bottom bar
 
   it("engine SSR emits no sidebar bands, no bottom bar, and the plain flex-column wrapper", () => {
     const html = renderToStaticMarkup(
-      ShellEngine({ resolved: resolveUiConfig({ preset: "classic" }), header: headerPlain, main, footer, mainId: "main", ...base }),
+      ShellEngine({ resolved: resolveUiConfig(TOP_BAR_UI), header: headerPlain, main, footer, mainId: "main", ...base }),
     );
     expect(html).toContain('class="flex flex-col flex-1"');
     expect(html).not.toContain("shell-sidebar");
@@ -117,9 +153,9 @@ describe("ShellEngine — Classic decision trajectories (no aside, no bottom bar
   });
 });
 
-describe("ShellEngine — Classic is byte-identical to explicit classic leaves (D6)", () => {
+describe("ShellEngine — Top-bar is byte-identical to explicit classic leaves (D6)", () => {
   it("decision cores match and SSR strings are identical across both paths", () => {
-    const fromPreset = resolveUiConfig({ preset: "classic" });
+    const fromPreset = resolveUiConfig(TOP_BAR_UI);
     const fromLeaves = resolveUiConfig({
       navigation: { desktop: "top", tablet: "top-compact", mobile: "drawer" },
     });
@@ -131,10 +167,10 @@ describe("ShellEngine — Classic is byte-identical to explicit classic leaves (
   });
 });
 
-describe("ShellEngine — Classic navigation landmark correctness", () => {
+describe("ShellEngine — Top-bar navigation landmark correctness", () => {
   it("one ≥md nav landmark + one closed-by-default drawer; no duplicate ids; no focusable drawer content", () => {
     const html = renderToStaticMarkup(
-      ShellEngine({ resolved: resolveUiConfig({ preset: "classic" }), header: classicHeader(), main, footer, mainId: "main", ...base }),
+      ShellEngine({ resolved: resolveUiConfig(TOP_BAR_UI), header: classicHeader(), main, footer, mainId: "main", ...base }),
     );
     // The engine renders NO additional landmark for a header-slot composition:
     expect(html.match(/aria-label="Primary navigation"/g) ?? []).toHaveLength(1);
@@ -155,10 +191,10 @@ describe("ShellEngine — Classic navigation landmark correctness", () => {
   });
 });
 
-describe("ShellEngine — Classic CTA neutrality (D1/D2)", () => {
-  it("renders NO CTA for preset-only classic even when label+href are supplied", () => {
+describe("ShellEngine — Top-bar CTA neutrality (D1/D2)", () => {
+  it("renders NO CTA for defaults-only classic even when label+href are supplied", () => {
     const html = renderToStaticMarkup(
-      ShellEngine({ resolved: resolveUiConfig({ preset: "classic" }), header: headerPlain, main, footer, mainId: "main", ctaLabel: "Book", ctaHref: "/book", ...base }),
+      ShellEngine({ resolved: resolveUiConfig(TOP_BAR_UI), header: headerPlain, main, footer, mainId: "main", ctaLabel: "Book", ctaHref: "/book", ...base }),
     );
     expect(html).not.toContain("nav-item-cta");
     expect(html).not.toContain("/book");
@@ -173,7 +209,7 @@ describe("ShellEngine — Classic CTA neutrality (D1/D2)", () => {
 
   it("a complete CTA renders exactly once in the header slot", () => {
     const resolved = resolveUiConfig({
-      preset: "classic",
+      ...TOP_BAR_UI,
       cta: { enabled: true, action: "book", label: "Book", style: "standard" },
     });
     const html = renderToStaticMarkup(
@@ -187,11 +223,11 @@ describe("ShellEngine — Classic CTA neutrality (D1/D2)", () => {
   });
 });
 
-describe("ShellEngine — D3: Classic never emits the adaptive-only i18n values", () => {
-  it("moreMenu and the Show/Hide Sidebar vocabulary are absent from the Classic assembly", () => {
+describe("ShellEngine — D3: Top-bar never emits the adaptive-only i18n values", () => {
+  it("moreMenu and the Show/Hide Sidebar vocabulary are absent from the Top-bar assembly", () => {
     const dictionary = getDictionary("en");
     const html = renderToStaticMarkup(
-      ShellEngine({ resolved: resolveUiConfig({ preset: "classic" }), header: classicHeader(), main, footer, mainId: "main", ...base }),
+      ShellEngine({ resolved: resolveUiConfig(TOP_BAR_UI), header: classicHeader(), main, footer, mainId: "main", ...base }),
     );
     expect(html).not.toContain(dictionary.navigation.moreMenu);
     expect(html).not.toContain(dictionary.navigation.showSidebar);

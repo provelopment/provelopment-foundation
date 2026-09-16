@@ -39,7 +39,43 @@ vi.mock("next/navigation", () => ({
 import { SiteHeader } from "@/components/site/site-header";
 import { ShellEngine } from "@/components/shell";
 import { getDictionary } from "@/config/i18n";
-import { resolveShellPattern, resolveUiConfig } from "@/core/ui";
+import { resolveShellPattern, resolveUiConfig, type UiConfigInput } from "@/core/ui";
+
+/**
+ * The configuration leaves for this composition family (explicit adopter/engine
+ * configuration — the Foundation's canonical presentation is separate).
+ */
+const SIDEBAR_DRAWER_UI = {
+  "navigation": {
+    "desktop": "sidebar",
+    "tablet": "collapsed-sidebar",
+    "mobile": "drawer"
+  },
+  "shell": {
+    "header": "standard",
+    "footer": "standard",
+    "sidebar": {
+      "collapsible": true
+    }
+  },
+  "cta": {
+    "style": "standard"
+  },
+  "presentation": {
+    "typography": "utility",
+    "rhythm": "dense",
+    "surface": "instrument",
+    "header": "compact",
+    "hero": "concise"
+  },
+  "density": "compact",
+  "content": {
+    "width": "wide"
+  },
+  "theme": {
+    "radius": "none"
+  }
+} satisfies UiConfigInput;
 
 beforeEach(() => {
   mockForcedOpen = false;
@@ -49,12 +85,12 @@ afterEach(() => {
 });
 
 /**
- * UI-08 — Workspace preset through the Shell Engine + content layer.
+ * UI-08 — Sidebar-drawer preset through the Shell Engine + content layer.
  *
- * These server-render tests prove the Workspace SHELL is a declarative
+ * These server-render tests prove the Sidebar-drawer SHELL is a declarative
  * composition with ZERO production-code change — the third architectural proof
- * after Classic (UI-06) and Focus (UI-07):
- *  - the decision core maps Workspace to aside trajectories
+ * after Sidebar-drawer (UI-06) and Sidebar-drawer (UI-07):
+ *  - the decision core maps Sidebar-drawer to aside trajectories
  *    (sidebar ≥md, collapsed-sidebar tablet, closed drawer <md) — standard
  *    header, no bottom bar;
  *  - the engine composes TWO deterministic sidebar bands (desktop
@@ -68,7 +104,7 @@ afterEach(() => {
  *    navigation ONLY (P6-3C — the CTA is never composed into it);
  *  - deterministic IDs/ARIA and no duplicate landmarks/IDs.
  *
- * These tests assert PRESENT STRUCTURE (the Workspace shell) — they do NOT
+ * These tests assert PRESENT STRUCTURE (the Sidebar-drawer shell) — they do NOT
  * pretend grouped navigation or a secondary panel exist (both are deferred:
  * contract unresolved; see todo-milestone-ui-08.md §5).
  */
@@ -85,13 +121,13 @@ const base = { locale: "en", pageBindings: [] };
 const allIds = (html: string) => [...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]);
 
 const rail = el("ul", null, el("li", null, el("a", { href: "/en/1" }, "One")));
-const workspace = resolveUiConfig({ preset: "workspace" });
+const workspace = resolveUiConfig(SIDEBAR_DRAWER_UI);
 const workspaceWithCta = resolveUiConfig({
-  preset: "workspace",
+  ...SIDEBAR_DRAWER_UI,
   cta: { enabled: true, action: "book", label: "Book Now", href: "/booking" },
 });
 
-describe("ShellEngine — Workspace desktop (sidebar aside) + top CTA, no bottom bar", () => {
+describe("ShellEngine — Sidebar-drawer desktop (sidebar aside) + top CTA, no bottom bar", () => {
   it("renders a standard header, the sidebar aside trajectory, and NO bottom-bar composition", () => {
     const html = renderToStaticMarkup(
       ShellEngine({
@@ -108,14 +144,14 @@ describe("ShellEngine — Workspace desktop (sidebar aside) + top CTA, no bottom
     expect(html).toContain("<header>Brand</header>");
     expect(html).toContain("ui-shell-sidebar");
     expect(html).toContain("hidden lg:block");
-    // Workspace mobile is a drawer, NOT a bottom bar:
+    // Sidebar-drawer mobile is a drawer, NOT a bottom bar:
     expect(html).not.toContain("shell-bottom-bar");
     expect(html).not.toContain("ui-shell-bottom-bar");
     const ids = allIds(html);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("renders NO aside CTA for preset-only workspace (enabled false)", () => {
+  it("renders NO aside CTA for defaults-only workspace (enabled false)", () => {
     const html = renderToStaticMarkup(
       ShellEngine({
         resolved: workspace,
@@ -136,7 +172,7 @@ describe("ShellEngine — Workspace desktop (sidebar aside) + top CTA, no bottom
 
   it("enabled + label + NO href renders no aside CTA (a destination is never invented)", () => {
     const resolved = resolveUiConfig({
-      preset: "workspace",
+      ...SIDEBAR_DRAWER_UI,
       cta: { enabled: true, action: "book", label: "Book Now" },
     });
     const html = renderToStaticMarkup(
@@ -180,7 +216,7 @@ describe("ShellEngine — Workspace desktop (sidebar aside) + top CTA, no bottom
   });
 });
 
-describe("ShellEngine — Workspace tablet (collapsed-sidebar) + mutually exclusive bands", () => {
+describe("ShellEngine — Sidebar-drawer tablet (collapsed-sidebar) + mutually exclusive bands", () => {
   it("renders TWO sidebar bands with distinct ids and mutually exclusive responsive classes (never simultaneously exposed)", () => {
     const html = renderToStaticMarkup(
       ShellEngine({
@@ -248,7 +284,7 @@ describe("ShellEngine — Workspace tablet (collapsed-sidebar) + mutually exclus
   });
 });
 
-describe("ShellEngine — Workspace decision trajectories (aside, drawer, standard header)", () => {
+describe("ShellEngine — Sidebar-drawer decision trajectories (aside, drawer, standard header)", () => {
   it("resolveShellPattern(workspace) maps to sidebar/collapsed-sidebar/drawer with aside slots", () => {
     const d = resolveShellPattern(workspace);
     expect(d.desktop.primitiveKind).toBe("sidebar");
@@ -269,9 +305,9 @@ describe("ShellEngine — Workspace decision trajectories (aside, drawer, standa
   });
 });
 
-describe("SiteHeader — Workspace mobile drawer (navigation only; P6-3C: no CTA in the disclosure)", () => {
+describe("SiteHeader — Sidebar-drawer mobile drawer (navigation only; P6-3C: no CTA in the disclosure)", () => {
   const resolvedCta = resolveUiConfig({
-    preset: "workspace",
+    ...SIDEBAR_DRAWER_UI,
     cta: { enabled: true, action: "book", label: "Book Now", href: "/booking" },
   });
 
@@ -282,7 +318,7 @@ describe("SiteHeader — Workspace mobile drawer (navigation only; P6-3C: no CTA
     expect(html).not.toContain('id="shell-mobile-nav-panel"');
     expect(html).toContain('aria-expanded="false"');
     expect(html).toContain("md:hidden");
-    // Workspace (aside composition) exposes its single ≥md nav landmark in the
+    // Sidebar-drawer (aside composition) exposes its single ≥md nav landmark in the
     // shell SIDEBAR, not in the header — the header itself renders none:
     expect(html).not.toContain('aria-label="Primary navigation"');
     // Closed drawer contributes no dialog, no CTA, no drawer links/focusables:
@@ -311,7 +347,7 @@ describe("SiteHeader — Workspace mobile drawer (navigation only; P6-3C: no CTA
   it("OPEN drawer with enabled + label but NO href: still no CTA inside the dialog (never invented)", () => {
     mockForcedOpen = true;
     const resolvedNoHref = resolveUiConfig({
-      preset: "workspace",
+      ...SIDEBAR_DRAWER_UI,
       cta: { enabled: true, action: "book", label: "Book Now" },
     });
     const html = renderToStaticMarkup(SiteHeader({ locale: "en", resolved: resolvedNoHref }));
@@ -320,8 +356,8 @@ describe("SiteHeader — Workspace mobile drawer (navigation only; P6-3C: no CTA
   });
 });
 
-describe("SiteHeader — Workspace (drawer, not bottom-bar) never emits the bottom-bar-only i18n value", () => {
-  it("moreMenu dictionary value is absent from the Workspace header assembly", () => {
+describe("SiteHeader — Sidebar-drawer (drawer, not bottom-bar) never emits the bottom-bar-only i18n value", () => {
+  it("moreMenu dictionary value is absent from the Sidebar-drawer header assembly", () => {
     const dictionary = getDictionary("en");
     const html = renderToStaticMarkup(SiteHeader({ locale: "en", resolved: workspace }));
     expect(html).not.toContain(dictionary.navigation.moreMenu);

@@ -1090,19 +1090,18 @@ describe("UI-01 — the ui contract namespace", () => {
   it("maps the ui namespace through the flattened site config", () => {
     const config = parseSiteConfig({
       ...validConfig,
-      ui: { preset: "classic", density: "comfortable" },
+      ui: { density: "comfortable" },
     });
-    expect(config.ui).toEqual({ preset: "classic", density: "comfortable" });
+    expect(config.ui).toEqual({ density: "comfortable" });
   });
 
   it("leaves ui undefined when absent", () => {
     expect(parseSiteConfig(validConfig).ui).toBeUndefined();
   });
 
-  it("accepts an empty ui block without a preset", () => {
+  it("accepts an empty ui block", () => {
     const config = parseSiteConfig({ ...validConfig, ui: {} });
     expect(config.ui).toEqual({});
-    expect(config.ui?.preset).toBeUndefined();
   });
 
   it("maps site.assets through the loader (FS-4)", () => {
@@ -1156,16 +1155,23 @@ describe("UI-01 — the ui contract namespace", () => {
     ).toThrow(/hex/);
   });
 
-  it("rejects an unknown preset value with the full expected list", () => {
+  it("rejects the RETIRED `ui.preset` selection key as an unknown key (no silent profile selection)", () => {
+    // Owner decision (2026-09, single-presentation closure): the selectable
+    // presentation feature is gone, so the key is no longer part of the schema.
+    // The `.strict()` block turns a stale or copy-pasted key into a hard error
+    // rather than silently activating an alternate presentation.
+    expect(() =>
+      parseSiteConfig({ ...validConfig, ui: { preset: "classic" } }),
+    ).toThrow(/preset/);
+    // …and an invalid value can never recur either.
     expect(() =>
       parseSiteConfig({ ...validConfig, ui: { preset: "glamorous" } }),
-    ).toThrow(/classic, adaptive, focus, workspace, immersive/);
+    ).toThrow(/preset/);
   });
 
   it("has NO preset-comparison / preset-selection config surface (feature retired)", () => {
-    // Owner decision (2026-09): the Foundation no longer exposes or supports
-    // selectable presets, so the deployment-comparison map was REMOVED from the
-    // schema entirely — an unknown key is a hard error, not a silent no-op.
+    // The deployment-comparison map was REMOVED from the schema entirely — an
+    // unknown key is a hard error, not a silent no-op.
     expect(() =>
       parseSiteConfig({
         ...validConfig,

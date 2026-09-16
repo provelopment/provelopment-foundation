@@ -23,7 +23,8 @@ The capabilities demonstrated on this site:
 
 - **Configuration-first identity and structure** — `site.config.json` defines
   the site name, URL, contact channels, navigation, feature toggles, legal
-  documents, and UI preset. Ordinary customization happens here, not in code.
+  documents, and UI composition. Ordinary customization happens here, not in
+  code.
 - **Multilingual content** — interface strings live in locale dictionaries
   (`config/i18n/<locale>.json`); page text lives in Markdown under
   `content/`. A missing translation falls back to the default locale.
@@ -55,7 +56,7 @@ A downstream site customizes the Foundation through documented, user-owned
 surfaces:
 
 - **JSON configuration** — `site.config.json` (identity, navigation, features,
-  UI preset) and locale dictionaries in `config/i18n/`.
+  UI composition) and locale dictionaries in `config/i18n/`.
 - **Markdown content** — pages, offerings, portfolio, blog posts,
   testimonials, and legal documents under `content/`.
 - **Assets** — logos, images, icons, and favicon under `public/`.
@@ -65,14 +66,16 @@ surfaces:
 The goal: most ordinary website customization requires changing these files,
 never the Foundation's driving code.
 
-## How the presets work
+## How the presentation works
 
-The same website and content can be presented through five UI presets —
-**classic**, **adaptive**, **focus**, **workspace**, and **immersive** —
-selected through `ui.preset` in `site.config.json`. Each preset changes the
-presentation and navigation chrome while the underlying content stays the
-same. The preset demonstration sites in this project present the same
-Foundation content under these different presentations.
+The Foundation presents one canonical composition — a collapsible sidebar on
+desktop, a collapsed icon rail on tablet, and bottom navigation on mobile — and
+the visual intent (typography, rhythm, surface, header, hero) is configuration,
+not code. Every dimension is an optional leaf in the `ui` block of
+`site.config.json`, drawn from a closed vocabulary, so a deployment can adjust
+the composition and the look while the underlying content stays the same. There
+is no presentation selector on the site: location and language are the only
+visitor-facing selectors.
 
 ## How this site relates to Provelopment.com
 

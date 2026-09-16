@@ -232,7 +232,7 @@ semantic (`standard`/`prominent`). The Foundation never derives `href` from
 
 > in `FOUNDATION_UI_DEFAULTS` (`src/core/ui/defaults.ts`), so the resolved
 > configuration and the rendered site are unchanged. Historical records of the
-> feature remain under `.project-instructions/`.
+> feature remain under `.project/`.
 ### Configurable controls, assets & presentation modes (P5-5)
 
 P5-5 makes the "change the configuration, not the Foundation" experience real
@@ -1443,7 +1443,7 @@ Status (P6-2D/P6-3B/P6-3C — brand presentation composed; header mark + scaled 
 > horizontal lockup `logos/lockup-horizontal.svg`) and `logo-footer` (the restrained
 > single-tone lockup `logos/lockup-mono.svg`). Each was installed as a **byte-identical
 > copy** (SHA-256 verified) from the living brand pack
-> `.project-instructions/deployment-info/brands-provelopment/provelopment-foundation/` in the ROOT governance
+> `.project/deployment-info/brands-provelopment/provelopment-foundation/` in the ROOT governance
 > repository, and is recorded in that pack's
 > `provenance/identity-provenance.json` → `runtime_role_mapping`. The roles themselves
 > remain **generic and replaceable** — this is still a file swap, with no component or
@@ -1606,7 +1606,7 @@ Two honest caveats:
    accessible name.
 
 Admitted-mark provenance and the withheld register —
-`.project-instructions/deployment-info/brands-provelopment/provelopment-foundation/social/platform-marks/`
+`.project/deployment-info/brands-provelopment/provelopment-foundation/social/platform-marks/`
 (official source owner, published use basis, colour variant, modifications and
 preconditions P-1…P-4). Note that platform brand rules sometimes require a
 particular colour variant for a particular surface, and the engine applies **no**

@@ -1,12 +1,12 @@
 {
-  "inventory": ".project-instructions/deployment-info/universal-assets/icons/",
+  "inventory": ".project/deployment-info/universal-assets/icons/",
   "produced_by": "Phase 9F",
   "source": {
     "library": "Tabler Icons",
     "version": "3.46.0",
     "set": "icons/outline",
     "license": "MIT",
-    "license_file": ".project-instructions/deployment-info/universal-assets/licensing/TABLER-ICONS-MIT.txt"
+    "license_file": ".project/deployment-info/universal-assets/licensing/TABLER-ICONS-MIT.txt"
   },
   "canonical_geometry": {
     "width": 24,

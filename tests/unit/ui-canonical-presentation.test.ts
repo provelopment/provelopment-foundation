@@ -7,8 +7,8 @@ import { resolveUiConfig } from "@/core/ui";
 /**
  * The canonical Foundation presentation (the flattened default decision).
  *
- * Founder-approved contract (.project-instructions/plan/archive/todo-milestone-ui-05.md §2,
- * amended by the single-presentation closure — .project-instructions/CHANGELOG.md):
+ * Founder-approved contract (.project/plan/archive/todo-milestone-ui-05.md §2,
+ * amended by the single-presentation closure — .project/CHANGELOG.md):
  *  - there is ONE canonical presentation and NO selection layer: a config that
  *    omits a leaf resolves the Foundation default for it;
  *  - the values the canonical presentation used are ordinary entries in

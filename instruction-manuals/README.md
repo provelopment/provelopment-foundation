@@ -1,10 +1,10 @@
 # Provelopment Foundation Instruction Manuals
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-16.1`
+> **Manual revision:** `2026-09-16.2`
 > **Applicable Foundation baseline:** `main` @ `1114759`
 > **Foundation commit:** `1114759`
-> **Master authority:** Provelopment root project — `.project-instructions/deployment-info/instruction-manuals/`
+> **Master authority:** Provelopment root project — `.project/deployment-info/instruction-manuals/`
 >
 > This copy is **distributed**. It is byte-identical to the master. Edit the master
 > upstream and propagate; never edit a distributed copy in place.
@@ -29,8 +29,8 @@ are operational procedure, not marketing.
 
 | | Location | Role |
 | --- | --- | --- |
-| **Master** | Provelopment root project / `.project-instructions/deployment-info/instruction-manuals/` | Authoritative. All edits happen here. |
-| **Distributed** | `ProvelopmentFoundation/instruction-manuals/` and every Foundation-derived adopter project | Byte-identical copies of the master. |
+| **Master** | Provelopment root project / `.project/deployment-info/instruction-manuals/` | Authoritative. All edits happen here. |
+| **Distributed** | `01.foundation/instruction-manuals/` and every Foundation-derived adopter project | Byte-identical copies of the master. |
 
 **Edit rule:** a distributed copy is never edited independently. If a manual is
 wrong or incomplete, fix the master, review it, then propagate. Two divergent
@@ -45,7 +45,7 @@ copy is distributed.
 
 Run this when the master changes, and once per accepted Foundation release.
 
-1. **Update the master** — edit `Provelopment/.project-instructions/deployment-info/instruction-manuals/` (and only there).
+1. **Update the master** — edit `Provelopment/.project/deployment-info/instruction-manuals/` (and only there).
 2. **Review** — read the changed manual end to end; confirm it is actionable and
    consistent with the manuals it cross-references. Bump the header revision if warranted.
 3. **Copy the complete file set** — propagate every master file, so additions and
@@ -54,12 +54,12 @@ Run this when the master changes, and once per accepted Foundation release.
    genuinely disappeared from the master is removed from the receivers as its own
    deliberate, visible step:
    ```powershell
-   # run from the root repository (the one that contains .project-instructions/)
-   Copy-Item '.project-instructions\deployment-info\instruction-manuals\*.md'  'ProvelopmentFoundation\instruction-manuals\' -Force
+   # run from the root repository (the one that contains .project/)
+   Copy-Item '.project\deployment-info\instruction-manuals\*.md'  '01.foundation\instruction-manuals\' -Force
    ```
    ```bash
    # run from the root repository
-   cp .project-instructions/deployment-info/instruction-manuals/*.md ProvelopmentFoundation/instruction-manuals/
+   cp .project/deployment-info/instruction-manuals/*.md 01.foundation/instruction-manuals/
    ```
 4. **Verify the exact file list** — the copies must contain exactly the master's
    files: no extras, no omissions.
@@ -76,9 +76,9 @@ Run this when the master changes, and once per accepted Foundation release.
 
 ```powershell
 # run from the root repository
-$master = '.project-instructions\deployment-info\instruction-manuals'
+$master = '.project\deployment-info\instruction-manuals'
 foreach ($copy in @(
-  'ProvelopmentFoundation\instruction-manuals')) {
+  '01.foundation\instruction-manuals')) {
   Write-Host "== $copy"
   $a = Get-ChildItem $master -File | Sort-Object Name
   $b = Get-ChildItem $copy   -File | Sort-Object Name
@@ -95,7 +95,7 @@ foreach ($copy in @(
 
 ```bash
 # run from the root repository
-diff -r .project-instructions/deployment-info/instruction-manuals ProvelopmentFoundation/instruction-manuals && echo "FOUNDATION PARITY OK"
+diff -r .project/deployment-info/instruction-manuals 01.foundation/instruction-manuals && echo "FOUNDATION PARITY OK"
 ```
 
 `diff -r` is silent and exits 0 only when every file is byte-identical — that is
@@ -106,16 +106,21 @@ copy is explicit and the check is explicit.
 
 | Manual revision | Foundation baseline | Commit | Date |
 | --- | --- | --- | --- |
+| `2026-09-16.2` | `main` (single canonical presentation) | `1114759` | 2026-09-16 |
 | `2026-09-16.1` | `main` (single canonical presentation) | `1114759` | 2026-09-16 |
 | `2026-09-15.1` | `v2026.09.11-foundation-p6-3c-banner-sidebar-cta` | `f5c94da` | 2026-09-15 |
 | `2026-09-11.1` | `v2026.09.11-foundation-p6-3c-banner-sidebar-cta` | `f5c94da` | 2026-09-11 |
 
+> `2026-09-16.2` re-issues the same procedures with the workspace paths updated by
+> the numbered-workspace migration: the governance home is now `.project/` (was
+> `.project-instructions/`) and the Foundation working directory is now
+> `01.foundation/` (was `ProvelopmentFoundation/`). No procedure changed.
 > `2026-09-16.1` re-issues the same procedures with the propagation/parity cycle
 > updated for the single-presentation architecture: the retired selectable-
 > presentation (preset) feature and the retired sibling demo repository are no
 > longer part of the cycle, and the parity check covers Foundation only.
 > `2026-09-15.1` re-issues the same procedures with the master authority path moved to
-> `.project-instructions/deployment-info/instruction-manuals/` (governance consolidation).
+> `.project/deployment-info/instruction-manuals/` (governance consolidation).
 > No procedure changed; the propagation and parity checks above are unchanged.
 
 Add a row whenever the manuals are propagated against a new Foundation baseline.

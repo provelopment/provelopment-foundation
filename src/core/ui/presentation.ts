@@ -24,7 +24,7 @@ import type {
  * UI System Architecture). No React, Next.js, Tailwind, adapters, or config.
  */
 
-/** The resolved presentation intent for one site/preset. */
+/** The resolved presentation intent for one site/Presentation. */
 export interface UiPresentation {
   /** Display/heading "voice". */
   readonly typography: PresentationTypography;
@@ -50,8 +50,8 @@ export const PRESENTATION_DEFAULTS: Readonly<UiPresentation> = {
 /**
  * The deterministic inert data attributes the renderer applies to `<html>`
  * for a resolved presentation. Values are vocabulary members only (never
- * preset names), so the CSS token layer can implement presentation without
- * any preset identity.
+ * presentation names), so the CSS token layer can implement presentation without
+ * any presentation identity.
  */
 export function presentationDataAttributes(
   presentation: Readonly<UiPresentation>,

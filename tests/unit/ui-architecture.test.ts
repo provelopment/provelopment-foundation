@@ -8,6 +8,7 @@ import {
   CTA_ACTIONS,
   CTA_STYLES,
   DESKTOP_NAVIGATION_PATTERNS,
+  FOUNDATION_UI_CAPABILITIES,
   MOBILE_NAVIGATION_PATTERNS,
   resolveUiConfig,
   SHELL_VARIANTS,
@@ -15,22 +16,20 @@ import {
   THEME_MODES,
   THEME_RADII,
   UI_DENSITIES,
-  UI_PRESETS,
-  uiPresetProfiles,
 } from "@/core/ui";
 
 /**
  * UI-01 — Architecture & Contract tests.
  *
  * These tests encode the CONTRACT DECISIONS, not just the implementation:
- *  - the vocabulary is closed and exactly the five presets exist (roadmap §24);
- *  - every preset profile is complete (navigation × 3 tiers, shell, CTA,
- *    capabilities);
- *  - NO default preset exists: `{}`, an empty `ui` block, and a block with
- *    `preset` omitted all parse with `preset === undefined`;
+ *  - the vocabulary is closed (one canonical presentation, no selectable
+ *    profiles — the retired `ui.preset` key is rejected);
+ *  - the capability claim row is complete (every roadmap §24 matrix column);
+ *  - an absent `ui` block, an empty block and a partially-specified block all
+ *    parse successfully — nothing is injected at the contract surface;
  *  - invalid values and unknown keys fail clearly;
- *  - the shipped demo configuration explicitly selects the classic preset
- *    (UI-06) — still one of the five valid presets, no default fixed.
+ *  - the shipped reference configuration declares no presentation key and
+ *    resolves the canonical composition.
  */
 
 const baseConfig = {
@@ -52,7 +51,6 @@ const baseConfig = {
 };
 
 const validUiBlock = {
-  preset: "classic",
   shell: { header: "standard", footer: "standard" },
   navigation: { desktop: "top", tablet: "top-compact", mobile: "drawer" },
   density: "comfortable",
@@ -61,22 +59,10 @@ const validUiBlock = {
   theme: { mode: "system", radius: "medium" },
 };
 
-describe("UI-01 vocabulary — the five-preset model", () => {
-  it("recognizes exactly the five roadmap presets", () => {
-    expect(UI_PRESETS).toEqual([
-      "classic",
-      "adaptive",
-      "focus",
-      "workspace",
-      "immersive",
-    ]);
-  });
-
-  it("admits every preset identifier at the schema level", () => {
-    for (const preset of UI_PRESETS) {
-      const result = uiConfigSchema.safeParse({ preset });
-      expect(result.success, `preset "${preset}" should be valid`).toBe(true);
-    }
+describe("UI-01 vocabulary — the closed configuration vocabulary", () => {
+  it("rejects the retired presentation-selection key at the schema level", () => {
+    expect(uiConfigSchema.safeParse({ preset: "classic" }).success).toBe(false);
+    expect(uiConfigSchema.safeParse({ preset: "adaptive" }).success).toBe(false);
   });
 
   it("the schema admits every vocabulary value (schema ↔ vocabulary agreement)", () => {
@@ -123,7 +109,7 @@ describe("UI-01 vocabulary — the five-preset model", () => {
   });
 });
 
-describe("UI-01 preset profiles — complete contract tables", () => {
+describe("UI-01 capability claims — one complete contract row", () => {
   const capabilityKeys = [
     "topNavigation",
     "sidebar",
@@ -138,67 +124,42 @@ describe("UI-01 preset profiles — complete contract tables", () => {
     "applicationDashboard",
   ] as const;
 
-  it("describes all five presets and no others", () => {
-    expect(Object.keys(uiPresetProfiles).sort()).toEqual([...UI_PRESETS].sort());
-  });
-
-  it("every profile is complete per the agreed contract", () => {
-    for (const preset of UI_PRESETS) {
-      const profile = uiPresetProfiles[preset];
-
-      expect(profile.preset).toBe(preset);
-      expect(profile.summary, `${preset}.summary`).toBeTruthy();
-
-      // Per-viewport navigation composition uses first-class vocabulary.
+  it("the claim row is complete per the agreed contract (every §24 matrix column)", () => {
+    for (const key of capabilityKeys) {
+      expect(FOUNDATION_UI_CAPABILITIES[key], `capabilities.${key}`).toBeDefined();
       expect(
-        DESKTOP_NAVIGATION_PATTERNS,
-        `${preset}.navigation.desktop`,
-      ).toContain(profile.navigation.desktop);
-      expect(TABLET_NAVIGATION_PATTERNS, `${preset}.navigation.tablet`).toContain(
-        profile.navigation.tablet,
-      );
-      expect(MOBILE_NAVIGATION_PATTERNS, `${preset}.navigation.mobile`).toContain(
-        profile.navigation.mobile,
-      );
-
-      // Shell + CTA intent.
-      expect(SHELL_VARIANTS, `${preset}.shell.header`).toContain(profile.shell.header);
-      expect(SHELL_VARIANTS, `${preset}.shell.footer`).toContain(profile.shell.footer);
-      expect(CTA_STYLES, `${preset}.cta.style`).toContain(profile.cta.style);
-
-      // Full capability row — every roadmap §24 matrix column is present.
-      for (const key of capabilityKeys) {
-        expect(
-          profile.capabilities[key],
-          `${preset}.capabilities.${key}`,
-        ).toBeDefined();
-        expect(
-          ["supported", "optional", "limited", "unsupported"],
-          `${preset}.capabilities.${key}`,
-        ).toContain(profile.capabilities[key]);
-      }
+        ["supported", "optional", "limited", "unsupported"],
+        `capabilities.${key}`,
+      ).toContain(FOUNDATION_UI_CAPABILITIES[key]);
     }
+    expect(Object.keys(FOUNDATION_UI_CAPABILITIES).sort()).toEqual([...capabilityKeys].sort());
   });
 
-  it("keeps classic as the description of today's top-navigation composition", () => {
-    expect(uiPresetProfiles.classic.navigation).toEqual({
-      desktop: "top",
-      tablet: "top-compact",
-      mobile: "drawer",
-    });
+  it("the supported claims match the canonical resolved composition", () => {
+    const resolved = resolveUiConfig({});
+    // sidebar / collapsibleSidebar: resolved leaves select the aside rail.
+    expect(SHELL_VARIANTS).toContain(resolved.shell.header);
+    expect(DESKTOP_NAVIGATION_PATTERNS).toContain(resolved.navigation.desktop);
+    expect(resolved.navigation.desktop).toBe("sidebar");
+    expect(resolved.shell.sidebar.collapsible).toBe(true);
+    // bottomMobileNavigation: the canonical mobile composition.
+    expect(MOBILE_NAVIGATION_PATTERNS).toContain(resolved.navigation.mobile);
+    expect(resolved.navigation.mobile).toBe("bottom-bar");
+    expect(CTA_STYLES).toContain(resolved.cta.style);
   });
 });
 
-describe("UI-01 — no default preset (the contract decision)", () => {
+describe("UI-01 — no presentation selection at the contract surface", () => {
   it("{} parses successfully at the schema level", () => {
     expect(uiConfigSchema.safeParse({}).success).toBe(true);
   });
 
-  it("a ui block without a preset parses with preset undefined", () => {
+  it("a partially-specified ui block parses and injects nothing", () => {
     const parsed = uiConfigSchema.safeParse({ density: "comfortable" });
     expect(parsed.success).toBe(true);
     if (parsed.success) {
-      expect(parsed.data.preset).toBeUndefined();
+      expect(parsed.data).toEqual({ density: "comfortable" });
+      expect(parsed.data).not.toHaveProperty("preset");
       expect(parsed.data.density).toBe("comfortable");
     }
   });
@@ -207,49 +168,43 @@ describe("UI-01 — no default preset (the contract decision)", () => {
     expect(parseSiteConfig(baseConfig).ui).toBeUndefined();
   });
 
-  it("an empty ui block loads with preset undefined", () => {
+  it("an empty ui block loads as an empty object", () => {
     const config = parseSiteConfig({ ...baseConfig, ui: {} });
     expect(config.ui).toEqual({});
-    expect(config.ui?.preset).toBeUndefined();
   });
 
-  it("no test above assumes a default preset exists — selection is always explicit", () => {
-    // Contract-level selection is never implied: an explicit value must be
-    // present for any preset to appear in the resolved config, and `{}` stays
-    // valid. This test asserts the DECISION rather than a mechanism.
-    expect(uiPresetProfiles.classic.preset).toBe("classic");
+  it("no selection key exists — the resolved composition comes from the canonical defaults", () => {
     expect(uiConfigSchema.safeParse({}).success).toBe(true);
+    const resolved = resolveUiConfig(parseSiteConfig({ ...baseConfig, ui: {} }).ui ?? {});
+    expect(Object.keys(resolved)).not.toContain("preset");
+    expect(resolved.navigation.desktop).toBe("sidebar");
   });
 });
 
 describe("FS-2 — the shipped Foundation reference site presents the canonical UI", () => {
-  it("site.config.json declares NO preset: the canonical presentation is the engine default", () => {
-    // Owner decision (2026-09): the Foundation exposes and supports ONE
+  it("site.config.json declares NO presentation key: the canonical composition is the engine default", () => {
+    // Owner decision (2026-09): the Foundation presents ONE canonical
     // presentation. The shipped config therefore selects nothing — the resolved
-    // canonical presentation comes from the shared UI engine's default profile
-    // (FOUNDATION_UI_DEFAULTS.defaultPreset), not from a configuration leaf.
+    // composition comes from `FOUNDATION_UI_DEFAULTS`, not from a config leaf.
     expect(siteConfig.ui).toBeDefined();
     expect(siteConfig.ui).not.toHaveProperty("preset");
     expect(siteConfig.ui).not.toHaveProperty("presetComparison");
     // The reference site ships no explicit navigation/shell leaves (FS-2), so
-    // the canonical profile governs: sidebar ≥md / collapsed-sidebar tablet /
-    // bottom-bar <md — one presentation, one composition.
+    // the canonical composition governs: sidebar ≥md / collapsed-sidebar tablet
+    // / bottom-bar <md — one presentation, one composition.
     expect(siteConfig.ui?.navigation).toBeUndefined();
     expect(siteConfig.ui?.shell).toBeUndefined();
   });
 });
 
 describe("UI-01 — invalid or unknown configuration fails clearly", () => {
-  it("rejects an unknown preset with the full expected list", () => {
+  it("rejects the retired `preset` key (unknown key, never a silent profile selection)", () => {
     const parsed = uiConfigSchema.safeParse({ preset: "glamorous" });
     expect(parsed.success).toBe(false);
     if (!parsed.success) {
-      expect(
-        parsed.error.issues.some((issue) =>
-          issue.message.includes("classic, adaptive, focus, workspace, immersive"),
-        ),
-      ).toBe(true);
+      expect(parsed.error.issues.some((issue) => issue.message.includes("preset"))).toBe(true);
     }
+    expect(uiConfigSchema.safeParse({ preset: "classic" }).success).toBe(false);
   });
 
   it("rejects an unknown ui key loudly (config typo)", () => {
@@ -278,15 +233,16 @@ describe("UI-01 — loader mapping", () => {
   it("maps the ui namespace through the validated loader", () => {
     const config = parseSiteConfig({ ...baseConfig, ui: validUiBlock });
     expect(config.ui).toEqual(validUiBlock);
-    expect(config.ui?.preset).toBe("classic");
+    expect(config.ui).not.toHaveProperty("preset");
   });
 
-  it("the shipped Foundation reference site ui block maps through the validated loader with no preset declared", () => {
+  it("the shipped Foundation reference site ui block maps through the validated loader with no presentation key", () => {
     const config = parseSiteConfig({ ...baseConfig, ui: siteConfig.ui ?? {} });
     expect(config.ui).toBeDefined();
     expect(config.ui).not.toHaveProperty("preset");
-    // …and the canonical presentation still resolves (from the engine default).
+    // …and the canonical composition still resolves (from the Foundation defaults).
     const resolved = resolveUiConfig(config.ui ?? {});
-    expect(resolved.preset).toBe("adaptive");
+    expect(resolved.navigation.desktop).toBe("sidebar");
+    expect(resolved.navigation.mobile).toBe("bottom-bar");
   });
 });

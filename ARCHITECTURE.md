@@ -940,7 +940,7 @@ it the header, footer, and known locale) is exactly what failed.
 The Foundation UI system is governed by `plan/foundation_ui_roadmap.md` (what)
 and `plan/master-ui-phase.md` (the sequential implementation phases). UI-01
 (this milestone) establishes the **contract layer only**: the `ui`
-configuration namespace, the five-preset model, the precedence model (types
+configuration namespace, the composition model, the precedence model (types
 only), and the boundaries later phases build against. It introduces no new
 rendering, no shell, and no responsive behavior; the existing classic-style
 composition in `src/app/[locale]/layout.tsx` is the pre-UI rendering and
@@ -955,7 +955,6 @@ switches.
 
 | Key | Vocabulary | Meaning |
 | --- | --- | --- |
-| `preset` | `classic` \| `adaptive` \| `focus` \| `workspace` \| `immersive` | **Internal** presentation-profile selection. The Foundation ships ONE canonical presentation and declares no preset; the leaf exists only so the shared engine can resolve a profile (2026-09: the adopter-facing preset feature was retired) |
 | `shell.header` / `shell.footer` | `standard` \| `minimal` | Page-frame intent |
 | `navigation.desktop` | `top` \| `sidebar` \| `minimal` \| `floating` | Desktop composition override |
 | `navigation.tablet` | `top-compact` \| `collapsed-sidebar` \| `minimal` \| `floating` | Tablet composition override |
@@ -968,17 +967,15 @@ switches.
 Every value is validated by `src/config/schema.ts` (`uiConfigSchema`) and flows
 through the single validated loader path as `siteConfig.ui`. The allowed values
 derive from `src/core/ui/vocabulary.ts` (framework-neutral) — the single source
-of truth shared by the schema and the preset profiles. Unknown keys and invalid
+of truth shared by the schema and the engine. Unknown keys and invalid
 values fail the build with an actionable message.
 
 ### Precedence model
 
 ```text
 Explicit developer override (ui.* leaf)
-        ↓        (only when an explicit preset is present)
-Preset profile leaf (uiPresetProfiles[preset])
         ↓
-Foundation default (FOUNDATION_UI_DEFAULTS)
+Foundation canonical default (FOUNDATION_UI_DEFAULTS)
         ↓
 Completeness invariant (assertResolvedUiConfigComplete)
         ↓
@@ -1008,17 +1005,17 @@ ever invented:
 | `content.width` | `standard` |
 | `cta.enabled` | `false` |
 | `cta.action` / `cta.label` / `cta.href` | `undefined` (adopter-only business strings; `href` never inferred from `action`, UI-07 D1) |
-| `cta.style` | preset profile → `standard` |
+| `cta.style` | `standard` |
 | `theme.mode` | `system` |
 | `theme.radius` | `medium` |
 
 ### Shared UI Primitives (UI-03)
 
-`src/components/ui/` — reusable, **preset-agnostic, prop-driven** presentation
-primitives the Shell Engine (UI-04) will compose and the presets (UI-05+) will
+`src/components/ui/` — reusable, **identity-agnostic, prop-driven** primitives
+the Shell Engine (UI-04) composes into the canonical presentation and later
 reuse. They accept semantic intent as plain props (labels, hrefs, active state,
 items) and never import configuration, core, adapters, `siteConfig`,
-`ResolvedUiConfig`, or any preset (boundary-enforced).
+`ResolvedUiConfig`, or any presentation (boundary-enforced).
 
 | Primitive | Responsibility | Client? |
 | --- | --- | :-: |
@@ -1033,10 +1030,10 @@ items) and never import configuration, core, adapters, `siteConfig`,
 | `state.ts` | Pure `disclosureReducer` / `createInitialDisclosure` (framework-free) | — |
 
 **Composition boundary (preserved):** `Configuration → ResolvedUiConfig → Shared
-Primitives (UI-03) → Shell Engine (UI-04) → Presets (UI-05+)`. The primitives are
+Primitives (UI-03) → Shell Engine (UI-04) → Canonical presentation`. The primitives are
 **not wired into the live layout in UI-03**; UI-04 owns shell composition and
 responsive transformation (the primitives contain no breakpoint/media-query
-policy and no preset-selection logic).
+policy and no presentation-selection logic).
 
 **Accessibility contract — structural vs behavioral:** UI-03 ships the semantics
 (landmarks, ARIA attributes, disclosure states, deterministic SSR-safe closed
@@ -1057,7 +1054,7 @@ that consumes the RESOLVED semantic intent (UI-02) and the shared primitives
   patterns + shell/CTA values into a deterministic `ShellPatternDecision`
   (primitive kind per viewport, slot, CTA placement, density/content-width
   utility classes). It is a pure function of the VOCABULARY VALUES — never
-  preset identity — so UI-05+ presets need no changes here.
+  presentation identity — so no composition needs a change here.
 - **Engine (`shell-engine.tsx`, server)** — composes the `AppShell` frame with
   content slots; applies density/content classes; renders a primary CTA only
   when `resolved.cta.enabled` AND label+href are supplied (the Foundation never
@@ -1069,7 +1066,7 @@ that consumes the RESOLVED semantic intent (UI-02) and the shared primitives
 - **Boundaries (master §7):** the engine understands intent, not business
   content; it imports no configuration/adapters and receives resolved/config
   context (locale, pageBindings) via props; it branches ONLY on vocabulary/
-  structural values, never preset identity. The shared primitives stay
+  structural values, never presentation identity. The shared primitives stay
   breakpoint-free; the only responsive utilities are the Tailwind classes the
   engine/layout emit.
 - **Wiring (UI-04/UI-05):** `layout.tsx` computes `resolveUiConfig(siteConfig.ui ??
@@ -1083,282 +1080,67 @@ that consumes the RESOLVED semantic intent (UI-02) and the shared primitives
   Note: this is NOT a "zero visual delta" claim across all viewports — the
   mobile navigation is intentionally the declared (modernized) pattern.
 
-### Adaptive preset (UI-05) & the resolved default personality
+### One canonical presentation (2026-09 closure)
 
-`{"ui":{"preset":"adaptive"}}` is now a fully observable composition through the
-existing pipeline (resolution → shell decision → ShellEngine → shared primitives):
+The Foundation presents **one canonical composition**. There is no
+presentation/profile selection layer anywhere in the active architecture:
 
-- **Resolution (UI-05 Part B, owner-approved):** `FOUNDATION_UI_DEFAULTS.defaultPreset
-  = "adaptive"` fixes the resolved DEFAULT PERSONALITY. The resolver's SINGLE
-  selection point is `raw.preset ?? FOUNDATION_UI_DEFAULTS.defaultPreset` in
-  `resolveUiConfig` — the schema/loader inject nothing, and every other module
-  has no preset-selection code (source-scan tested).
-- **Personality ≠ effective composition (Foundation DX contract):**
-  `resolved.preset` identifies the selected/default UI **personality**; the
-  resolved leaves are the **effective** UI behavior. An explicit developer leaf
-  override does NOT cancel the preset — it overrides one dimension of it. E.g.
-  `{ "ui": { "navigation": { "desktop": "top" } } }` with no `preset` resolves
-  `preset = "adaptive"` while the effective composition keeps `desktop = "top"`
-  (and `tablet = "collapsed-sidebar"`, `mobile = "bottom-bar"` from the adaptive
-  profile). Since UI-06 the shipped demo explicitly selects `preset = "classic"`
-  (its explicit classic leaves repeat the profile); BEFORE UI-06 it leaned on
-  precise overrides alone. Either way it renders the classic shell
-  byte-identically — the personality is truthful, the effect is unchanged.
-- **Adaptive shell composition:** desktop `sidebar` → an expanded, user-
-  collapsible `Sidebar` in the aside slot (≥`lg`); tablet `collapsed-sidebar` →
-  a compact-label rail band (`md`–`lg`, deterministic interim — icon-only rail
-  deferred); mobile `bottom-bar` → `BottomNavigation` (first 4 configured items
-  per `BOTTOM_NAV_PRIMARY_LIMIT`) + a closed-by-default "More" drawer for the
-  remainder (deterministic content rule, no new config namespace). Aside bands
-  use distinct ids + mutually exclusive responsive classes so exactly ONE
-  sidebar landmark is exposed at any width.
-- **CTA placement (business-neutral):** per the decision's structural slot
-  (header/aside/bottom) and ONLY when `resolved.cta.enabled` ∧ label+href are
-  supplied — the engine never invents an action/href/label.
-- **Every other preset remains explicitly selectable** and resolves its own
-  profile untouched by the default decision (five-preset regression tests).
+- **No `ui.preset` key.** `uiConfigSchema` is `.strict()`, so a configuration
+  that still carries the retired key fails validation as an unknown key rather
+  than silently activating another presentation.
+- **No profile table.** `src/core/ui/presets.ts` (the five semantic profiles and
+  `uiPresetProfiles`) was deleted; `defaults.ts` declares no `defaultPreset`.
+- **No selection point.** Resolution is exactly
+  `override ?? FOUNDATION_UI_DEFAULTS.<leaf>` (see the precedence model above):
+  `src/core/ui/resolve.ts` contains no profile lookup and no fallback selection
+  string (source-scan tested).
 
-### Classic preset (UI-06 — the first non-default preset is purely declarative)
+The composition values the canonical presentation used are ordinary entries in
+`FOUNDATION_UI_DEFAULTS` (`src/core/ui/defaults.ts`):
 
-Classic is the proof milestone for the architecture: `{"ui":{"preset":"classic"}}`
-flows through the existing profile → resolver → shell decision → Shell Engine
-pipeline with **no production-code change** (the mechanism UI-01–05 built).
+| Leaf | Value |
+| --- | --- |
+| `navigation.desktop` | `sidebar` |
+| `navigation.tablet` | `collapsed-sidebar` |
+| `navigation.mobile` | `bottom-bar` |
+| `shell.header` / `shell.footer` | `standard` |
+| `shell.sidebar.collapsible` | `true` |
+| `presentation` | `PRESENTATION_DEFAULTS` (balanced / default) |
+| `density` | `comfortable` |
+| `content.width` | `standard` |
+| `theme.mode` / `theme.radius` | `system` / `medium` |
+| `cta.enabled` / `cta.style` | `false` / `standard` |
 
-- **Composition:** `top / top-compact / drawer`, shell `standard/standard`,
-  `cta.style: standard`. The decision core maps it to the long-shipped
-  header-slot trajectories — desktop/tablet `top-bar → slot header` (the ≥md
-  single nav landmark, `hidden md:block`), mobile `drawer → slot header,
-  trigger` (the <md `ShellMobileNav` closed-by-default drawer) — **no sidebar,
-  no bottom bar**. `ShellEngine` SSR for the classic preset is byte-identical to
-  SSR for an explicit-classic-leaves config (tested), and the boundary scan
-  asserts zero `classic` literals in the engine.
-- **CTA:** falls to the header slot at ≥md when explicitly enabled + label/href;
-  nothing by default. The decision core's `ctaSlot: "drawer"` was LATENT at
-  UI-06 and gained its content-layer consumer at UI-07 (`SiteHeader` composes
-  the CTA inside the mobile drawer children when the decision says drawer +
-  enabled + label/href). No engine-level drawer-slot machinery exists — the
-  engine branches only on vocabulary/structural values.
-- **i18n genericity (D3):** `navigation.moreMenu` and `navigation.sidebarToggle`
-  stay REQUIRED schema keys, named after PATTERNS (bottom-bar "More" drawer,
-  sidebar collapse toggle) and therefore reusable verbatim by any future preset
-  composing those patterns (workspace's sidebar reuses `sidebarToggle`). Classic
-  consumes neither; a test proves the Classic assembly never emits their values.
-- **Demo:** `site.config.json` ships `"preset": "classic"` (D1 Option B) with
-  its explicit classic leaves retained — `resolved.preset` is truthful, the
-  effective composition is byte-identical to the pre-UI-06 demo (260 routes /
-  219 sitemap unchanged).
+Because the flattening reused the exact effective values, the resolved
+configuration and the rendered site are **unchanged** by the removal.
 
-### Focus preset (UI-07 — conversion-first; the smallest declarative extension)
+**Capability claims (P0-6).** `FOUNDATION_UI_CAPABILITIES`
+(`src/core/ui/defaults.ts`) is the Foundation's single audited row of the roadmap
+§24 capability matrix. A level may only be raised when the implementation +
+composition + (for `supported`) the browser verification exist, and the claim
+gate (`tests/architecture/capability-claims.test.ts`) is updated with the
+evidence in the same change. The levels are `supported` (sidebar,
+collapsibleSidebar, bottomMobileNavigation, mobileDrawer, primaryCta),
+`optional` (topNavigation), `limited` (complexNavigation,
+applicationDashboard) and `unsupported` (overlayNavigation, secondaryPanel,
+visualFirst).
 
-Focus is the FIRST demonstrated case where the CTA contract needed extension,
-and the milestone makes its product requirements observable with the smallest
-change (approved D1/D2/D3):
-
-- **Profile (data-only, since UI-01):** `minimal / top-compact / drawer`,
-  shell `minimal/standard`, `cta.style: prominent`. The decision core maps it to
-  header-slot trajectories — minimal ≥md, top-compact tablet, closed drawer <md —
-  **no sidebar, no bottom bar** (SSR-tested).
-- **D1 — `cta.href` (the ONLY contract addition):** an optional, adopter-owned
-  destination leaf. The Foundation NEVER infers a route from `action` and never
-  invents one. Neutral default `undefined`; an enabled CTA without label+href
-  still renders nothing. Canonical shape:
-  `{ "cta": { "enabled": true, "action": "book", "label": "Book Now", "href": "/booking" } }`.
-- **D2 — drawer CTA is now observable:** the latent `ctaSlot: "drawer"` decision
-  acquired its content-layer consumer (`SiteHeader`). When mobile is the drawer
-  pattern + the CTA materially exists, the CTA is composed as a child of the
-  `ShellMobileNav` drawer. Closed SSR renders no dialog (and therefore no CTA /
-  nothing focusable); opening the drawer exposes the CTA among its existing
-  children. The consumer branches on decision-core VALUES — a Classic config
-  with a complete CTA consumes the identical slot (the consumer is generic, not
-  Focus-specific). No engine machinery, no `Drawer` change.
-- **D3 — prominent is observable:** `cta.style === "prominent"` adds the additive
-  `ui-cta-prominent` treatment (token-pure: `--primary` / `--primary-foreground`
-  / `--radius-md`) to the engine header CTA and the drawer CTA. `standard` is
-  behaviorally and structurally unchanged; CTA presence is independent of styling.
-- **Minimal is DEFERRED (D4):** `shell.header: "minimal"` and
-  `navigation.desktop: "minimal"` resolve but have NO concrete implementation
-  contract in the governing docs (no spec for which items hide or how the header
-  restructures). UI-07 truthfully documents that the minimal chrome/content
-  treatment is deferred to a later owner/UI decision — it does NOT invent a
-  navigation-reduction design. The Focus ≥md header therefore renders the full
-  navigation list (proven).
-- **Demo:** the shipped demo stays explicit `classic` and byte-identical (its
-  enabled CTA has no `href`, so nothing renders). Focus is demonstrated via the
-  resolution/SSR test matrix.
-
-### Workspace preset (UI-08 — information-rich shell; declarative proof, third after Classic and Focus)
-
-Workspace's intent (roadmap §8) is an information-rich composition for complex
-navigation / workflows / portals / admin: **sidebar + grouped navigation +
-optional secondary panel**. UI-08 proves the SHELL composition is fully
-declarative with **zero production-code change**:
-
-- **Shell trajectory (declarative since UI-01):** `sidebar / collapsed-sidebar /
-  drawer`, shell `standard/standard`, `cta.style: standard`. The decision core maps
-  it to aside trajectories — sidebar ≥md, collapsed-sidebar tablet, closed drawer
-  <md — **no bottom bar** (SSR-tested). CTA lands in the aside slot ≥md and the
-  drawer slot <md (existing UI-05 aside + UI-07 drawer CTA consumers).
-- **Sidebar machinery is shared, not Workspace-specific:** the engine composes the
-  same two deterministic sidebar bands as Adaptive (desktop `hidden lg:block`,
-  tablet `hidden md:block lg:hidden`, distinct ids, mutually exclusive classes —
-  never simultaneously exposed; desktop band user-collapsible). No new primitive.
-- **The milestone is architectural proof, not feature work:** the profile, resolver,
-  shell decision, engine, `SiteHeader` (≥md/aside + drawer CTA), and layout wiring
-  already compose Workspace. Production code is unchanged; a focused SSR suite
-  (`shell-workspace.test.ts`) proves the shell, and a boundary scan asserts zero
-  `workspace` preset literals in engine/core.
-
-**Truthful status — Workspace SHELL vs Workspace information architecture:**
-
-> **Workspace shell composition is implemented and proven; grouped navigation and
-> the optional secondary/context panel remain DEFERRED pending explicit contracts.**
-
-- **Grouped navigation — DEFERRED (contract unresolved).** Documented intent only:
-  no authoritative group data shape, no labels/content source, no consumer;
-  `NavigationItem` is flat and `NavGroup` is unconsumed. It is a **future SHARED
-  capability decision** (Adaptive also claims `complexNavigation`) — the group
-  schema (nesting/depth, labels, ordering, active-state, a11y, responsive, relation
-  to flat nav) must be an owner decision before the existing `NavGroup` primitive is
-  consumed. UI-08 invents no grouping model and adds no `children` to `NavigationItem`.
-- **Secondary/context panel — DEFERRED.** Explicitly optional (roadmap §8 "Potential
-  extended configuration"); lacks a content source, a configuration contract, a
-  placement contract, and a runtime consumer. UI-08 does not wire the latent
-  `AppShell.secondaryPanel` slot or add ShellEngine props (no generalized slot
-  machinery); it does not invent Details/Hours/Contact/Map content.
-- **Minimal remains deferred (UI-07):** unchanged.
-- **Demo:** the shipped demo stays explicit `classic` and byte-identical. Workspace
-  is demonstrated via the resolution/SSR test matrix.
-
-### Immersive preset (UI-09 — premium visual-first; last explicit-preset proof + the overlay-CTA consumer fix)
-
-Immersive's contract (roadmap §9) = a premium visual-first shell where navigation
-is intentionally less prominent, with overlay navigation. Trajectory:
-`floating / floating / overlay`, `minimal` header, standard CTA. UI-09 proves the
-shell is declarative and ships **ONE minimal, vocabulary-driven content-layer
-consumer fix** to make the already-declared mobile overlay CTA observable:
-
-- **`floating` resolves through the EXISTING aside composition.** Desktop and tablet
-  `floating` both map to the aside slot and render the same two mutually-exclusive
-  `Sidebar` bands as any aside preset (desktop `hidden lg:block`, tablet
-  `hidden md:block lg:hidden`) — **no distinct `floating` visual treatment is
-  contractually defined** (shared vocabulary/visual-contract question; deferred, not
-  invented).
-- **`overlay` is an existing consumed structural path:** `ShellMobileNav pattern=
-  "overlay"` → `OverlayNavigation` (a `Drawer` composition), closed by default at SSR
-  (no dialog/CTA/focusable).
-- **The overlay-CTA consumer fix (UI-09):** the decision core already assigns the
-  mobile `overlay` the `ctaSlot: "drawer"`, but the UI-07 `SiteHeader` CTA consumer
-  only admitted `mobilePattern === "drawer"`. UI-09 admits `overlay` too — so
-  Immersive's standard CTA now renders inside the open overlay when enabled + label +
-  href (exactly the same materialization rule as the drawer). This is a
-  vocabulary-STRUCTURAL branch (never `preset === "immersive"`); no engine/primitive/
-  slot/config/interaction change; `Drawer`/`OverlayNavigation` untouched.
-- **Standard CTA** uses the existing UI-07 contract: aside ≥md (UI-05), overlay <md
-  (UI-09); disabled/no-href → no CTA; no invented destination.
-- **i18n genericity:** `moreMenu`/`sidebarToggle` stay required schema keys (pattern-
-  named); Immersive consumes neither — a test proves the Immersive assembly never
-  emits `moreMenu`.
-- **Demo:** the shipped demo stays explicit `classic` and byte-identical. Immersive
-  is demonstrated via the resolution/SSR test matrix.
-
-**Truthful status — Proven vs deferred vs UI-10:**
-- **Proven:** Immersive's contractually defined shell composition is expressible and
-  proven; desktop/tablet `floating` via the existing aside composition; mobile
-  `overlay` via the existing OverlayNavigation path; mobile overlay CTA via the
-  UI-09 consumer fix (already-declared `ctaSlot:"drawer"` now admitted for `overlay`).
-- **Deferred (shared, contract-ambiguous):** distinct `floating` visual treatment
-  (no concrete contract defining how it differs from the existing aside/sidebar
-  composition); `minimal` header treatment (no concrete content/chrome contract;
-  UI-07 D4 carried forward).
-- **UI-10:** the behavioral/accessibility gate (see below) implements and browser-validates
-  overlay/drawer interaction behavior (focus management, backdrop, dismissal/Escape, scroll
-  locking, reduced motion, background inertness).
-
-### Behavioral / accessibility gate (UI-10 — the shared cross-preset contract, shipped)
-
-UI-10 is the **final cross-preset behavioral and accessibility validation gate** — not a
-product-redesign phase. It makes the shared interaction contract real and browser-validated:
-
-- **Modal behavior in the shared `Drawer` primitive** (`src/components/ui/drawer.tsx`),
-  serving every drawer / overlay / More disclosure via the same structural path:
-  - **Focus management:** focus enters the opened dialog deterministically (first focusable,
-    else the portal panel); Tab / Shift+Tab are contained; Escape closes; focus RETURNS to the
-    invoking trigger on close.
-  - **Background inertness:** while open, the platform `inert` attribute is applied to every
-    background ancestor sibling (never the dialog/backdrop) and restored exactly on close.
-  - **Backdrop + dismissal:** a `ui-drawer-backdrop` scrim is rendered while open; click/tap
-    dismisses; Escape dismisses; the global `prefers-reduced-motion` rule governs any motion
-    (none is added). The backdrop + panel are **portal-mounted at the document root**
-    (`react-dom` `createPortal`) so the modal genuinely overlays every shell region — the
-    browser matrix proved a consumer-nested backdrop is hit-tested under the header's static
-    content.
-  - **Scroll locking:** body overflow is locked while open and restored on close; repeated
-    open/close cycles leak nothing.
-- **Content-layer consumer fixes (vocabulary-driven, non-preset-specific):**
-  - **Disclosure ARIA wiring** (`shell-mobile-nav.tsx`): the trigger owns the deterministic
-    `id`; the dialog/panel uses the corresponding `${id}-panel` id and is NAMED BY the trigger
-    (`aria-labelledby={id}`). `aria-controls` resolves to a real panel id; the modal locates
-    its trigger by that relationship for focus-return.
-  - **Active navigation semantics** (`context-nav-links.tsx`): the shared consumer sets
-    `aria-current="page"` on the active INTERNAL link (same route comparison as the bottom
-    bar); external links never carry it. Propagates to the header, both aside bands, the
-    drawer/overlay children, and the footer.
-- **Validation capability (`tests/browser/`)** — a committed, reproducible **CDP**
-  (Chrome DevTools Protocol) harness built on Node's built-in WebSocket + fetch (**no**
-  Playwright/Cypress/WebdriverIO/jsdom), reusing the repository's established headless-Chrome
-  convention. `pnpm test:browser` swaps each preset's config, boots `next dev`, drives real
-  interaction across desktop/tablet/mobile (and md/lg boundaries), and writes a
-  machine-readable report (`%TEMP%/ui10-browser-report.json`); CI `browser-matrix` runs it on
-  ubuntu-latest. Navigates over `localhost` (Next blocks `127.0.0.1` dev chunks absent
-  `allowedDevOrigins`).
-- **Boundary note:** the UI-primitive boundary test now allows the `react-dom` import for the
-  portal — the same package as the already-allowed `react-dom/server`, framework-only, no
-  config/core/adapter/app leak.
-- **Deferred contract decisions (recorded, NOT solved — no invented semantics):** the
-  collapsed-sidebar **visual** treatment (C1; icon rail / hidden-vs-icon semantics) and the
-  mobile header-CTA placement when a drawer CTA exists (C2). Distinct `floating`/`minimal`
-  visuals, grouped nav, and the secondary panel remain deferred (no concrete contract).
-
-### Completeness & error behavior
-
-The completeness invariant guarantees a fully-determined resolved config:
-every leaf that must resolve is defined (the adopter-only `cta.action`/`cta.label`/
-`cta.href` legitimately stay `undefined`), and vocab-backed leaves stay within the
-shipped `src/core/ui/vocabulary` enums. Violations throw `UiConfigResolutionError`
-listing exact leaf paths — future preset-profile or Foundation-default additions
-fail loudly at resolution time rather than silently resolving to `undefined`.
-
-### The presentation profiles are composable configurations, not implementations
-
-Each presentation profile in `src/core/ui/presets.ts` is a semantic profile: its
-per-viewport navigation composition, shell intent, CTA prominence, and its row of
-the roadmap §24 capability matrix. Profiles describe what a UX personality means;
-shared primitives (UI-03) are composed under a shell engine (UI-04), so no
-profile gets a bespoke implementation.
-
-**The Foundation product surface ships ONE canonical presentation** (resolved from
-`FOUNDATION_UI_DEFAULTS.defaultPreset`, i.e. the `adaptive` profile). The former
-adopter-facing preset feature — a header selector that linked five externally
-hosted presentations — was **retired in 2026-09**: the switcher component, the
-`ui.presetComparison` deployment map and the five-preset browser permutations are
-gone. The profile table remains as the engine's internal composition vocabulary.
-
-### The resolved default preset (UI-05 decision)
-
-The UI-01 contract deliberately left `ui.preset` optional and let the schema/
-loader inject nothing. **UI-05 fixed the RESOLVED default** at the resolver's
-single selection point (`raw.preset ?? FOUNDATION_UI_DEFAULTS.defaultPreset`,
-with `defaultPreset: "adaptive"` in `FOUNDATION_UI_DEFAULTS`). The schema and
-loader still never inject a preset — the default is a resolver/deterministic
-personality, documented in `presets.ts` ("resolved default fixed at UI-05") and
-now realized. The personality/effective distinction (§Adaptive preset above) is
-what lets the shipped classic demo stay byte-identical while the default
-personality is Adaptive.
-
+**Retired feature (historical).** UI-05–UI-10 built and shipped a *selectable*
+presentation model: five semantic profiles (`classic`, `adaptive`, `focus`,
+`workspace`, `immersive`), an adopter-facing header selector, and five externally
+hosted demo deployments. The owner retired the feature in 2026-09: the selector,
+the profile table, the `ui.presetComparison` deployment map and the
+five-presentation browser permutations are gone, and the sibling demo repository
+and its deployments were removed. The engine architecture those milestones
+established — vocabulary-driven resolution, identity-free shared primitives, a
+pure decision core, the shared modal/accessibility contract and the committed CDP
+matrix — is unchanged, and is still exactly what the canonical presentation runs
+on. Historical records: `.project-instructions/CHANGELOG.md`,
+`.project-instructions/memory/`, `.project-instructions/plan/archive/`.
 ### Theme/layout separation
 
-`preset` selects layout & interaction personality; `theme` selects visual
-styling. Visual styling stays token-driven in `src/app/globals.css` (Phase D).
+The composition leaves (`shell`, `navigation`) select the layout & interaction
+structure; `theme` selects visual styling. Visual styling stays token-driven in `src/app/globals.css` (Phase D).
 A client-side theme controller for explicit `light`/`dark` modes is a
 later-phase concern and is not introduced by the contract.
 
@@ -1375,16 +1157,16 @@ and WCAG 2.1 AA contrast (existing token pairs remain enforced by
 
 | Concern | Owner | Status |
 | --- | --- | --- |
-| Vocabulary, schema surface, preset identities, profile semantics, contract types | UI-01 | ✅ shipped |
-| Configuration resolution, defaults, preset inheritance, overrides, resolved configuration | UI-02 | ✅ shipped (`resolveUiConfig` / `FOUNDATION_UI_DEFAULTS`) |
+| Vocabulary, schema surface, composition semantics, contract types | UI-01 | ✅ shipped |
+| Configuration resolution, canonical defaults, overrides, resolved configuration | UI-02 | ✅ shipped (`resolveUiConfig` / `FOUNDATION_UI_DEFAULTS`) |
 | Shared UI primitives | UI-03 | ✅ shipped (`src/components/ui`; unwired until UI-04 — the next consumer) |
 | Shell orchestration & responsive shell behavior | UI-04 | ✅ shipped (`ShellEngine` + `resolveShellPattern`; wired into the live layout) |
-| Adaptive preset implementation + Adaptive as the resolved/recommended default | UI-05 | ✅ shipped (`defaultPreset: "adaptive"` single selection point; adaptive aside + bottom-bar composition) |
-| Classic preset — the first non-default preset (declarative proof) | UI-06 | ✅ shipped (explicit `preset: "classic"` in the demo; zero engine changes) |
-| Focus preset — conversion-first + the first CTA-contract extension (`cta.href`, drawer CTA, prominent) | UI-07 | ✅ shipped (D1–D3; `minimal` chrome DEFERRED) |
-| Workspace preset — the SHELL is a declarative proof (shared sidebar machinery); **grouped nav + secondary panel DEFERRED** | UI-08 | ✅ shipped (zero production-code change; shell SSR-proven) |
-| Immersive preset — premium visual-first; last explicit-preset proof + **overlay-CTA consumer fix**; floating/minimal treatments DEFERRED | UI-09 | ✅ shipped (1 content-layer consumer fix; shell + overlay CTA SSR-proven) |
-| Cross-preset behavioral & accessibility gate — focus/inert/backdrop/Escape/scroll in the shared Drawer + B1/B2 ARIA-consumer fixes + committed CDP validation capability | UI-10 | ✅ shipped (browser-validated 5×3 viewport matrix; collapsed-sidebar visual + mobile header-CTA placement DEFERRED) |
+| Canonical aside + bottom-bar composition (**preset framing retired 2026-09**; values now `FOUNDATION_UI_DEFAULTS`) | UI-05 | ✅ shipped (aside rail + collapsed tablet rail + bottom bar) |
+| Top-bar composition family (declarative proof — no engine change required) | UI-06 | ✅ shipped (explicit leaves; zero engine changes) |
+| Minimal-header composition + the CTA contract (`cta.href`, one top placement, `prominent`) | UI-07 | ✅ shipped (D1–D3; `minimal` chrome DEFERRED) |
+| Sidebar+drawer composition (shared sidebar machinery); **grouped nav + secondary panel DEFERRED** | UI-08 | ✅ shipped (zero production-code change; shell SSR-proven) |
+| Floating/overlay composition + **overlay-CTA consumer fix**; distinct floating/minimal treatments DEFERRED | UI-09 | ✅ shipped (1 content-layer consumer fix; shell + overlay CTA SSR-proven) |
+| Shared behavioral & accessibility gate — focus/inert/backdrop/Escape/scroll in the shared Drawer + B1/B2 ARIA-consumer fixes + committed CDP validation capability | UI-10 | ✅ shipped (browser-validated desktop/tablet/mobile matrix; collapsed-sidebar visual + mobile header-CTA placement DEFERRED) |
 
 ## AI Development
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { resolveUiConfig, UI_PRESETS } from "@/core/ui";
+import { resolveUiConfig } from "@/core/ui";
 import { FOUNDATION_UI_DEFAULTS } from "@/core/ui/defaults";
 
 /**
@@ -11,7 +11,7 @@ import { FOUNDATION_UI_DEFAULTS } from "@/core/ui/defaults";
  * existing `--background` CSS-token mechanism. Proves the four contract points:
  * default (absent → existing token), configured (value reaches the token),
  * resolver passthrough, and the layout wiring (no inline component styles, no
- * preset-name branch).
+ * identity branch).
  */
 describe("FS-5 — background color presentation (configuration-first)", () => {
   it("default: absent ui.theme.background preserves the Foundation background token", () => {
@@ -24,11 +24,13 @@ describe("FS-5 — background color presentation (configuration-first)", () => {
     expect(resolved.theme.background).toBe("#fafafa");
   });
 
-  it("preset-agnostic: the background is a config value, not a preset-name branch", () => {
-    for (const preset of UI_PRESETS) {
-      const resolved = resolveUiConfig({ preset, theme: { background: "#123456" } });
-      expect(resolved.theme.background).toBe("#123456");
-    }
+  it("identity-free: the background is a config value, not an identity branch", () => {
+    const explicit = resolveUiConfig({
+      navigation: { desktop: "top", tablet: "top-compact", mobile: "drawer" },
+      theme: { background: "#123456" },
+    });
+    expect(explicit.theme.background).toBe("#123456");
+    expect(resolveUiConfig({ theme: { background: "#123456" } }).theme.background).toBe("#123456");
   });
 
   it("layout renders the configured value through the existing --background token", () => {

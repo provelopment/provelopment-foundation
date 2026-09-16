@@ -12,44 +12,106 @@ import type {
   ThemeMode,
   ThemeRadius,
   UiDensity,
-  UiPreset,
 } from "./vocabulary";
 import { PRESENTATION_DEFAULTS, type UiPresentation } from "./presentation";
 
 /**
  * Foundation-level UI defaults (UI-02 — Configuration Infrastructure).
  *
- * The FIRST precedence layer of the resolution model (master-ui-phase §5):
+ * The **base layer** of the resolution model (master-ui-phase §5):
  *
  * ```text
- * Developer overrides (UiConfig)
+ * explicit developer override (UiConfig leaf, when present)
  *         ↓
- * Preset profile defaults (uiPresetProfiles, ONLY when a preset is explicitly selected)
+ * Foundation canonical defaults (this module — FOUNDATION_UI_DEFAULTS)
  *         ↓
- * Foundation defaults (this module)
- *         ↓
- * Completeness invariant (assertResolvedUiConfigComplete)
+ * completeness invariant (assertResolvedUiConfigComplete)
  * ```
  *
+ * There is **ONE canonical Foundation presentation**: the resolved personality
+ * *is* this table. The former selectable-presentation layer (a preset identifier,
+ * a profile table and the profile-merge step) was retired by owner decision — the
+ * values the canonical presentation used are now ordinary defaults here, so the
+ * resolved configuration is unchanged.
+ *
  * These are NEUTRAL platform defaults: they express the Foundation's baseline
- * intent, nothing business-specific. Deliberately, there is NO preset entry here
- * (a Foundation default never selects a preset — see `resolve.ts`;the resolved
- * default preset is fixed by UI-05, not by this layer.
-
- * Framework-neutral (pure data + types): see ARCHITECTURE.md — UI System
- * Architecture & Configuration Contract.
+ * intent, nothing business-specific. Framework-neutral (pure data + types): see
+ * ARCHITECTURE.md — UI System Architecture & Configuration Contract.
  */
+
+/**
+ * The roadmap §24 capability-matrix level the Foundation may claim for a
+ * capability.
+ *
+ * P0-6 — the CAPABILITY-CLAIM VOCABULARY (each level has a concrete architectural
+ * meaning + evidence rule; enforced by
+ * `tests/architecture/capability-claims.test.ts`):
+ *
+ *  - supported   → the resolved canonical composition implements AND browser-
+ *                  verifies the behavior. Evidence: resolved leaves select the
+ *                  composition AND the browser matrix asserts the behavior.
+ *  - optional    → the shared capability is implemented + verified at the
+ *                  Foundation level, but the composition does NOT enable it by
+ *                  default; a user can reach it via explicit configuration.
+ *  - limited     → the shared capability exists only PARTIALLY (documented
+ *                  limitation); it is not the full capability contract.
+ *  - unsupported → NOT claimed (roadmap "—"). Absence is the honest default. A
+ *                  shared primitive/config field existing in source is NOT
+ *                  evidence of support. Custom configurations are never
+ *                  capability-gated, so a user may still compose a shared
+ *                  capability the Foundation does not claim.
+ */
+export type UiCapabilityLevel = "supported" | "optional" | "limited" | "unsupported";
+
+/** The roadmap §24 capability matrix (the rows the Foundation may claim). */
+export interface UiFoundationCapabilities {
+  readonly topNavigation: UiCapabilityLevel;
+  readonly sidebar: UiCapabilityLevel;
+  readonly collapsibleSidebar: UiCapabilityLevel;
+  readonly bottomMobileNavigation: UiCapabilityLevel;
+  readonly mobileDrawer: UiCapabilityLevel;
+  readonly primaryCta: UiCapabilityLevel;
+  readonly overlayNavigation: UiCapabilityLevel;
+  readonly secondaryPanel: UiCapabilityLevel;
+  readonly complexNavigation: UiCapabilityLevel;
+  readonly visualFirst: UiCapabilityLevel;
+  readonly applicationDashboard: UiCapabilityLevel;
+}
+
+/**
+ * The Foundation's capability claims (the audited P0-6 truth table row for the
+ * canonical presentation). `capabilities()` semantics from the retired profile
+ * table are preserved: every unlisted column is `unsupported` — the roadmap "—"
+ * — and the default IS the truthful state.
+ *
+ * A row may only be raised (to optional/limited/supported) when the
+ * implementation + composition + (for supported) browser verification exist, and
+ * the claim gate (`tests/architecture/capability-claims.test.ts`) is updated with
+ * the evidence in the same change.
+ */
+export const FOUNDATION_UI_CAPABILITIES: Readonly<UiFoundationCapabilities> = {
+  topNavigation: "optional",
+  sidebar: "supported",
+  collapsibleSidebar: "supported",
+  bottomMobileNavigation: "supported",
+  mobileDrawer: "supported",
+  primaryCta: "supported",
+  // Not claimed (the roadmap "—"): the resolved canonical composition does not
+  // implement these, so the honest level is `unsupported`.
+  overlayNavigation: "unsupported",
+  secondaryPanel: "unsupported",
+  visualFirst: "unsupported",
+  // P0-4/P0-6 truth: no grouped-navigation implementation exists (flat
+  // `navigation[]`), so "complex navigation" is only the flat nav lists the
+  // sidebar/header already compose (limited), not full grouping.
+  complexNavigation: "limited",
+  // P0-6 truth: an app-LIKE shell (sidebar/bottom-bar) exists but no dashboard
+  // features (groups, secondary panel) — limited, not supported.
+  applicationDashboard: "limited",
+} as const;
 
 /** Foundation-level default values for the semantic UI intent leaves. */
 export interface UiFoundationDefaults {
-  /**
-   * The resolved DEFAULT PRESET personality (fixed at UI-05, owner-approved).
-   * `resolve.ts` references this property as its SINGLE default-selection point
-   * (`raw.preset ?? FOUNDATION_UI_DEFAULTS.defaultPreset`). This is a
-   * personality default: explicit per-leaf overrides (and any explicitly
-   * selected preset) still win over the default preset's profile below.
-   */
-  readonly defaultPreset: UiPreset;
   readonly shell: { readonly header: ShellVariant; readonly footer: ShellVariant; readonly sidebar: { readonly collapsible: boolean } };
   readonly navigation: {
     readonly desktop: DesktopNavigationPattern;
@@ -68,13 +130,13 @@ export interface UiFoundationDefaults {
   };
   readonly density: UiDensity;
   readonly content: { readonly width: ContentWidth };
-  /** P5-3 — the neutral resolved presentation intent (balanced/Adaptive). */
+  /** P5-3 — the canonical presentation intent (balanced). */
   readonly presentation: UiPresentation;
   readonly cta: {
-    /** DELIBERATE neutral default (D1, owner-approved): the shipped classic
-     *  composition renders no CTA;an action is a business decision, never invented
-     *  by the Foundation. Later phases (e.g., UI-05) may deliberately compose
-     *  and enable a CTA per their UX contract. */
+    /** DELIBERATE neutral default (D1, owner-approved): the Foundation's own
+     *  composition renders no CTA; an action is a business decision, never
+     *  invented by the Foundation. The shipped reference site enables one
+     *  explicitly through configuration. */
    readonly enabled: boolean;
     readonly action?: CtaAction;
     readonly label?: string;
@@ -85,7 +147,7 @@ export interface UiFoundationDefaults {
      * CTA without label+href renders nothing (the engine's existing invariant).
      */
     readonly href?: string;
-    /** CTA visual prominence;presets may override via `cta.style`。 */
+    /** CTA visual prominence. */
    readonly style: CtaStyle;
     /** P5-5 — optional leading/trailing icon asset (plain public/assets filename). */
     readonly icon?: string;
@@ -98,27 +160,30 @@ export interface UiFoundationDefaults {
 }
 
 /**
- * The Foundation defaults table (approved;see .project-instructions/plan/archive/todo-milestone-ui-02.md §2.4).
+ * The Foundation canonical defaults table (approved; see
+ * .project-instructions/plan/archive/todo-milestone-ui-02.md §2.4, flattened at
+ * the single-presentation closure).
  *
- * Do NOT add entries here without a documented architectural reason —— every
- * addition silently changes the resolved config for every adopter。
+ * The navigation/shell values below are the CANONICAL Foundation presentation:
+ * a collapsible desktop sidebar, a collapsed rail on tablet and a bottom bar on
+ * mobile — previously supplied by the retired default profile, now ordinary
+ * defaults (identical resolved output).
+ *
+ * Do NOT add entries here without a documented architectural reason — every
+ * addition silently changes the resolved config for every adopter.
  */
 export const FOUNDATION_UI_DEFAULTS: Readonly<UiFoundationDefaults> = {
-  // Resolved default personality (UI-05, owner-approved). `resolve.ts` is the
-  // single selection point: `raw.preset ?? FOUNDATION_UI_DEFAULTS.defaultPreset`.
-  defaultPreset: "adaptive",
   shell: {
     header: "standard",
     footer: "standard",
-    // P0-1: the NEUTRAL default is non-collapsible. Presets that own a
-    // user-collapsible rail (Adaptive, Workspace) declare `true` in their
-    // profile; a custom config opts in with `shell.sidebar.collapsible`.
-    sidebar: { collapsible: false },
+    // P0-1: the canonical Foundation composition OWNS a user-collapsible rail.
+    // A custom config may opt out with `shell.sidebar.collapsible: false`.
+    sidebar: { collapsible: true },
   },
   navigation: {
-    desktop: "top",
-    tablet: "top-compact",
-    mobile: "drawer",
+    desktop: "sidebar",
+    tablet: "collapsed-sidebar",
+    mobile: "bottom-bar",
     // P5-5 — neutral defaults: sidebar fully open (labels + shipped icons),
     // top/bottom menus open. `open`/`close` text falls back to the localized
     // dictionary labels and icon to the shipped assets at composition time.

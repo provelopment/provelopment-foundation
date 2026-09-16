@@ -24,7 +24,6 @@ import {
   THEME_MODES,
   THEME_RADII,
   UI_DENSITIES,
-  UI_PRESETS,
 } from "@/core/ui";
 
 /**
@@ -733,10 +732,16 @@ export const featuresConfigSchema = z.object({
  * UI system configuration namespace (UI-01 — Architecture & Contract).
  *
  * Optional, intent-level configuration (roadmap §11). Every single value is
- * OPTIONAL: an absent `ui` block, an empty `{}` block, and a block with
- * `preset` omitted all parse successfully. The contract fixes NO default
- * preset and nothing injects one — resolution (defaults, overrides, merging)
- * is a UI-02 responsibility and the resolved default is fixed at UI-05.
+ * OPTIONAL: an absent `ui` block and an empty `{}` block both parse
+ * successfully. The contract fixes NO default leaf and nothing injects one —
+ * resolution (defaults + overrides) is a UI-02 responsibility, and the
+ * Foundation ships exactly ONE canonical presentation whose values are the
+ * defaults.
+ *
+ * The retired `ui.preset` selection key is deliberately NOT part of this schema:
+ * a config that still carries it is rejected as an unknown key (the `.strict()`
+ * block below), so a stale or copy-pasted key can never silently select another
+ * presentation.
  *
  * The allowed values derive from `src/core/ui/vocabulary.ts`. Unknown keys are
  * rejected loudly (a config typo must never be silently ignored — same
@@ -842,7 +847,7 @@ const uiContentSchema = z
   })
   .strict();
 
-/** P5-3 — generalized presentation intent (closed vocabulary, shared by every preset). */
+/** P5-3 — generalized presentation intent (closed vocabulary, shared by the engine). */
 const uiPresentationSchema = z
   .object({
     typography: z
@@ -938,22 +943,13 @@ const uiThemeSchema = z
 
 export const uiConfigSchema = z
   .object({
-    /**
-     * Explicit presentation selection (internal): the Foundation ships ONE
-     * canonical presentation, resolved through the shared UI engine. Omitted in
-     * the shipped config; NO default is injected here — the resolved default is
-     * decided by UI-05, not by this contract.
-     */
-    preset: z
-      .enum(UI_PRESETS, { message: `must be one of: ${UI_PRESETS.join(", ")}` })
-      .optional(),
     shell: uiShellSchema.optional(),
     navigation: uiNavigationSchema.optional(),
     density: z
       .enum(UI_DENSITIES, { message: `must be one of: ${UI_DENSITIES.join(", ")}` })
       .optional(),
     content: uiContentSchema.optional(),
-    /** P5-3 — generalized presentation intent (preset profile supplies the rest). */
+    /** P5-3 — generalized presentation intent (Foundation defaults supply the rest). */
     presentation: uiPresentationSchema.optional(),
     cta: uiCtaSchema.optional(),
     theme: uiThemeSchema.optional(),

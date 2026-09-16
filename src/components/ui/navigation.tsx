@@ -4,7 +4,7 @@ import { NavItem, type NavItemModel } from "./nav-item";
  * Navigation (UI-03 — Shared UI Primitives).
  *
  * The primary navigation list primitive: a landmark (`<nav aria-label>`) over
- * a list of server-safe NavItems. Prop-driven and preset-agnostic — the
+ * a list of server-safe NavItems. Prop-driven and presentation-agnostic — the
  * consumer composes which items appear and how the list is styled.
  *
  * This SERVER component NEVER operates a disclosure/drawer; responsive

@@ -17,7 +17,6 @@ import type {
   ThemeMode,
   ThemeRadius,
   UiDensity,
-  UiPreset,
 } from "@/core/ui";
 
 export interface LocaleConfig {
@@ -119,17 +118,14 @@ export interface BookingConfig {
  * Intent-level configuration namespace (roadmap §11): values describe the
  * desired UX personality, never pixels. The block is OPTIONAL — an absent
  * `ui` key (or an empty object) is valid and changes nothing at the CONTRACT
- * surface. The RESOLVED default personality is fixed at UI-05
- * (`FOUNDATION_UI_DEFAULTS.defaultPreset = "adaptive"`, applied in
- * `resolveUiConfig`'s single selection point); the schema/loader still inject
- * no preset.
+ * surface. The RESOLVED values are the Foundation canonical defaults
+ * (`FOUNDATION_UI_DEFAULTS` in `@/core/ui`) unless a leaf is explicitly set
+ * here; there is exactly ONE canonical presentation and no selection key.
  */
 export interface UiConfig {
-  /** Explicit preset selection; `undefined` when omitted (never injected). */
-  readonly preset?: UiPreset;
   /** Page-frame intent (roadmap §11 `shell`). */
   readonly shell?: UiShellConfig;
-  /** Per-viewport navigation composition overrides (preset defines the rest). */
+  /** Per-viewport navigation composition overrides (defaults define the rest). */
   readonly navigation?: UiNavigationConfig;
   /** Semantic UI density (roadmap §16). */
   readonly density?: UiDensity;
@@ -137,7 +133,7 @@ export interface UiConfig {
   readonly content?: UiContentConfig;
   /** Primary CTA intent (roadmap §19). */
   readonly cta?: UiCtaConfig;
-  /** Visual theme intent — kept separate from the layout preset (roadmap §18). */
+  /** Visual theme intent — kept separate from the layout composition (roadmap §18). */
   readonly theme?: UiThemeConfig;
 }
 
@@ -194,7 +190,7 @@ export interface UiCtaConfig {
    * infers one from `action`. An enabled CTA without label+href renders nothing.
    */
   readonly href?: string;
-  /** Visual prominence requested from the preset (roadmap §11). */
+  /** Visual prominence of the primary CTA (roadmap §11). */
   readonly style?: CtaStyle;
   /** P5-5 — optional CTA icon (plain public/assets filename; `""` = none). */
   readonly icon?: string;

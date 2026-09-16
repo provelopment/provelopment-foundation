@@ -13,7 +13,7 @@ import type { ComponentPropsWithoutRef } from "react";
  *  - minimal alignment API: `columns` (a Tailwind `grid-cols-*` utility token,
  *    e.g. `sm:grid-cols-2 lg:grid-cols-3`) + `gap` (a `gap-*` utility);
  *  - compositional: `className` passes through (e.g. `mt-8` top spacing);
- *  - PRESET-agnostic: no preset branches, no config, no layout semantics beyond
+ *  - PRESENTATION-agnostic: no presentation branches, no config, no layout semantics beyond
  *    the demonstrated collection grid.
  *
  * Deliberately NOT used for: the form grid, region-block split, footer grid,

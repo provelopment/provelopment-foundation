@@ -13,9 +13,9 @@ import type { UiDensity, ContentWidth } from "./vocabulary";
  *  - which density/content-width utility classes apply.
  *
  * CRITICAL BOUNDARY (master-ui-phase §7): this core understands INTENT, not
- * business content — and NEVER preset identity. Every branch is a pure
+ * business content — and NEVER presentation identity. Every branch is a pure
  * function of the RESOLVED VOCABULARY VALUES (`navigation.desktop/tablet/
- * mobile`, `shell.*`, `cta.enabled`), so any preset or explicit configuration
+ * mobile`, `shell.*`, `cta.enabled`), so any Presentation or explicit configuration
  * (UI-05+) yields a correct shell with no code change here.
  *
  * The RESULT is a decision; the framework layer (`src/components/shell/
@@ -140,7 +140,7 @@ export function contentWidthClass(width: ContentWidth): string {
 /**
  * Resolve the shell composition decision from a fully-resolved UI config.
  *
- * Pure function of the resolved vocabulary values; no preset identity, no
+ * Pure function of the resolved vocabulary values; no presentation identity, no
  * business content, no framework imports.
  */
 export function resolveShellPattern(resolved: ResolvedUiConfig): ShellPatternDecision {

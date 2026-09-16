@@ -11,15 +11,15 @@ the whole process.
 ## One canonical presentation, one Foundation
 
 The Foundation ships **ONE canonical presentation** — the site you get from the
-shipped configuration. There is **no preset selector and no preset switching**:
+shipped configuration. There is **no presentation selector and no switching**:
 the presentation is resolved by the shared UI engine (typography, rhythm, surface,
 header, hero + density/content-width/radius) onto the renderer via `data-ui-*`
 attributes — no per-presentation CSS, no per-presentation forks. See
 `CUSTOMIZING.md` → *The `ui.presentation` block* for the full matrix.
 
-> The former five-preset comparison feature (a header dropdown linking five
-> externally hosted presentations) was **retired in 2026-09**; those sibling
-> deployments are not part of the Foundation product.
+> The former selectable-presentation feature (a header dropdown linking five
+> externally hosted demo deployments) was **retired in 2026-09**: the profile
+> table, the `ui.preset` key and those sibling deployments are gone.
 
 ## Tech Stack
 
@@ -110,7 +110,7 @@ of the hexagonal (ports and adapters) boundaries:
 ```
 src/app         # Next.js routes under src/app/[locale], layouts, globals.css tokens
 src/components  # Presentation components (site, shell, and shared ui primitives)
-src/core        # Framework-independent domain concepts and UI preset engine
+src/core        # Framework-independent domain concepts and the UI engine
 src/application # Use-case ports and services
 src/adapters    # Concrete integrations (filesystem content, analytics, booking, maps)
 src/config      # Site configuration schema and loaders

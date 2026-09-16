@@ -17,13 +17,13 @@ import {
  *
  * Verifies the deterministic mapping of RESOLVED vocabulary values → shell
  * composition decision, for EVERY value in each per-viewport pattern vocab.
- * The core must never behave differently based on preset identity; only the
- * resolved values drive it.
+ * The core must never behave differently based on presentation identity; only
+ * the resolved values drive it.
  */
 
 const defaults = resolveUiConfig({});
 
-describe("resolveShellPattern — Adaptive default personality (UI-05)", () => {
+describe("resolveShellPattern — canonical Foundation presentation", () => {
   it("yields aside sidebar ≥md and a bottom bar <md, NO CTA", () => {
     const d = resolveShellPattern(defaults);
     expect(d.desktop.primitiveKind).toBe("sidebar");
@@ -35,17 +35,16 @@ describe("resolveShellPattern — Adaptive default personality (UI-05)", () => {
     expect(d.cta.present).toBe(false);
   });
 
-  it("models an explicit classic-leaf config without a preset (personality=adaptive, effective=classic)", () => {
-    const classic = resolveUiConfig({
+  it("models an explicit top-bar override on top of the canonical defaults", () => {
+    const topBar = resolveUiConfig({
       navigation: { desktop: "top", tablet: "top-compact", mobile: "drawer" },
     });
-    const d = resolveShellPattern(classic);
+    const d = resolveShellPattern(topBar);
     expect(d.desktop.primitiveKind).toBe("top-bar");
     expect(d.desktop.slot).toBe("header");
     expect(d.tablet.primitiveKind).toBe("top-bar");
     expect(d.mobile.primitiveKind).toBe("drawer");
     expect(d.mobile.trigger).toBe(true);
-    expect(classic.preset).toBe("adaptive"); // personality; effective leaves are classic
   });
 });
 
@@ -95,15 +94,13 @@ describe("resolveShellPattern — full per-viewport vocabulary coverage", () => 
 });
 
 describe("resolveShellPattern — decision boundaries", () => {
-  it("is a pure function of resolved values, never preset identity", () => {
-    // Same resolved values → same decision, regardless of how they arose
-    // (explicit config with no preset vs a preset that yields them).
+  it("is a pure function of resolved values, never presentation identity", () => {
+    // The SAME resolved value always maps to the SAME decision, however it arose.
     const explicit = resolveUiConfig({ navigation: { desktop: "sidebar" } });
-    const fromPreset = resolveUiConfig({ preset: "adaptive" });
-    // These differ structurally (desktop sidebar match), so assert the mapping
-    // for the SAME value is stable:
+    const canonical = resolveUiConfig({});
     expect(resolveShellPattern(explicit).desktop.primitiveKind).toBe("sidebar");
-    expect(resolveShellPattern(fromPreset).desktop.primitiveKind).toBe("sidebar");
+    expect(resolveShellPattern(canonical).desktop.primitiveKind).toBe("sidebar");
+    expect(resolveShellPattern(explicit)).toEqual(resolveShellPattern(canonical));
   });
 
   it("P6-3C — the CTA slot is the ONE top region for EVERY viewport when resolved.cta.enabled", () => {

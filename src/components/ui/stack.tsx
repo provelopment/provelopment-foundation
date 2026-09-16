@@ -13,7 +13,7 @@ import type { ComponentPropsWithoutRef } from "react";
  *    no wrap/basis/grow (nothing demonstrated requires them);
  *  - compositional: `className` always passes through, so consumers keep their
  *    own width/responsive extras;
- *  - PRESET-agnostic: no preset branches, no config, no semantics beyond layout.
+ *  - PRESENTATION-agnostic: no presentation branches, no config, no semantics beyond layout.
  *
  * Deliberately NOT used for: the shell page frame (flex `min-h-full` wrapper —
  * ShellEngine owns that), button/cta `inline-flex` (those are primitive-internal),

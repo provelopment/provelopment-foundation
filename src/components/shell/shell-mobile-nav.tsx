@@ -19,7 +19,7 @@ import { createInitialDisclosure, disclosureReducer } from "@/components/ui/stat
  * The interactive mobile navigation layer: a trigger button (visible below
  * the engine's breakpoint) plus the client dialog primitive (Drawer or
  * OverlayNavigation per the resolved mobile pattern). Composes the shared
- * primitives from UI-03; owns NO preset policy and NO business rules — the
+ * primitives from UI-03; owns NO presentation policy and NO business rules — the
  * trigger label, ids, children (items) and pattern come from the composer.
  *
  * Deterministic SSR-safe behavior: the dialog is CLOSED by default and renders

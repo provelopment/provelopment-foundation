@@ -158,7 +158,7 @@ own `site.config.json`.
     "defaultLocale": "en",
     "locales": [{ "code": "en", "label": "English", "englishLabel": "English" }]
   },
-  "ui": { "preset": "adaptive" }
+  "ui": { "theme": { "mode": "system", "radius": "medium" } }
 }
 ```
 

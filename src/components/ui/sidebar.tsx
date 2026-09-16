@@ -48,8 +48,8 @@ import { createInitialDisclosure, disclosureReducer, type DisclosureState } from
  *    renderer styling: border, surface, hover/focus-visible/active affordance,
  *    pointer cursor) so it never reads as ordinary static heading text.
  *
- * Shared semantics, preset-agnostic: `collapsible === true` means the same
- * thing in every preset/custom composition (the preset only supplies the
+ * Shared semantics, presentation-agnostic: `collapsible === true` means the same
+ * thing in every Presentation/custom composition (the Presentation only supplies the
  * value). The UI-10 behavioral matrix covers focus/keyboard/scroll for the
  * MOBILE disclosure (a Drawer); this rail is not a modal.
  */

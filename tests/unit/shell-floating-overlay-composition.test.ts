@@ -39,7 +39,57 @@ vi.mock("next/navigation", () => ({
 import { SiteHeader } from "@/components/site/site-header";
 import { ShellEngine } from "@/components/shell";
 import { getDictionary } from "@/config/i18n";
-import { resolveShellPattern, resolveUiConfig } from "@/core/ui";
+import { resolveShellPattern, resolveUiConfig, type UiConfigInput } from "@/core/ui";
+/**
+ * The configuration leaves for the sidebar+drawer composition family (explicit
+ * engine configuration; the Foundation's canonical presentation is separate).
+ */
+const SIDEBAR_DRAWER_UI = {
+  navigation: { desktop: "sidebar", tablet: "collapsed-sidebar", mobile: "drawer" },
+  shell: { header: "standard", footer: "standard", sidebar: { collapsible: true } },
+  cta: { style: "standard" },
+  presentation: { typography: "utility", rhythm: "dense", surface: "instrument", header: "compact", hero: "concise" },
+  density: "compact",
+  content: { width: "wide" },
+  theme: { radius: "none" },
+} satisfies UiConfigInput;
+
+
+/**
+ * The configuration leaves for this composition family (explicit adopter/engine
+ * configuration — the Foundation's canonical presentation is separate).
+ */
+const FLOATING_OVERLAY_UI = {
+  "navigation": {
+    "desktop": "floating",
+    "tablet": "floating",
+    "mobile": "overlay"
+  },
+  "shell": {
+    "header": "minimal",
+    "footer": "standard",
+    "sidebar": {
+      "collapsible": false
+    }
+  },
+  "cta": {
+    "style": "standard"
+  },
+  "presentation": {
+    "typography": "expressive",
+    "rhythm": "spacious",
+    "surface": "layered",
+    "header": "elevated",
+    "hero": "showcase"
+  },
+  "density": "spacious",
+  "content": {
+    "width": "wide"
+  },
+  "theme": {
+    "radius": "large"
+  }
+} satisfies UiConfigInput;
 
 beforeEach(() => {
   mockForcedOpen = false;
@@ -49,17 +99,17 @@ afterEach(() => {
 });
 
 /**
- * UI-09 — Immersive preset through the Shell Engine + content layer.
+ * UI-09 — Floating-overlay preset through the Shell Engine + content layer.
  *
- * These server-render tests prove the Immersive SHELL is a declarative
- * composition (the fourth architectural proof after Classic UI-06, Focus UI-07,
- * Workspace UI-08), with ONE minimal vocabulary-driven content-layer consumer fix
+ * These server-render tests prove the Floating-overlay SHELL is a declarative
+ * composition (the fourth architectural proof after Floating-overlay UI-06, Floating-overlay UI-07,
+ * Floating-overlay UI-08), with ONE minimal vocabulary-driven content-layer consumer fix
  * that makes the already-declared mobile overlay CTA observable:
- *  - the decision core maps Immersive to aside trajectories (desktop `floating`
+ *  - the decision core maps Floating-overlay to aside trajectories (desktop `floating`
  *    and tablet `floating` both live in the ASIDE slot) plus the mobile `overlay`;
  *  - desktop/tablet `floating` resolves through the EXISTING aside composition —
  *    two mutually-exclusive responsive `Sidebar` bands with distinct ids (same
- *    machinery as Adaptive/Workspace). This proves what the architecture ACTUALLY
+ *    machinery as Floating-overlay/Floating-overlay). This proves what the architecture ACTUALLY
  *    guarantees; it does NOT assert any invented distinct floating treatment;
  *  - mobile `overlay` resolves through the existing `ShellMobileNav
  *    pattern="overlay"` → `OverlayNavigation` (a Drawer composition), closed by
@@ -88,13 +138,13 @@ const base = { locale: "en", pageBindings: [] };
 const allIds = (html: string) => [...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]);
 
 const rail = el("ul", null, el("li", null, el("a", { href: "/en/1" }, "One")));
-const immersive = resolveUiConfig({ preset: "immersive" });
+const immersive = resolveUiConfig(FLOATING_OVERLAY_UI);
 const immersiveWithCta = resolveUiConfig({
-  preset: "immersive",
+  ...FLOATING_OVERLAY_UI,
   cta: { enabled: true, action: "book", label: "Book Now", href: "/booking" },
 });
 
-describe("ShellEngine — Immersive desktop/tablet floating (existing aside composition)", () => {
+describe("ShellEngine — Floating-overlay desktop/tablet floating (existing aside composition)", () => {
   it("renders a standard header, the floating→aside trajectory, and NO bottom bar", () => {
     const html = renderToStaticMarkup(
       ShellEngine({
@@ -141,7 +191,7 @@ describe("ShellEngine — Immersive desktop/tablet floating (existing aside comp
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("renders NO aside CTA for preset-only immersive (enabled false)", () => {
+  it("renders NO aside CTA for defaults-only immersive (enabled false)", () => {
     const html = renderToStaticMarkup(
       ShellEngine({
         resolved: immersive,
@@ -162,7 +212,7 @@ describe("ShellEngine — Immersive desktop/tablet floating (existing aside comp
 
   it("enabled + label + NO href renders no aside CTA (a destination is never invented)", () => {
     const resolved = resolveUiConfig({
-      preset: "immersive",
+      ...FLOATING_OVERLAY_UI,
       cta: { enabled: true, action: "book", label: "Book Now" },
     });
     const html = renderToStaticMarkup(
@@ -198,7 +248,7 @@ describe("ShellEngine — Immersive desktop/tablet floating (existing aside comp
     );
     expect(html).toContain("nav-item-cta");
     expect(html).toContain("/booking");
-    expect(html).not.toContain("ui-cta-prominent"); // immersive profile style stays standard
+    expect(html).not.toContain("ui-cta-prominent"); // immersive composition style stays standard
     // One action, after the header and BEFORE the floating rail:
     expect(html.match(/nav-item-cta/g) ?? []).toHaveLength(1);
     expect(html.indexOf("nav-item-cta")).toBeGreaterThan(html.indexOf("<header>"));
@@ -207,7 +257,7 @@ describe("ShellEngine — Immersive desktop/tablet floating (existing aside comp
 
   it("disabled + label + href renders nothing", () => {
     const resolved = resolveUiConfig({
-      preset: "immersive",
+      ...FLOATING_OVERLAY_UI,
       cta: { enabled: false, action: "book", label: "Book", href: "/booking" },
     });
     const html = renderToStaticMarkup(
@@ -229,7 +279,7 @@ describe("ShellEngine — Immersive desktop/tablet floating (existing aside comp
   });
 });
 
-describe("ShellEngine — Immersive decision trajectories (floating aside, overlay, no bottom bar)", () => {
+describe("ShellEngine — Floating-overlay decision trajectories (floating aside, overlay, no bottom bar)", () => {
   it("resolveShellPattern(immersive) maps floating/floating to aside, overlay to header+trigger", () => {
     const d = resolveShellPattern(immersive);
     expect(d.desktop.primitiveKind).toBe("floating");
@@ -250,9 +300,9 @@ describe("ShellEngine — Immersive decision trajectories (floating aside, overl
   });
 });
 
-describe("SiteHeader — Immersive mobile overlay (navigation only; P6-3C: no CTA in the disclosure)", () => {
+describe("SiteHeader — Floating-overlay mobile overlay (navigation only; P6-3C: no CTA in the disclosure)", () => {
   const resolvedCta = resolveUiConfig({
-    preset: "immersive",
+    ...FLOATING_OVERLAY_UI,
     cta: { enabled: true, action: "book", label: "Book Now", href: "/booking" },
   });
 
@@ -263,7 +313,7 @@ describe("SiteHeader — Immersive mobile overlay (navigation only; P6-3C: no CT
     expect(html).not.toContain('id="shell-mobile-nav-panel"');
     expect(html).toContain('aria-expanded="false"');
     expect(html).toContain("md:hidden");
-    // Immersive (aside composition) exposes its single ≥md nav landmark in the
+    // Floating-overlay (aside composition) exposes its single ≥md nav landmark in the
     // shell SIDEBAR (both desktop+tablet slots are aside), not in the header:
     expect(html).not.toContain('aria-label="Primary navigation"');
     // Closed overlay contributes no dialog, no CTA, no links/focusables:
@@ -292,7 +342,7 @@ describe("SiteHeader — Immersive mobile overlay (navigation only; P6-3C: no CT
   it("OPEN overlay with enabled + label but NO href: still no CTA inside the dialog (never invented)", () => {
     mockForcedOpen = true;
     const resolvedNoHref = resolveUiConfig({
-      preset: "immersive",
+      ...FLOATING_OVERLAY_UI,
       cta: { enabled: true, action: "book", label: "Book Now" },
     });
     const html = renderToStaticMarkup(SiteHeader({ locale: "en", resolved: resolvedNoHref }));
@@ -303,7 +353,7 @@ describe("SiteHeader — Immersive mobile overlay (navigation only; P6-3C: no CT
   it("OPEN overlay with disabled CTA: still no CTA inside the dialog", () => {
     mockForcedOpen = true;
     const resolvedDisabled = resolveUiConfig({
-      preset: "immersive",
+      ...FLOATING_OVERLAY_UI,
       cta: { enabled: false, action: "book", label: "Book", href: "/booking" },
     });
     const html = renderToStaticMarkup(SiteHeader({ locale: "en", resolved: resolvedDisabled }));
@@ -313,7 +363,7 @@ describe("SiteHeader — Immersive mobile overlay (navigation only; P6-3C: no CT
   });
 
   it("the CTA does not leak into the desktop/header path for the overlay composition", () => {
-    // Immersive's desktop/tablet slots are aside and its mobile layer is the
+    // Floating-overlay's desktop/tablet slots are aside and its mobile layer is the
     // overlay: `SiteHeader` therefore composes NO CTA in any state (P6-3C — the
     // single Book Now is engine-composed in the shell's top region).
     const html = renderToStaticMarkup(SiteHeader({ locale: "en", resolved: resolvedCta }));
@@ -325,13 +375,13 @@ describe("SiteHeader — Immersive mobile overlay (navigation only; P6-3C: no CT
 });
 
 describe("SiteHeader — the disclosure consumer is CTA-free for every mobile pattern (P6-3C)", () => {
-  // A drawer-based preset (workspace) with a complete CTA composes NO CTA inside
+  // A drawer-based configuration (sidebar-drawer) with a complete CTA composes NO CTA inside
   // the DRAWER anymore: the one action lives in the shell's top region for every
   // pattern. Uses the same forced-open hook.
-  it("a drawer-pattern preset composes no CTA inside the drawer dialog", () => {
+  it("a drawer-pattern configuration composes no CTA inside the drawer dialog", () => {
     mockForcedOpen = true;
     const resolvedDrawer = resolveUiConfig({
-      preset: "workspace",
+      ...SIDEBAR_DRAWER_UI,
       cta: { enabled: true, action: "book", label: "Book", href: "/book" },
     });
     const html = renderToStaticMarkup(SiteHeader({ locale: "en", resolved: resolvedDrawer }));
@@ -344,8 +394,8 @@ describe("SiteHeader — the disclosure consumer is CTA-free for every mobile pa
   });
 });
 
-describe("SiteHeader — Immersive (overlay, not bottom-bar) never emits the bottom-bar-only i18n value", () => {
-  it("moreMenu dictionary value is absent from the Immersive header assembly", () => {
+describe("SiteHeader — Floating-overlay (overlay, not bottom-bar) never emits the bottom-bar-only i18n value", () => {
+  it("moreMenu dictionary value is absent from the Floating-overlay header assembly", () => {
     const dictionary = getDictionary("en");
     const html = renderToStaticMarkup(SiteHeader({ locale: "en", resolved: immersive }));
     expect(html).not.toContain(dictionary.navigation.moreMenu);

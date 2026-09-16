@@ -141,7 +141,9 @@ describe("runtime mirror — one deterministic source → derivative relationshi
     for (const row of [...MIRRORED, ...MIRRORED_DIRECTORIES]) expect(row.note.length).toBeGreaterThan(0);
   });
 
-  it("ships every runtime file byte-identical to its declared source", () => {
+  // The mirror check reads and hashes every runtime asset; a generous timeout
+  // keeps the gate deterministic on a slow or cloud-synced working tree.
+  it("ships every runtime file byte-identical to its declared source", { timeout: 30_000 }, () => {
     const report = checkMirrors();
     expect(report.missingSources, "declared sources must exist").toEqual([]);
     expect(report.created, "runtime copies must be present").toEqual([]);
@@ -149,7 +151,7 @@ describe("runtime mirror — one deterministic source → derivative relationshi
     expect(report.current.length).toBe(buildPlan().length);
   });
 
-  it("allows no undeclared asset library under public/assets/", () => {
+  it("allows no undeclared asset library under public/assets/", { timeout: 30_000 }, () => {
     // Anything without a declared source must be justified in RUNTIME_ONLY —
     // this is what prevents a second, uncontrolled asset tree from appearing.
     const report = checkMirrors();

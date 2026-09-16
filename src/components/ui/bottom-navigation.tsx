@@ -10,7 +10,7 @@ import { NavItem, type NavItemModel } from "./nav-item";
  *
  * No breakpoint/media-query logic lives here — the shell engine (UI-04)
  * decides WHEN a bottom bar is the appropriate composition. Props-driven,
- * preset-agnostic, serializable (no callbacks).
+ * presentation-agnostic, serializable (no callbacks).
  */
 export interface BottomNavigationProps {
   /** Accessible label for the landmark. */

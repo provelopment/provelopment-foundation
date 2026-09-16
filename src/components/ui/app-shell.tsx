@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
  * renderer, NOT a shell engine (master-ui-phase §6):
  *
  *  - it never decides top-vs-sidebar-vs-drawer navigation, responsive
- *    breakpoints, CTA/branding/navigation-transform policy, or preset
+ *    breakpoints, CTA/branding/navigation-transform policy, or Presentation
  *    selection — those belong to UI-04 (Shell Engine) and beyond;
  *  - it renders stable semantic landmarks so every composition yields an
  *    accessible page frame;

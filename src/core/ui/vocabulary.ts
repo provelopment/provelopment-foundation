@@ -3,31 +3,19 @@
  *
  * The closed value sets for the Foundation `ui` configuration namespace.
  * These constants are the SINGLE source of allowed values: the configuration
- * schema (`src/config/schema.ts`) and the preset profiles
- * (`src/core/ui/presets.ts`) both derive from them, so the documented
+ * schema (`src/config/schema.ts`) derives from them, so the documented
  * vocabulary and the schema can never drift.
  *
  * Framework-neutral by design (see ARCHITECTURE.md — UI System Architecture):
  * pure data + types only; never import React, Next.js, Tailwind, adapters, or
  * configuration from here.
  *
- * IMPORTANT (UI-01 contract, realized at UI-05): none of these values establish
- * a default. `ui.preset` is optional and the schema/loader never inject one.
- * The RESOLVED default personality is fixed at the UI-05 resolver selection
- * point (`FOUNDATION_UI_DEFAULTS.defaultPreset = "adaptive"`) — a resolution
- * policy, never a contract-surface default.
+ * IMPORTANT: none of these values establish a default. The Foundation's
+ * resolved default for each leaf lives in `defaults.ts`
+ * (`FOUNDATION_UI_DEFAULTS`) — a resolution policy, never a contract-surface
+ * default. There is ONE canonical Foundation presentation; the retired
+ * selectable-presentation (Presentation) vocabulary is deliberately gone.
  */
-
-/** The five initial Foundation UI presets (roadmap §5–§9, §24). */
-export const UI_PRESETS = [
-  "classic",
-  "adaptive",
-  "focus",
-  "workspace",
-  "immersive",
-] as const;
-/** A Foundation UI preset identifier. */
-export type UiPreset = (typeof UI_PRESETS)[number];
 
 /** Desktop navigation patterns (roadmap §11, §15). */
 export const DESKTOP_NAVIGATION_PATTERNS = [
@@ -101,11 +89,11 @@ export type ThemeRadius = (typeof THEME_RADII)[number];
 export const COLOR_HEX_PATTERN = /^#[0-9a-fA-F]{3}$|^#[0-9a-fA-F]{6}$|^#[0-9a-fA-F]{8}$/;
 
 /**
- * P5-3 — Presentation vocabulary (generalized preset-presentation dimensions).
+ * P5-3 — Presentation vocabulary (generalized Presentation-presentation dimensions).
  *
  * These are the closed value sets for the `ui.presentation` namespace. Each
- * dimension is a GENERALIZED presentation intent (never a preset name): a
- * preset profile selects one value per dimension, and any custom configuration
+ * dimension is a GENERALIZED presentation intent (never a fixed presentation name): a
+ * Presentation profile selects one value per dimension, and any custom configuration
  * may too. The renderer (CSS token layer + shared components) implements each
  * value; the resolver/schema derive from these arrays so the documented
  * vocabulary and the schema can never drift.
@@ -170,7 +158,7 @@ export type PresentationHero = (typeof PRESENTATION_HEROES)[number];
  * introduces. Like every other vocabulary, these are the SINGLE source of
  * allowed values: the configuration schema derives from them, and the shared
  * renderer implements each value with a small semantic rule — never arbitrary
- * CSS-through-JSON and never preset identity.
+ * CSS-through-JSON and never presentation identity.
  */
 
 /** Menu/control presentation modes — the SAME three-state contract used by the

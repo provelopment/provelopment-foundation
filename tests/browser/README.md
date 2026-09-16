@@ -1,6 +1,6 @@
 # UI-10 Browser Validation (D5)
 
-The committed cross-preset behavioral/accessibility gate. It drives a real
+The committed behavioral/accessibility gate. It drives a real
 headless Chrome/Chromium/Edge through **CDP** (Chrome DevTools Protocol) using
 **Node's built-in WebSocket + fetch** — deliberately **no** Playwright/Cypress/
 WebdriverIO/jsdom. It reuses the repository's established headless-Chrome/CDP

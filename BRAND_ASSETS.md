@@ -431,7 +431,7 @@ artwork; it documents only the file/rendering contract and the substitution path
 | Engine-required dimensions | **HARD: none.** No intrinsic size is required or read. Height is fixed by CSS; width follows the file's own aspect ratio |
 | Recommended production master | the approved Foundation living master (`logos/lockup-horizontal.svg` geometry: `viewBox="0 0 646.75 158"`, ratio ≈ 4.09:1). **RECOMMENDED only** |
 | Required SVG viewBox | none — any viewBox renders. Set `viewBox` so the mark scales predictably |
-| Transparency requirement | **RECOMMENDED:** transparent background. The header surface colour varies by theme/preset, so an opaque canvas shows as a rectangle |
+| Transparency requirement | **RECOMMENDED:** transparent background. The header surface colour varies by theme, so an opaque canvas shows as a rectangle |
 | Runtime sizing | **HARD:** rendered at `height: 2rem` (32px) with `width: auto`, `max-width: 100%`, `object-fit: contain` → aspect ratio preserved, never distorted, never cropped |
 | Runtime crop behaviour | **HARD: never cropped.** There is no `cover` and no clipping in this path |
 | Position / anchor | in flow, at the start of the header's left brand slot, inside the brand `<a href="/{locale}">` |
@@ -1004,7 +1004,7 @@ pnpm lint                   # ESLint
 pnpm assets:check           # runtime mirror is byte-identical to assets/** (no drift)
 pnpm test                   # unit + architecture-boundary tests
 pnpm build                  # production build (mirror + config validation run here)
-pnpm run test:browser       # CDP browser matrix across presets and viewports
+pnpm run test:browser       # CDP browser matrix across viewports
 ```
 
 Locking tests for this contract:

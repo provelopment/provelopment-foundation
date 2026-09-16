@@ -44,13 +44,13 @@ const sevenLinks = [1, 2, 3, 4, 5, 6, 7].map((n) => ({
 
 const allIds = (html: string) => [...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]);
 
-const adaptive = resolveUiConfig({ preset: "adaptive" });
+const adaptive = resolveUiConfig({});
 const adaptiveWithCta = resolveUiConfig({
-  preset: "adaptive",
+  
   cta: { enabled: true, action: "book", label: "Book", style: "standard" },
 });
 
-describe("ShellEngine — Adaptive aside composition (UI-05)", () => {
+describe("ShellEngine — Canonical aside composition (UI-05)", () => {
   it("renders TWO deterministic sidebar bands with distinct ids + mutually exclusive responsive classes", () => {
     const html = renderToStaticMarkup(
       ShellEngine({
@@ -134,7 +134,7 @@ describe("ShellEngine — Adaptive aside composition (UI-05)", () => {
   });
 });
 
-describe("ShellEngine — Adaptive bottom-bar composition (UI-05)", () => {
+describe("ShellEngine — Canonical bottom-bar composition (UI-05)", () => {
   it("renders a bottom bar with the first 4 items + a CLOSED More drawer for the remainder", () => {
     const html = renderToStaticMarkup(
       ShellEngine({

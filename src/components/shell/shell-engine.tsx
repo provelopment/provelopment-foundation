@@ -45,7 +45,7 @@ import { ShellBottomBar, type ShellBottomBarLink } from "./shell-bottom-bar";
  * BOUNDARIES (master §7 + UI-05 requirement E): the engine branches ONLY on
  * resolved VOCABULARY/STRUCTURAL values (`sidebar`, `collapsed-sidebar`,
  * `bottom-bar`, `drawer`, `overlay`, `top`, `header`/`aside` slots, ctaSlot)
- * — NEVER preset identity; it imports no configuration; config-derived context
+ * — NEVER presentation identity; it imports no configuration; config-derived context
  * (locale, pageBindings) arrives via props.
  */
 export interface ShellEngineProps {
@@ -185,7 +185,7 @@ export function ShellEngine({
   // explicit full-width basis it sits INLINE beside the sidebar (seen live:
   // header 36%, rail 240px beside it, main squeezed to 45%). The header must
   // break to its own full-width row above the rail/main row; the footer does the
-  // same below. Header-slot presets (asideActive === false) are untouched.
+  // same below. Header-slot compositions (asideActive === false) are untouched.
   const headerSlot = asideActive ? (
     <div className="md:w-full">{headerContent}</div>
   ) : (

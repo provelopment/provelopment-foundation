@@ -161,7 +161,7 @@ export interface UiFoundationDefaults {
 
 /**
  * The Foundation canonical defaults table (approved; see
- * .project-instructions/plan/archive/todo-milestone-ui-02.md §2.4, flattened at
+ * .project/plan/archive/todo-milestone-ui-02.md §2.4, flattened at
  * the single-presentation closure).
  *
  * The navigation/shell values below are the CANONICAL Foundation presentation:

@@ -778,7 +778,7 @@ subsystem. Findings:
   gate** — no banner, no consent cookie, no analytics-gating capability. A future
   consent capability would require a concrete requirement that cannot be satisfied
   through configuration/documentation alone;revisit conditions are recorded in
-  `.project-instructions/plan/archive/todo-milestone-u.md` (which now records the full audit.
+  `.project/plan/archive/todo-milestone-u.md` (which now records the full audit.
 ### Locale integration (Phase G composing)
 
 Maps composes with the Phase G locale resolution — there is no second
@@ -1135,8 +1135,8 @@ and its deployments were removed. The engine architecture those milestones
 established — vocabulary-driven resolution, identity-free shared primitives, a
 pure decision core, the shared modal/accessibility contract and the committed CDP
 matrix — is unchanged, and is still exactly what the canonical presentation runs
-on. Historical records: `.project-instructions/CHANGELOG.md`,
-`.project-instructions/memory/`, `.project-instructions/plan/archive/`.
+on. Historical records: `.project/CHANGELOG.md`,
+`.project/memory/`, `.project/plan/archive/`.
 ### Theme/layout separation
 
 The composition leaves (`shell`, `navigation`) select the layout & interaction

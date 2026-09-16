@@ -8,7 +8,7 @@ import { pageSlugFromPathname } from "./page-banner";
  * PageBackground (P12-BG — the reusable decorative background-graphic seam).
  *
  * The GLOBAL / PAGE-SPECIFIC background layer documented by the Background /
- * Watermark Contract (`.project-instructions/deployment-info/brand-system/visual/README.md`):
+ * Watermark Contract (`.project/deployment-info/brand-system/visual/README.md`):
  *
  *     background-<page>   (page-specific)
  *             ↓

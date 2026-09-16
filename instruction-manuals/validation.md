@@ -1,10 +1,10 @@
 # Validation — what "done" means
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-15.1`
+> **Manual revision:** `2026-09-16.2`
 > **Applicable Foundation baseline:** `v2026.09.11-foundation-p6-3c-banner-sidebar-cta`
 > **Foundation commit:** `f5c94da`
-> **Master authority:** Provelopment root project — `.project-instructions/deployment-info/instruction-manuals/`
+> **Master authority:** Provelopment root project — `.project/deployment-info/instruction-manuals/`
 >
 > This copy is **distributed**. It is byte-identical to the master. Edit the master
 > upstream and propagate; never edit a distributed copy in place.

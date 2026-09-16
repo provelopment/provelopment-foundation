@@ -2,7 +2,7 @@
 #
 # `instruction-manuals/` holds the DISTRIBUTED copies of the root master
 # instruction manuals. They must stay byte-identical to
-# `.project-instructions/deployment-info/instruction-manuals/` in the root
+# `.project/deployment-info/instruction-manuals/` in the root
 # governance repository and are verified with SHA-256 (procedure in that
 # directory's README). Automatic line-ending conversion would silently break
 # that contract on any machine with `core.autocrlf=true`, so the manuals are

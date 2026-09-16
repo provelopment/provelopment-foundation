@@ -22,10 +22,10 @@ import type { ResolvedUiConfig } from "@/core/ui";
 
 /**
  * UI-02 - Configuration Infrastructure resolution-behavior tests
- * (amended at the single-presentation closure — .project-instructions/CHANGELOG.md).
+ * (amended at the single-presentation closure — .project/CHANGELOG.md).
  *
  * These tests encode the DOCUMENTED RESOLUTION CONTRACT
- * (.project-instructions/plan/archive/todo-milestone-ui-02.md):
+ * (.project/plan/archive/todo-milestone-ui-02.md):
  *   1. there is ONE canonical presentation; a config that omits a leaf resolves
  *      the Foundation default for it — there is no selection layer;
  *   2. an explicit override wins over the Foundation default, deterministically

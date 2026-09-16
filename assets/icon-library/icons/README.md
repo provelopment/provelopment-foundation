@@ -36,7 +36,7 @@ initial colour, i.e. **black**. Neutral/interface colour is still the normal cas
 but through that seam it must be **encoded in the file** (a literal `stroke`/`fill`);
 expression signature colours are used only where an icon deliberately acts as a
 brand/accent cue. **Brand colour ≠ semantic colour.** (Browser-measured, not assumed;
-see the Foundation contract `ProvelopmentFoundation/BRAND_ASSETS.md` §11.)
+see the Foundation contract `01.foundation/BRAND_ASSETS.md` §11.)
 
 ## Rendering scale
 

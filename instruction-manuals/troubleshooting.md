@@ -1,9 +1,9 @@
 # Troubleshooting — known, recurring, resolved
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-16.2`
-> **Applicable Foundation baseline:** `v2026.09.11-foundation-p6-3c-banner-sidebar-cta`
-> **Foundation commit:** `f5c94da`
+> **Manual revision:** `2026-09-16.3`
+> **Procedure validated against:** `main` @ `dae07b4` (runtime commit `1114759`)
+> **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
 > **Master authority:** Provelopment root project — `.project/deployment-info/instruction-manuals/`
 >
 > This copy is **distributed**. It is byte-identical to the master. Edit the master
@@ -120,6 +120,63 @@ then commit the updated lockfile.
 
 **Prevention.** Treat a new site/package as a lockfile-changing event: refresh,
 commit the lockfile, then run the gate. Do not use `--no-frozen-lockfile` in CI.
+
+---
+
+## 6. A platform asset the release re-drew is silently kept stale after an upgrade
+
+**Symptom.** The upgrade is recorded, the fidelity/divergence check passes, every adopter
+builds — yet a platform-defined graphic (favicon, header/footer logo, sidebar icon) still
+renders the **previous** release's artwork. The reproduction step reports those files as
+"preserved adopter override(s)".
+
+**Cause.** Asset ownership is decided by comparing the site file with the *current* platform
+snapshot. Applying the release **replaces** that snapshot, so the comparison now runs against
+the new one: a platform role the release **re-drew** is indistinguishable from an adopter
+override, and the stale copy is "preserved". The evidence needed to classify correctly was
+destroyed by the re-vendor itself.
+
+**Safe resolution.**
+1. Run the upgrade helper's **compare** step before applying — or read the comparison you
+   already captured. It states which site asset files were **faithful copies** and which were
+   genuine **overrides**. That list is the authority.
+2. For every file the reproduction step preserved that appears on the **faithful** list,
+   refresh it from the new platform snapshot. Genuine adopter artwork never appears on that
+   list, so this recovery cannot damage it.
+3. Re-run the gate, then record the per-file outcome (kept / refreshed / relocated / retired).
+
+**Prevention.** Never re-vendor before capturing the comparison. Treat "preserved N
+override(s)" from a reproduction step run immediately after a re-vendor as a claim to verify,
+not a fact — cross-check it against the recorded faithful list. Nothing breaks in tests, so
+this defect is invisible without the comparison.
+
+---
+
+## 7. Deployment is silently "blocked" and production keeps serving the old release
+
+**Symptom.** A merge to the deploy branch is pushed, the CI gate is green, and validation
+passed locally — but the live site never changes. The deployment platform reports the
+deployment as **blocked** (not failed), and nothing in the build logs explains it.
+
+**Cause.** On a Git-integrated platform, the **commit author** is part of the deployment
+decision. A commit authored by an identity that is not a member of the platform account is
+**blocked** rather than built. The pattern is unmistakable once you look for it: every commit
+authored by the project's established identity deploys, and every commit authored by an
+automation identity does not. The platform reports neither a build error nor a missing
+trigger, so the failure surfaces only as "production did not change".
+
+**Safe resolution.**
+1. Compare the blocked commit's author with the author of the last deployment that *did*
+   succeed (`git log --format='%h %an <%ae>'`; the platform's commit statuses show which
+   commits deployed).
+2. Re-issue the change as a commit authored by the project's established identity, and push it
+   forward. **Do not** rewrite or force-push the blocked commits — fix forward.
+3. Verify the new commit's deployment reaches a success state, then verify the live site.
+
+**Prevention.** Author deployment-triggering commits under the project's established identity,
+and treat "the live site did not change" as a deployment problem to investigate immediately —
+never as caching. Record the identity in the project's docs so the next agent does not have to
+rediscover it.
 
 ---
 

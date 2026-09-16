@@ -1,9 +1,9 @@
 # Foundation Upgrade — absorbing a newer Foundation release
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-16.2`
-> **Applicable Foundation baseline:** `v2026.09.11-foundation-p6-3c-banner-sidebar-cta`
-> **Foundation commit:** `f5c94da`
+> **Manual revision:** `2026-09-16.3`
+> **Procedure validated against:** `main` @ `dae07b4` (runtime commit `1114759`)
+> **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
 > **Master authority:** Provelopment root project — `.project/deployment-info/instruction-manuals/`
 >
 > This copy is **distributed**. It is byte-identical to the master. Edit the master
@@ -80,6 +80,42 @@ toggle assets, navigation-item icons, OpenGraph/social art.
 reconciliation step below. Record which files are deliberate adopter overrides so
 the next upgrade does not have to guess.
 
+## One platform, several adopters (shared-architecture sequencing)
+
+Some repositories host **several adopters that intentionally share one Foundation-derived
+platform** — typically one vendored `platform/` snapshot reproduced into several sites by a
+single reproduce step, with a fidelity check proving each site's platform-owned source is
+byte-faithful to it.
+
+**When that is the architecture, keep it.** Do **not** split it into one platform per adopter
+merely to upgrade them "independently":
+
+- the upgrade is applied **once**, to the shared platform;
+- **one pilot adopter** is reconciled, proven and validated **first**;
+- the remaining adopters are then reconciled and validated **sequentially** against the same
+  upgraded platform.
+
+"One at a time" describes the **validation sequence, not the architecture**. A separate
+platform copy per adopter multiplies the maintenance surface — and the fidelity check that
+makes the shared model safe stops meaning anything.
+
+The pilot is what turns an upgrade into repeatable knowledge: one adopter is reconciled with
+full attention, its preservation proven by hash, and what that run teaches is folded back into
+this manual **before** the remaining adopters are touched.
+
+```text
+select target → compare → branch → apply once to the SHARED platform
+      → reconcile + validate the pilot adopter      (its own build must pass)
+      → reconcile + validate the remaining adopters (same platform, sequentially)
+      → full repository gate → deploy → verify live
+```
+
+A useful property of the pilot step: an adopter that is not yet reconciled **fails loudly and
+specifically** — a strict schema rejects a retired key at build time and names it. The pilot's
+success and the other adopters' open work are therefore distinguishable in a single run, and a
+shared-platform upgrade is never blocked simply because one adopter's business layer still
+needs reconciling.
+
 ## Procedure
 
 `discover → compare → branch → classify → vendor → reconcile → validate → review → accept → record → deploy → verify`
@@ -93,15 +129,42 @@ Record, from the adopter's own records (e.g. `platform/SOURCE.md`):
 - the repository, branch, and commit;
 - the working-tree state.
 
-### 2. Identify the target Foundation release
+### 2. Identify the target and pin it to an immutable ref
 
-List available releases and pick the **accepted** one:
+List available releases and pick the **accepted** one. Each command is in the shell
+it actually belongs to — the pipe syntax is **not** interchangeable:
 
-```bash
+```powershell
+# PowerShell (Windows)
 git ls-remote --tags <foundation-remote> | Select-String 'foundation'
 ```
 
-Confirm it is the release you intend to adopt (not merely the newest tag).
+```bash
+# bash / zsh (macOS, Linux)
+git ls-remote --tags <foundation-remote> | grep foundation
+```
+
+Confirm it is the release you intend to adopt — not merely the newest tag.
+
+**The target must be immutable.** Prefer, in order:
+
+1. an accepted **release tag**;
+2. the **exact 40-character commit SHA** of the accepted state, when no tag covers it.
+
+Never record a moving branch name (`main`) as the target: the snapshot would then
+not be reproducible. Record the commit for a tag as well — a tag can be re-pointed,
+a commit cannot.
+
+A vendoring helper that only supports `git clone --branch <ref>` cannot fetch a
+commit. Fetch the exact commit like this (verified; GitHub serves **full** SHAs but
+**not** abbreviations):
+
+```bash
+git init <work-dir> && cd <work-dir>
+git remote add origin <foundation-remote>
+git fetch --depth 1 origin <full-40-char-sha>
+git checkout --detach FETCH_HEAD
+```
 
 ### 3. Clean-repository requirement
 
@@ -152,18 +215,74 @@ hand-copy. See `troubleshooting.md` → *vendor/setup operation overwrites adopt
 
 Fetch the target release **read-only**, compare it against the vendored snapshot, and
 only then apply it. Use the project's documented mechanism (a compare-then-apply
-upgrade helper is typical). The vendored snapshot must be an exact copy of the
-accepted release — not a merge, not a subset.
+upgrade helper is typical). Run **compare** first, and review the real file-level result —
+added / modified / **deleted** per tree, plus the impact on each adopter — before any write.
 
-### 11. Regenerate / reproduce platform-owned site files
+- **Never run compare and apply concurrently.** Both use one working directory, so running
+  them in parallel corrupts the comparison.
+- **Upstream deletions are part of the delta.** A release that retires a feature *removes*
+  files (a preset module, its component, a retired asset role). The snapshot must end up with
+  exactly the target's file set: one that keeps a deleted file is not a copy of the release,
+  and the fidelity check will fail on it.
+- **Some paths are deliberately not auto-copied** by a vendoring helper — typically the
+  *canonical baseline* copies of the platform's own `content/` and `site.config.json`. The
+  compare output must still report them, and step 10a refreshes them by hand.
+- The vendored snapshot must be an exact copy of the accepted release — not a merge, not a
+  subset.
+
+### 10a. Prove the snapshot is byte-faithful before going further
+
+Re-run **compare** immediately after applying. For every vendored tree the result must be
+**zero** added / modified / deleted. Anything else means the snapshot is not the release you
+recorded — and the baseline record, and every later claim that depends on it, would be untrue.
+Only a clean comparison means the target is genuinely acquired.
+
+### 11. Regenerate / reproduce platform-owned site files — pilot first
 
 Run the project's reproduce step (typically `pnpm setup`) so each site receives the
-new platform identity. Then verify the protection from step 9 actually held:
+new platform identity. On a shared platform, reconcile and validate the **pilot adopter**
+first; do not treat the other adopters as a second source of truth in the meantime.
+
+Then verify the protection from step 9 actually held:
 
 - every adopter-owned or overridden file is **byte-identical to before** (prove it
   with hashes, not by eye);
 - **new** platform assets are present;
+- a platform asset the release **deleted** is gone from the sites too, or is explicitly and
+  deliberately kept (a reproduce step should report such files, never silently delete a
+  business asset);
 - the fidelity/divergence check passes.
+
+#### The asset-classification trap (read this before the reproduce step)
+
+Ownership of an asset role is decided by comparing the site's file with the **platform
+snapshot that was current when the adopter last reconciled** — the *pre-upgrade* snapshot.
+
+**The re-vendor destroys that reference.** Once the platform has been replaced, a reproduce
+step that compares site files with the *new* platform sees a platform role the release
+**re-drew** as "the site differs from the platform" and therefore reports it as a
+**preserved adopter override**. The site then silently keeps the **stale platform art**.
+
+So:
+
+1. Before applying, run the compare step and **record which site asset files are faithful
+   copies and which are genuine adopter overrides.** That list is the authority.
+2. After the reproduce step, if it reports a file from the *faithful* list as a "preserved
+   override", that is this trap: refresh those files from the new platform snapshot so the
+   release's art actually lands. Genuine adopter artwork is never in the faithful list, so
+   this recovery step cannot touch it.
+3. Record the outcome per file: kept / refreshed / relocated / retired.
+
+Skipping this leaves a project that believes it is at the new release while rendering the old
+release's default graphics — invisible to tests, because nothing is broken, only stale.
+
+#### Then the remaining adopters, one at a time
+
+Once the pilot's own build is green and its preservation is proven, reconcile the remaining
+adopters **sequentially** against the same platform. Reconcile only what the shared upgrade
+genuinely broke in their business layer — never revert the shared platform for one adopter, and
+never give one adopter its own platform copy. Prove each adopter's business layer survived
+before moving to the next.
 
 ### 12. Reconcile adopter configuration
 
@@ -183,6 +302,8 @@ Work through category 3 file by file:
 | Override of a role the adopter no longer uses? | Retire it, or relocate it to the adopter's business asset area and wire it deliberately. |
 | A **new** platform default the adopter needs? | Let it land. |
 | Override of a platform asset the release legitimately changed? | Compare both; keep the adopter override unless the platform change is required for correctness, then re-apply the adopter intent. |
+| A **faithful copy** (not an override) of a role the release re-drew? | Refresh it from the new snapshot — it is platform art the adopter never claimed. See the asset-classification trap in step 11. |
+| A role the release **deleted**, still present in a site? | Decide deliberately: retire it when it is stale platform art with no remaining reference; relocate and re-wire it when it is genuine business artwork. Never leave it undecided — an unreferenced stale asset is how "the upgrade looks done" diverges from "the upgrade is done". |
 
 Record the outcome (kept / relocated / retired / updated) as part of the upgrade evidence.
 
@@ -242,9 +363,18 @@ responsive behaviour.
 
 ### 23. Baseline / reference update
 
-Record the new release (tag + **exact commit**), the date, the reason, an
-upgrade-history row, and the applicable **manual revision** in the adopter's
-source-of-record file.
+Record the new release in the adopter's source-of-record file: the **exact commit**, the tag
+if one covers it, the date, the reason, an upgrade-history row, the applicable **manual
+revision**, and — on a shared platform — that every adopter consumes this one upgraded
+snapshot.
+
+Also record the **rollback point** (the pre-upgrade commit and its tag) and keep it until
+acceptance is complete. Then create the immutable **acceptance tag** for the completed upgrade
+state, so the accepted state is as reproducible as the baseline it replaced.
+
+Do not leave the previous release's metadata in place: a stale commit hash in the
+source-of-record is a false baseline claim, and the next upgrade will diff against a state the
+project is not actually running.
 
 ### 24. Documentation update
 
@@ -267,10 +397,22 @@ recorded baseline; and any deferred item or discovered Foundation deficiency.
    rollback) first, then revert source. The project stays reproducible at its recorded
    prior baseline throughout — that is why the baseline record matters.
 
+**Keep the rollback point until acceptance is complete**, and never delete it as "cleanup":
+the pre-upgrade commit, its tag, the upgrade branch's base commit, and the deployment
+rollback mechanism. On a shared platform the rollback point covers **every** adopter at once —
+which is precisely why the adopters are validated one at a time before the rollback point is
+retired.
+
 ## Never
 
 - Never invent a package/dependency mechanism for the Foundation; adoption is a
   committed vendored snapshot.
+- Never split an intentionally shared Foundation platform into one platform copy per adopter in
+  order to upgrade them separately — upgrade the shared platform once and validate the adopters
+  one at a time.
+- Never treat a reproduce step's "preserved override" as proof on its own, after a re-vendor:
+  classify against the *pre-upgrade* snapshot (step 11).
+- Never record a moving branch as the acquired baseline — pin the exact commit.
 - Never "upgrade" by deleting or replacing adopter content, configuration or branding.
 - Never overwrite an adopter override just because its pathname is platform-defined —
   and never freeze every old file so legitimate platform defaults can never land.

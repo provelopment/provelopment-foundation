@@ -1,9 +1,9 @@
 # Content Management — business content ownership
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-16.2`
-> **Applicable Foundation baseline:** `v2026.09.11-foundation-p6-3c-banner-sidebar-cta`
-> **Foundation commit:** `f5c94da`
+> **Manual revision:** `2026-09-16.3`
+> **Procedure validated against:** `main` @ `dae07b4` (runtime commit `1114759`)
+> **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
 > **Master authority:** Provelopment root project — `.project/deployment-info/instruction-manuals/`
 >
 > This copy is **distributed**. It is byte-identical to the master. Edit the master

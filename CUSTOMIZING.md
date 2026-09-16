@@ -2255,7 +2255,7 @@ Keep your clone connected to the template repository so you can pull
 improvements:
 
 ```bash
-git remote add upstream https://github.com/provelopment/provelopment.git
+git remote add upstream https://github.com/provelopment/provelopment-foundation.git
 git fetch upstream
 git merge upstream/main
 ```

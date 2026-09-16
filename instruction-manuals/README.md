@@ -1,13 +1,31 @@
 # Provelopment Foundation Instruction Manuals
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-16.2`
-> **Applicable Foundation baseline:** `main` @ `1114759`
-> **Foundation commit:** `1114759`
+> **Manual revision:** `2026-09-16.3`
+> **Procedure validated against:** `main` @ `dae07b4` (runtime commit `1114759`)
 > **Master authority:** Provelopment root project — `.project/deployment-info/instruction-manuals/`
+> **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
 >
 > This copy is **distributed**. It is byte-identical to the master. Edit the master
 > upstream and propagate; never edit a distributed copy in place.
+
+## How to read the version header
+
+Four different Foundation references are easy to confuse, and confusing them is how
+a project ends up claiming a baseline it never acquired. They are defined here and
+nowhere else; every manual's header uses exactly these terms.
+
+| Term | Meaning | Where it lives |
+| --- | --- | --- |
+| **Manual revision** | The version of this manual **set**. Bumped when the procedures change. Not a Foundation release. | The header of every manual + the version table below. |
+| **Procedure validated against** | The exact Foundation ref on which this revision of the procedure was last exercised **end to end, with recorded evidence**. A procedure statement is only trustworthy to this ref. | The header of every manual. |
+| **Adopter baseline** | The Foundation ref a **specific adopter project** actually runs. Independent per adopter. | That project's `platform/SOURCE.md`. |
+| **Target ref** | The immutable ref **selected for one upgrade** (a release tag, or a full commit SHA when no tag covers the accepted state — never a moving branch name). | The upgrade record + `platform/SOURCE.md` after acceptance. |
+
+A manual revision and an adopter baseline move **independently**: the manuals can
+improve without any adopter moving, and an adopter can upgrade without the manuals
+changing. `2026-09-11.1`, for example, was the manual revision a `f5c94da` adopter
+recorded while the master was already documenting `1114759`.
 
 ## Purpose
 
@@ -104,12 +122,26 @@ copy is explicit and the check is explicit.
 
 ## Version table
 
-| Manual revision | Foundation baseline | Commit | Date |
+| Manual revision | Procedure validated against | Commit | Date |
 | --- | --- | --- | --- |
+| `2026-09-16.3` | `main` (single canonical presentation) | `dae07b4` | 2026-09-16 |
 | `2026-09-16.2` | `main` (single canonical presentation) | `1114759` | 2026-09-16 |
 | `2026-09-16.1` | `main` (single canonical presentation) | `1114759` | 2026-09-16 |
 | `2026-09-15.1` | `v2026.09.11-foundation-p6-3c-banner-sidebar-cta` | `f5c94da` | 2026-09-15 |
 | `2026-09-11.1` | `v2026.09.11-foundation-p6-3c-banner-sidebar-cta` | `f5c94da` | 2026-09-11 |
+
+> `2026-09-16.3` is the first revision **validated by a real upgrade run**, not by
+> review. The DemoBusinesses shared-platform upgrade (`f5c94da` → `dae07b4`) was
+> executed with this procedure and its findings are folded back in:
+> `foundation-upgrade.md` now sequences **one pilot adopter before the remaining
+> adopters**, requires an **immutable target** (a full commit SHA when no tag covers
+> the accepted state) with the exact fetch command, states that the reproduce step
+> must **mirror** so upstream **deletions** land, and documents the two traps the run
+> exposed — the **asset-classification trap** after a re-vendor, and the
+> **canonical-baseline files** a vendoring helper does not copy. The header
+> terminology is defined above for the first time, which is why nine manuals
+> previously carried a stale, undefined baseline. See
+> `02.demo-businesses/docs/upgrades/foundation-dae07b4-shared-upgrade.md`.
 
 > `2026-09-16.2` re-issues the same procedures with the workspace paths updated by
 > the numbered-workspace migration: the governance home is now `.project/` (was

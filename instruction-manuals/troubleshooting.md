@@ -1,9 +1,9 @@
 # Troubleshooting — known, recurring, resolved
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-16.2`
-> **Applicable Foundation baseline:** `v2026.09.11-foundation-p6-3c-banner-sidebar-cta`
-> **Foundation commit:** `f5c94da`
+> **Manual revision:** `2026-09-16.3`
+> **Procedure validated against:** `main` @ `dae07b4` (runtime commit `1114759`)
+> **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
 > **Master authority:** Provelopment root project — `.project/deployment-info/instruction-manuals/`
 >
 > This copy is **distributed**. It is byte-identical to the master. Edit the master
@@ -120,6 +120,35 @@ then commit the updated lockfile.
 
 **Prevention.** Treat a new site/package as a lockfile-changing event: refresh,
 commit the lockfile, then run the gate. Do not use `--no-frozen-lockfile` in CI.
+
+---
+
+## 6. A platform asset the release re-drew is silently kept stale after an upgrade
+
+**Symptom.** The upgrade is recorded, the fidelity/divergence check passes, every adopter
+builds — yet a platform-defined graphic (favicon, header/footer logo, sidebar icon) still
+renders the **previous** release's artwork. The reproduction step reports those files as
+"preserved adopter override(s)".
+
+**Cause.** Asset ownership is decided by comparing the site file with the *current* platform
+snapshot. Applying the release **replaces** that snapshot, so the comparison now runs against
+the new one: a platform role the release **re-drew** is indistinguishable from an adopter
+override, and the stale copy is "preserved". The evidence needed to classify correctly was
+destroyed by the re-vendor itself.
+
+**Safe resolution.**
+1. Run the upgrade helper's **compare** step before applying — or read the comparison you
+   already captured. It states which site asset files were **faithful copies** and which were
+   genuine **overrides**. That list is the authority.
+2. For every file the reproduction step preserved that appears on the **faithful** list,
+   refresh it from the new platform snapshot. Genuine adopter artwork never appears on that
+   list, so this recovery cannot damage it.
+3. Re-run the gate, then record the per-file outcome (kept / refreshed / relocated / retired).
+
+**Prevention.** Never re-vendor before capturing the comparison. Treat "preserved N
+override(s)" from a reproduction step run immediately after a re-vendor as a claim to verify,
+not a fact — cross-check it against the recorded faithful list. Nothing breaks in tests, so
+this defect is invisible without the comparison.
 
 ---
 

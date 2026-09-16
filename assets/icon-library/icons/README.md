@@ -4,7 +4,8 @@
 source/catalog icon files for the Provelopment graphic system. They are **not** yet
 Foundation runtime assets (see *Runtime status*).
 
-See the architecture spec at [`../../iconography-and-graphic-assets.md`](../../brand-system/visual/README.md).
+See the architecture spec in the root project's brand-system authority:
+`.project/deployment-info/brand-system/visual/README.md`.
 
 ## Purpose
 

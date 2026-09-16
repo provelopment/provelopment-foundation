@@ -3,7 +3,7 @@
 > **Scope:** the brand *system* specification — identity, palette, typography,
 > logo anatomy and the downstream contract. The **authoritative technical asset
 > contract** (every runtime role, filename, format, geometry rule, availability
-> behaviour and swap procedure) lives in [`../BRAND_ASSETS.md`](../BRAND_ASSETS.md).
+> behaviour and swap procedure) lives in [`BRAND_ASSETS.md`](../../BRAND_ASSETS.md).
 > This document points at it rather than duplicating it; where the two differ,
 > `BRAND_ASSETS.md` governs.
 >
@@ -99,7 +99,7 @@ legibility across web and mobile viewports:
 > The **complete and authoritative** role / filename / format / geometry contract
 > — every runtime asset role, its config key, its fallback and availability
 > behaviour, and the replacement procedure — is
-> [`../BRAND_ASSETS.md`](../BRAND_ASSETS.md). The summary below is orientation
+> [`BRAND_ASSETS.md`](../../BRAND_ASSETS.md). The summary below is orientation
 > only; where the two differ, `BRAND_ASSETS.md` governs.
 
 Asset roles are **config-driven**. Each role is declared under `site.assets` in
@@ -201,5 +201,5 @@ export async function generateMetadata(): Promise<Metadata> {
 
 To change any branding value, edit `site.config.json` (or replace the file in
 `public/assets/`) — never the component or the metadata generator. See
-[`../CUSTOMIZING.md`](../CUSTOMIZING.md) for the full configuration schema and
-[`../BRAND_ASSETS.md`](../BRAND_ASSETS.md) for the asset contract.
+[`CUSTOMIZING.md`](../../CUSTOMIZING.md) for the full configuration schema and
+[`BRAND_ASSETS.md`](../../BRAND_ASSETS.md) for the asset contract.

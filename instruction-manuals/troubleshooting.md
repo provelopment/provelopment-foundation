@@ -152,6 +152,34 @@ this defect is invisible without the comparison.
 
 ---
 
+## 7. Deployment is silently "blocked" and production keeps serving the old release
+
+**Symptom.** A merge to the deploy branch is pushed, the CI gate is green, and validation
+passed locally — but the live site never changes. The deployment platform reports the
+deployment as **blocked** (not failed), and nothing in the build logs explains it.
+
+**Cause.** On a Git-integrated platform, the **commit author** is part of the deployment
+decision. A commit authored by an identity that is not a member of the platform account is
+**blocked** rather than built. The pattern is unmistakable once you look for it: every commit
+authored by the project's established identity deploys, and every commit authored by an
+automation identity does not. The platform reports neither a build error nor a missing
+trigger, so the failure surfaces only as "production did not change".
+
+**Safe resolution.**
+1. Compare the blocked commit's author with the author of the last deployment that *did*
+   succeed (`git log --format='%h %an <%ae>'`; the platform's commit statuses show which
+   commits deployed).
+2. Re-issue the change as a commit authored by the project's established identity, and push it
+   forward. **Do not** rewrite or force-push the blocked commits — fix forward.
+3. Verify the new commit's deployment reaches a success state, then verify the live site.
+
+**Prevention.** Author deployment-triggering commits under the project's established identity,
+and treat "the live site did not change" as a deployment problem to investigate immediately —
+never as caching. Record the identity in the project's docs so the next agent does not have to
+rediscover it.
+
+---
+
 ## Adding an entry
 
 Add a problem here only when it has **recurred** and the resolution is **proven**.

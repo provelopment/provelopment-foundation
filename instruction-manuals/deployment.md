@@ -29,6 +29,13 @@ worked examples) lives in the project's own deployment guide. This manual is the
   build.**
 - The repository is clean and the deploy branch is the intended one.
 - The site's configured canonical URL matches the domain you are about to serve.
+- **The commit that triggers the deployment is authored by an identity the deployment
+  platform accepts.** Where a platform (Vercel, and others) builds from Git, a commit authored
+  by someone who is not a member of the platform account can be **blocked** instead of built.
+  A blocked deployment is neither built nor reported as a build failure — the site simply keeps
+  serving the previous release, so a green validation gate can coexist with an unchanged
+  production site. Commit under the project's established identity
+  (`troubleshooting.md` entry 7).
 - Deployment configuration is normally an **owner action**: prepare the exact
   proposed change (provider project, root directory, domain, DNS record) and hand
   it over rather than improvising infrastructure.

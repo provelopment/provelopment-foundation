@@ -142,6 +142,11 @@ copy is explicit and the check is explicit.
 > terminology is defined above for the first time, which is why nine manuals
 > previously carried a stale, undefined baseline. See
 > `02.demo-businesses/docs/upgrades/foundation-dae07b4-shared-upgrade.md`.
+>
+> The same upgrade pass also produced the **deployment-blocking** finding recorded in
+> `deployment.md` (Preconditions) and `troubleshooting.md` entry 7: a Git-integrated platform
+> can **block** a deployment whose commit author is not a member of the platform account, so a
+> green gate can coexist with an unchanged production site.
 
 > `2026-09-16.2` re-issues the same procedures with the workspace paths updated by
 > the numbered-workspace migration: the governance home is now `.project/` (was

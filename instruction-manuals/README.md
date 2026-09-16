@@ -1,9 +1,9 @@
 # Provelopment Foundation Instruction Manuals
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-15.1`
-> **Applicable Foundation baseline:** `v2026.09.11-foundation-p6-3c-banner-sidebar-cta`
-> **Foundation commit:** `f5c94da`
+> **Manual revision:** `2026-09-16.1`
+> **Applicable Foundation baseline:** `main` @ `1114759`
+> **Foundation commit:** `1114759`
 > **Master authority:** Provelopment root project — `.project-instructions/deployment-info/instruction-manuals/`
 >
 > This copy is **distributed**. It is byte-identical to the master. Edit the master
@@ -30,7 +30,7 @@ are operational procedure, not marketing.
 | | Location | Role |
 | --- | --- | --- |
 | **Master** | Provelopment root project / `.project-instructions/deployment-info/instruction-manuals/` | Authoritative. All edits happen here. |
-| **Distributed** | `ProvelopmentFoundation/instruction-manuals/`, `FoundationDemos/instruction-manuals/`, and every Foundation-derived adopter project | Byte-identical copies of the master. |
+| **Distributed** | `ProvelopmentFoundation/instruction-manuals/` and every Foundation-derived adopter project | Byte-identical copies of the master. |
 
 **Edit rule:** a distributed copy is never edited independently. If a manual is
 wrong or incomplete, fix the master, review it, then propagate. Two divergent
@@ -56,12 +56,10 @@ Run this when the master changes, and once per accepted Foundation release.
    ```powershell
    # run from the root repository (the one that contains .project-instructions/)
    Copy-Item '.project-instructions\deployment-info\instruction-manuals\*.md'  'ProvelopmentFoundation\instruction-manuals\' -Force
-   Copy-Item '.project-instructions\deployment-info\instruction-manuals\*.md'  'FoundationDemos\instruction-manuals\'      -Force
    ```
    ```bash
    # run from the root repository
    cp .project-instructions/deployment-info/instruction-manuals/*.md ProvelopmentFoundation/instruction-manuals/
-   cp .project-instructions/deployment-info/instruction-manuals/*.md FoundationDemos/instruction-manuals/
    ```
 4. **Verify the exact file list** — the copies must contain exactly the master's
    files: no extras, no omissions.
@@ -80,8 +78,7 @@ Run this when the master changes, and once per accepted Foundation release.
 # run from the root repository
 $master = '.project-instructions\deployment-info\instruction-manuals'
 foreach ($copy in @(
-  'ProvelopmentFoundation\instruction-manuals',
-  'FoundationDemos\instruction-manuals')) {
+  'ProvelopmentFoundation\instruction-manuals')) {
   Write-Host "== $copy"
   $a = Get-ChildItem $master -File | Sort-Object Name
   $b = Get-ChildItem $copy   -File | Sort-Object Name
@@ -99,7 +96,6 @@ foreach ($copy in @(
 ```bash
 # run from the root repository
 diff -r .project-instructions/deployment-info/instruction-manuals ProvelopmentFoundation/instruction-manuals && echo "FOUNDATION PARITY OK"
-diff -r .project-instructions/deployment-info/instruction-manuals FoundationDemos/instruction-manuals      && echo "DEMOS PARITY OK"
 ```
 
 `diff -r` is silent and exits 0 only when every file is byte-identical — that is
@@ -110,9 +106,14 @@ copy is explicit and the check is explicit.
 
 | Manual revision | Foundation baseline | Commit | Date |
 | --- | --- | --- | --- |
+| `2026-09-16.1` | `main` (single canonical presentation) | `1114759` | 2026-09-16 |
 | `2026-09-15.1` | `v2026.09.11-foundation-p6-3c-banner-sidebar-cta` | `f5c94da` | 2026-09-15 |
 | `2026-09-11.1` | `v2026.09.11-foundation-p6-3c-banner-sidebar-cta` | `f5c94da` | 2026-09-11 |
 
+> `2026-09-16.1` re-issues the same procedures with the propagation/parity cycle
+> updated for the single-presentation architecture: the retired selectable-
+> presentation (preset) feature and the retired sibling demo repository are no
+> longer part of the cycle, and the parity check covers Foundation only.
 > `2026-09-15.1` re-issues the same procedures with the master authority path moved to
 > `.project-instructions/deployment-info/instruction-manuals/` (governance consolidation).
 > No procedure changed; the propagation and parity checks above are unchanged.

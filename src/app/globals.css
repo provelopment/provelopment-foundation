@@ -563,7 +563,7 @@ html[data-ui-header="elevated"] .ui-site-header {
 
 /* ── P12-HG optional decorative header band / graphic ─────────────────────
  *
- * The Header Decorative Graphic Contract layer (.project-instructions/deployment-info/brand-system/
+ * The Header Decorative Graphic Contract layer (the maintainer's brand-system rulebook (
  * visual/README.md): ONE optional global `header-graphic` role. It is painted
  * as the HEADER'S OWN BACKGROUND by `headerGraphicBandProps`
  * (`src/components/site/header-graphic.ts`), which emits the marker attribute
@@ -1111,7 +1111,7 @@ html[data-ui-hero="showcase"] .home-hero {
 
 /* ── P12-SG optional decorative STATUS graphic (error / not-found) ───────────
  *
- * The Status Decorative Graphic Contract layer (.project-instructions/deployment-info/brand-system/
+ * The Status Decorative Graphic Contract layer (the maintainer's brand-system rulebook (
  * visual/README.md): ONE optional global `status-graphic` role shared by BOTH
  * status surfaces, because they render the SAME status frame. `StatusGraphic`
  * (`src/components/site/status-graphic.tsx`) renders this box as the FIRST child

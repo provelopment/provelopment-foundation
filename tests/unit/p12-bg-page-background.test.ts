@@ -58,7 +58,7 @@ const mapOf = (configured: Record<string, string>) => availableBackgroundMap(con
  * P12-BG — the reusable decorative background-graphic capability.
  *
  * The Background / Watermark Contract
- * (`.project/deployment-info/brand-system/visual/README.md`) is:
+ * (`the maintainer's brand-system visual rulebook`) is:
  *
  *     background-<page>  →  background-all  →  none
  *

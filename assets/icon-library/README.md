@@ -13,8 +13,8 @@ which belongs to one specific expression or business.
   recoloured to a brand colour.
 - **Brand assets** -> one expression's or business's own identity. The living brand
   packs are **not** part of this repository: they are governed from the root
-  project, at `.project/deployment-info/brands-provelopment/` and
-  `.project/deployment-info/brands-businesses/`.
+  project, at the maintainer's Provelopment brand pack and
+  the maintainer's business brand packs.
 
 ## Categories
 
@@ -30,8 +30,8 @@ A deployment copies the roles it requires into its own **deployment-specific**
 `icon-services.svg`), so the graphic can later be replaced without any
 configuration change. The universal library is the shared source; the
 deployment-specific destination is the per-deployment `icons/` directory
-(e.g. `.project/deployment-info/brands-provelopment/provelopment-com/icons/`, and
-later `.project/deployment-info/brands-businesses/<business-id>/icons/`). Icon roles
+(e.g. the maintainer's Provelopment brand pack icons, and
+later the maintainer's business brand pack icons). Icon roles
 are owned by [`icons/README.md`](icons/README.md).
 
 ## Provenance and licensing

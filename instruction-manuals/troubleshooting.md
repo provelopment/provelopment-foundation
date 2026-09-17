@@ -207,11 +207,18 @@ credentials** (`vercel whoami` → *No existing credentials found*; no `VERCEL_T
 3. Record the verified current DNS state (existing sibling hosts, and the MX/TXT records that
    must not be modified) so the handover cannot damage mail.
 4. Report the deployment as **pending owner action** — never as deployed.
+5. When the owner has completed it, **verify against the canonical host**, not the raw deployment
+   URL: provider deployment protection serves a **login page with HTTP 200** from the
+   `*.vercel.app` address, so a status-code check there proves nothing. Confirm routes, the
+   canonical link, `og:site_name`, the favicon, the header/footer identity, the apex → canonical
+   redirect, and that mail (MX/TXT) still resolves — then update the project record (a bootstrap
+   record's deployment section must state the **verified live state**, not the intended one).
 
 **Prevention.** Treat "is a provider project connected to this repository?" as a **precondition
 of the bootstrap**, alongside the first green gate. Verify it with evidence (provider auth
-state, repository deployment statuses) rather than assuming a push will deploy. — See
-`deployment.md` (Preconditions, and *Domain and DNS*).
+state, repository deployment statuses) rather than assuming a push will deploy, and confirm the
+provider project's existence **again after the bootstrap** — a project can be created while a
+task is in flight.
 
 ---
 

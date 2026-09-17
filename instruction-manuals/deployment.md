@@ -98,6 +98,14 @@ node tests/browser/footer-audit.mjs https://<live-host>
 Then confirm by hand: canonical host in the page head equals the live host, the
 sitemap uses the live host, and the favicon loads.
 
+> **Verify the canonical host, never the raw deployment URL.** A provider that protects
+> non-production deployments (Vercel's deployment protection, and equivalents) serves a **login page
+> with HTTP 200** from the `*.vercel.app` / deployment-specific URL. A status-code-only check
+> against that URL is green and proves **nothing**. Always check the **canonical production
+> hostname** and inspect the rendered content: `<title>`, the canonical link, `og:site_name`, the
+> favicon, and the header/footer identity. Also re-check the apex → canonical redirect and confirm
+> mail records (MX/TXT) are intact.
+
 ## Rollback
 
 1. **Traffic-level (fastest):** promote the previous known-good deployment to

@@ -1,8 +1,8 @@
 # Site Customization — configuration-first operation
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-16.3`
-> **Procedure validated against:** `main` @ `dae07b4` (runtime commit `1114759`)
+> **Manual revision:** `2026-09-17.1`
+> **Procedure validated against:** `main` @ `ccc29a5` (runtime commit `1114759`)
 > **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
 > **Master authority:** Provelopment root project — `.project/deployment-info/instruction-manuals/`
 >

@@ -1,7 +1,7 @@
 {
   "home": {
-    "tagline": "A production-grade, configurable website foundation for small businesses",
-    "description": "Provelopment Foundation is an open website foundation for small businesses — a multilingual, configuration-first template that turns JSON, Markdown, and assets into a complete, accessible site. Reuse the proven base instead of starting from scratch."
+    "tagline": "A configurable site foundation for your business",
+    "description": "This is the template's starter content. Replace it — and the site name in site.config.json — with your own, then add your pages under content/ and your graphics in assets/placeholders/."
   },
   "sections": {
     "about": "About",
@@ -16,14 +16,7 @@
     "showSidebar": "Show Sidebar",
     "hideSidebar": "Hide Sidebar",
     "items": {
-      "/": "Home",
-      "/about": "About",
-      "/resources": "Resources",
-      "/offerings": "Offerings",
-      "/connect": "Connect",
-      "/testimonials": "Testimonials",
-      "/portfolio": "Portfolio",
-      "/blog": "Blog"
+      "/": "Home"
     }
   },
   "notFound": {
@@ -84,7 +77,7 @@
     "externalCta": "Learn more",
     "backToOfferings": "Back to offerings",
     "disclaimerTitle": "Template Demonstration",
-    "disclaimerBody": "The offerings listed below are fictional placeholders for demonstration purposes only and are not offered by the Provelopment Foundation. They can be configured by editing the markdown files in content/offerings/ or disabled via features.offerings in site.config.json.",
+    "disclaimerBody": "The offerings listed below are fictional placeholders for demonstration purposes only. They are configured by the markdown files in content/offerings/ and can be disabled via features.offerings in site.config.json.",
     "currencyNotice": "Prices displayed in {currency} ({symbol}). Select an operating city in the Location menu to view local currencies."
   },
   "booking": {

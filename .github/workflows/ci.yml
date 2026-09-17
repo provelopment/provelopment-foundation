@@ -20,6 +20,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - run: pnpm assets:check
+
       - run: pnpm exec tsc --noEmit
 
       - run: pnpm lint

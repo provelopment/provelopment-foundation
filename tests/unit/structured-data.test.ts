@@ -89,32 +89,43 @@ describe("StructuredData — global organization/local-business JSON-LD (Phase S
 });
 
 describe("RegionStructuredData — regional JSON-LD (Phase S enrichment)", () => {
+  // FS1 — the generic template configures NO operating regions (regions are
+  // adopter data; the private reference site is the one that ships them). The
+  // absence case is asserted unconditionally, and the regional rendering contract
+  // keeps its coverage whenever a region IS configured.
   const region = resolveRegion(siteConfig.regions, "toronto");
-  if (!region) throw new Error("config has no toronto region");
 
-  it("emits @id/url from the regional canonical URL plus sameAs (both branches)", () => {
-    const html = renderToStaticMarkup(
-      RegionStructuredData({ region, canonicalUrl: `${siteConfig.url}/en/toronto` }),
-    );
-    const node = jsonLd(html);
-
-    expect(node["@type"]).toBe("LocalBusiness");
-    expect(node["@id"]).toBe(`${siteConfig.url}/en/toronto`);
-    expect(node.url).toBe(`${siteConfig.url}/en/toronto`);
-    if (siteConfig.socialLinks.length > 0) {
-      expect(node.sameAs).toEqual(siteConfig.socialLinks.map((link) => link.href));
-    } else {
-      expect(node.sameAs).toBeUndefined();
-    }
+  it("configures no operating regions by default", () => {
+    expect(Object.keys(siteConfig.regions)).toEqual([]);
   });
 
-  it("keeps the pre-existing operational fields intact", () => {
-    const html = renderToStaticMarkup(
-      RegionStructuredData({ region, canonicalUrl: `${siteConfig.url}/en/toronto` }),
-    );
-    expect(html).toContain(region.address.street);
-    expect(html).toContain("Monday");
-    expect(html).toContain('"@type":"LocalBusiness"');
+  describe.runIf(Boolean(region))("with a configured region", () => {
+    const configured = region!;
+
+    it("emits @id/url from the regional canonical URL plus sameAs (both branches)", () => {
+      const html = renderToStaticMarkup(
+        RegionStructuredData({ region: configured, canonicalUrl: `${siteConfig.url}/en/toronto` }),
+      );
+      const node = jsonLd(html);
+
+      expect(node["@type"]).toBe("LocalBusiness");
+      expect(node["@id"]).toBe(`${siteConfig.url}/en/toronto`);
+      expect(node.url).toBe(`${siteConfig.url}/en/toronto`);
+      if (siteConfig.socialLinks.length > 0) {
+        expect(node.sameAs).toEqual(siteConfig.socialLinks.map((link) => link.href));
+      } else {
+        expect(node.sameAs).toBeUndefined();
+      }
+    });
+
+    it("keeps the pre-existing operational fields intact", () => {
+      const html = renderToStaticMarkup(
+        RegionStructuredData({ region: configured, canonicalUrl: `${siteConfig.url}/en/toronto` }),
+      );
+      expect(html).toContain(configured.address.street);
+      expect(html).toContain("Monday");
+      expect(html).toContain('"@type":"LocalBusiness"');
+    });
   });
 });
 describe("OfferingStructuredData — Service JSON-LD (Phase S)", () => {

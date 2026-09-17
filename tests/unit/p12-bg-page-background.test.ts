@@ -37,7 +37,12 @@ const bodyBlock = /\nbody\s*\{([^}]*)\}/.exec(globals)?.[1] ?? "";
  */
 const REAL_PAGE = "logo-header.svg";
 const REAL_GLOBAL = "logo-footer.svg";
-const REAL_BANNER = "banner-home.png";
+/**
+ * FS1 — the generic template ships NO banner artwork, so the banner fixture is a
+ * shipped neutral file too: the resolver is artwork-agnostic, which keeps the
+ * banner ROLE proven independently of which artwork an adopter integrates.
+ */
+const REAL_BANNER = "favicon.svg";
 
 /** An FS-4-style absolute URL (the `site.assets.*` value shape). */
 const realUrl = (name: string) => `https://www.example.com/assets/${name}`;
@@ -69,12 +74,11 @@ describe("P12-BG — configuration contract", () => {
     // A config that knows nothing about background graphics must still parse.
     expect(siteAssetsSchema.safeParse({ logo: realUrl("logo-header.svg") }).success).toBe(true);
     expect(siteAssetsSchema.safeParse({}).success).toBe(true);
-    // APPROVED-ASSET INTEGRATION — the canonical Foundation now ACTIVATES the
-    // ONE reserved global role (`all`) against the shipped approved graphic…
-    expect(siteConfig.assets?.backgrounds?.all).toBe(realUrl("background-all.svg"));
-    // …while "no background configured" stays a fully-supported adopter state:
-    // an absent record resolves to an EMPTY map (no graphic anywhere), so an
-    // adopter may remove the role without any code or capability change.
+    // FS1 — the generic template activates no background graphic: the role is a
+    // fully-supported OPTIONAL capability, and "nothing configured" resolves to an
+    // EMPTY map (no graphic anywhere). An adopter activates it with one key, or by
+    // replacing the shipped runtime file.
+    expect(siteConfig.assets?.backgrounds).toBeUndefined();
     expect(availableBackgroundMap(undefined)).toEqual({});
   });
 

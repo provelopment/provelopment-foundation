@@ -118,19 +118,39 @@ const GENERIC_ICON_FILES = [
 const PLACEHOLDER = "tests/fixtures/placeholder-assets/header-graphic.svg";
 
 describe("swap contract — the configured role inventory", () => {
-  it("every configured role names its canonical runtime filename", () => {
+  it("names the canonical runtime filename for every role the platform supports", () => {
+    // FS1 — the role INVENTORY is the platform capability and is always present;
+    // the shipped generic template simply configures none of the optional roles.
     for (const role of CONFIGURED_ROLES) {
-      expect(role.url, `${role.key} must be configured`).toBeTruthy();
-      expect(role.url?.startsWith("https://"), `${role.key} must be an absolute URL`).toBe(true);
+      expect(role.file, `${role.key} must name a canonical role file`).toMatch(/^[a-z0-9-]+\.(svg|png)$/);
+      if (role.url === undefined) continue;
+      // A role that IS configured must be an absolute URL naming that role file.
+      expect(role.url.startsWith("https://"), `${role.key} must be an absolute URL`).toBe(true);
       expect(pathnameOf(role.url), `${role.key} must name its role file`).toBe(
         `/assets/${role.file}`,
       );
     }
   });
 
-  it("every role's backing file ships under public/assets/", () => {
-    for (const role of CONFIGURED_ROLES) {
-      expect(existsSync(runtimeAsset(role.file)), `${role.file} must be on disk`).toBe(true);
+  it("ships the identity + blank decorative role files, and no artwork-only role", () => {
+    // Roles a fresh clone actually RENDERS: the identity roles and the blank
+    // decorative defaults (which draw nothing).
+    for (const file of [
+      "logo-header.svg",
+      "logo-footer.svg",
+      "favicon.svg",
+      "header-graphic.svg",
+      "footer-graphic.svg",
+    ]) {
+      expect(existsSync(runtimeAsset(file)), `${file} must ship`).toBe(true);
+    }
+    // Artwork-only roles ship NOTHING until an adopter provides artwork: the
+    // template never invents example imagery.
+    for (const file of ["og-image.png", "background-all.svg", "status-graphic.svg"]) {
+      expect(existsSync(runtimeAsset(file)), `${file} must not ship with the template`).toBe(false);
+    }
+    for (const page of BANNER_PAGES) {
+      expect(existsSync(runtimeAsset(`banner-${page}.png`)), `banner-${page}.png must not ship`).toBe(false);
     }
   });
 
@@ -317,8 +337,9 @@ describe("swap contract — the neutral placeholder is a source fixture, and the
       );
       expect(shipped, `${role} must carry no brand colour`).not.toMatch(/#4F7CAC/i);
       expect(shipped, `${role} must declare a viewBox`).toMatch(/viewBox="[^"]+"/);
-      // …while the branded Foundation artwork for the role is preserved as source.
-      expect(existsSync(path.join(ROOT, "assets", "branding", "page-graphics", role))).toBe(true);
+      // …and no deployment-specific artwork ships for the role in the template:
+      // the generic template has no brand of its own.
+      expect(existsSync(path.join(ROOT, "assets", "branding"))).toBe(false);
     }
   });
 

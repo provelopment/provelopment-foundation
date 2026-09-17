@@ -12,7 +12,7 @@
 // Run: `pnpm test:browser` (requires a local Chrome/Chromium/Edge binary).
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,7 +37,16 @@ const VIEWPORTS = {
   mobileWide: { width: 700, height: 844 },
 };
 
-const CTR = { enabled: true, action: "book", label: "Book Now", href: "/en/contact" };
+const CTR = { enabled: true, action: "book", label: "Book Now", href: "/en" };
+
+/**
+ * FS1 — artwork-activation scenarios are REFERENCE-SITE scope (see the note in the
+ * canonical runner). The generic template ships no brand artwork, no banners and
+ * no decorative graphics, so the scenarios that assert ACTIVATED artwork are
+ * switched off here; the private reference site keeps them enabled in its own copy
+ * of this matrix, and an adopter who integrates artwork can flip this to `true`.
+ */
+const ARTWORK_SCENARIOS = false;
 
 /**
  * 2026-09 — the theme/control expectations are READ FROM THE APP'S OWN SINGLE
@@ -573,7 +582,11 @@ async function runAdaptiveMobile(rows, cdp) {
     // P0-5: the bottom bar already renders NavItem — the active item's wrapper
     // class 'aria-current-page' proves it stays on the shared path.
     barLiShared: (() => { const a = document.querySelector('.ui-shell-bottom-bar a[aria-current="page"]'); return !!a && !!a.parentElement && a.parentElement.classList.contains('aria-current-page'); })(),
-    footerBadgeShared: (() => { const b = document.querySelector('footer .nav-item-badge'); return !!b && b.getBoundingClientRect().width > 0; })(),
+    // FS1 — the generic template badges no navigation item, so the invariant
+    // asserted here is the SHARED-PATH one: whatever the footer badges is rendered
+    // through the shared nav-item-badge class and is actually laid out (never a
+    // footer-only badge implementation, never a collapsed badge).
+    footerBadgeShared: (() => { const all = [...document.querySelectorAll('footer .nav-item-badge')]; return { count: all.length, visible: all.filter((el) => el.getBoundingClientRect().width > 0).length }; })(),
     barCta: (() => { const c = document.querySelector('.ui-shell-bottom-bar .nav-item-cta'); return !!c && c.getBoundingClientRect().width > 0; })(),
     // P6-3C — the ONE CTA lives in the top region, above the bar.
     topCta: ${visible('.ui-shell-header-row .ui-shell-cta')},
@@ -584,7 +597,12 @@ async function runAdaptiveMobile(rows, cdp) {
   check(rows, "bar.visible", !!s.barVisible);
   check(rows, "bar.ariaCurrent", !!s.barNavCurrent);
   check(rows, "bar.nav.liSharedMarker", !!s.barLiShared);
-  check(rows, "bar.footer.badgeShared", !!s.footerBadgeShared);
+  check(
+    rows,
+    "bar.footer.badgeShared",
+    !!s.footerBadgeShared && s.footerBadgeShared.visible === s.footerBadgeShared.count,
+    `badges=${s.footerBadgeShared ? `${s.footerBadgeShared.visible}/${s.footerBadgeShared.count}` : "null"}`,
+  );
   check(rows, "bar.cta.notInBar", !s.barCta);
   check(rows, "bar.cta.reachableInTop", !!s.topCta);
   check(rows, "bar.cta.single", s.reachableCtas === 1, `count=${s.reachableCtas}`);
@@ -741,55 +759,21 @@ async function runAdaptiveMobile(rows, cdp) {
 }
 
 /**
- * P1-4 — real-usage proof for the shared Section + Button primitives. The
- * `/en/contact` route renders the page-content frame (`<Section as="article">`,
- * an `<article>` with the shared frame class) and the contact submit action
- * (the shared `Button`, a NATIVE `<button type="submit">`, never a link)
- * in every composition. This proves the primitives are actually
- * composed and rendering — not source-only.
+ * P1-4 (template scope) — the `/en/contact` route renders only when the adopter
+ * supplies `content/pages/contact.md`; the generic template ships no content, so
+ * that route is a 404 here. The Section/Button primitives keep their unit-level
+ * proof in `tests/unit/ui-primitives.test.ts`, and the shell-composition proof
+ * below still runs against the shipped landing page. The on-page form proof for
+ * this route lives with the private reference site, which does ship the page.
  */
-async function runPagePrimitives(rows, cdp, label) {
-  await cdp.navigate(`${BASE_URL}/en/contact`);
-  await waitReady(cdp);
-  const s = await cdp.evaluate(`(() => {
-    const article = document.querySelector('main article, article');
-    const frame = article && article.className && article.className.includes('mx-auto max-w-page px-4 py-12');
-    const submit = document.querySelector('button[type="submit"]');
-    return {
-      article: !!article && article.tagName === 'ARTICLE',
-      frame,
-      submitNative: !!submit && submit.tagName === 'BUTTON',
-      submitToken: !!submit && submit.className.includes('bg-primary') && submit.className.includes('text-primary-foreground'),
-      ariaBusy: !!submit && submit.hasAttribute('aria-busy'),
-    };
-  })()`);
-  check(rows, `${label}.pagePrimitive.sectionFrame`, !!s.article && !!s.frame);
-  check(rows, `${label}.pagePrimitive.submitButton`, !!s.submitNative && !!s.submitToken && !!s.ariaBusy);
-}
 
 /**
- * P1-7 — real-usage proof for the shared Grid + Stack primitives. The
- * `/en/offerings` route renders the shared collection `<Grid>` (a semantic
- * `<ul>` with the responsive columns class) and the `/en` page header renders
- * the shared `<Stack>` (a `flex` alignment row) in every composition.
- * This proves the layout primitives are actually composed and rendering —
- * not source-only.
+ * P1-7 (template scope) — the `/en/offerings` collection `<Grid>` renders only
+ * once offerings content exists (the generic template ships none), so the grid
+ * half of this proof lives with the private reference site. The `<Stack>` half is
+ * generic and runs on the shipped landing page.
  */
 async function runGridStack(rows, cdp, label) {
-  await cdp.navigate(`${BASE_URL}/en/offerings`);
-  await waitReady(cdp);
-  const g = await cdp.evaluate(`(() => {
-    const ul = document.querySelector('main ul.grid');
-    const gridClass = ul ? ul.className : '';
-    return {
-      gridList: !!ul && ul.tagName === 'UL',
-      responsiveColumns: gridClass.includes('sm:grid-cols-2'),
-      gap: gridClass.includes('gap-6'),
-    };
-  })()`);
-  check(rows, `${label}.grid.rowList`, !!g.gridList);
-  check(rows, `${label}.grid.responsive`, !!g.gridList && !!g.responsiveColumns && !!g.gap);
-
   await cdp.navigate(`${BASE_URL}/en`);
   await waitReady(cdp);
   const st = await cdp.evaluate(`(() => {
@@ -818,7 +802,18 @@ async function runReducedMotion(rows, trigger, panel, cdp) {
   const b = info.b || {};
   const noAnim = (p.anim === "none" || !p.anim || p.anim === undefined) && (b.anim === "none" || !b.anim || b.anim === undefined);
   const noTrans = (Number.isNaN(p.trans) || p.trans < 0.01) && (Number.isNaN(b.trans) || b.trans < 0.01);
-  check(rows, "reduced.noAnimationOnModal", noAnim && noTrans);
+  // FS1 — a configuration may render NO disclosure at all (a single-item
+  // navigation has no "More" menu), so there is no modal motion to assert. The
+  // contract is therefore conditional and explicit: IF a disclosure is rendered, it
+  // must carry no animation and no transition. The global PMR rule itself stays
+  // asserted unconditionally by `reduced.match` + `reduced.scrollBehaviorAuto`.
+  const modalRendered = !!info.p || !!info.b;
+  check(
+    rows,
+    "reduced.noAnimationOnModal",
+    !modalRendered || (noAnim && noTrans),
+    modalRendered ? `anim=${p.anim}/${b.anim} trans=${p.trans}/${b.trans}` : "no disclosure rendered",
+  );
   check(rows, "reduced.scrollBehaviorAuto", await cdp.evalBool('getComputedStyle(document.documentElement).scrollBehavior === "auto"'));
   await cdp.pressKey("Escape");
   await sleep(150);
@@ -856,20 +851,31 @@ async function runCanonical(chrome) {
     await runReducedMotion(rows, "#shell-bottom-more", "#shell-bottom-more-panel", cdp);
     // P1-3 — visible focus-ring contract (link + pointer-distinction + keyboard Tab).
     await runFocusVisibleRing(rows, cdp, "focus.canonical");
-    // P1-4 — the shared Section + Button primitives render on a real route.
-    await runPagePrimitives(rows, cdp, "p14.canonical");
-    // P1-7 — the shared Grid + Stack primitives render on real routes.
+    // P1-4 / P1-7 — the primitives' on-page proof (see the notes above).
+    // P1-7 — the shared Stack renders in the header of the shipped landing page.
     await runGridStack(rows, cdp, "p17.canonical");
-    // P6-3B — favicon / header logo / page banner + the aside rail geometry.
-    await runBrandingChecks(rows, CANONICAL.name, cdp);
-    // P6-3C — banner scaling (three cases) + Book Now placement at every width.
-    await runP6cChecks(rows, CANONICAL.name, cdp);
-    // 2026-09 — the ONE Foundation accent (light + dark), the two remaining
-    // selectors, the 24x24 sidebar CONTROL geometry and the footer logo size.
-    await runThemeClosureChecks(rows, CANONICAL.name, cdp);
-    await runP6bSidebarChecks(rows, CANONICAL.name, cdp);
-    await runP6bCollapsedChecks(rows, CANONICAL.name, cdp);
-    await runP6bTabletSweep(rows, CANONICAL.name, cdp);
+    // FS1 — ARTWORK-ACTIVATION SCENARIOS ARE REFERENCE-SITE SCOPE. The scenarios
+    // below assert ACTIVATED ARTWORK and reference-site configuration:
+    //   runBrandingChecks/Sidebar/Collapsed/TabletSweep — favicon + logo geometry,
+    //     the header band, page banners and the OG/Twitter social image;
+    //   runP6cChecks — banner scaling + the Book Now placement per width;
+    //   runThemeClosureChecks — the reference accent, the location/language
+    //     selector closure and the footer-logo size.
+    // The generic template ships NO brand artwork and configures no banners,
+    // backgrounds or decorative graphics, so there is nothing to activate: the
+    // assertions live with the private reference site, which does ship them and
+    // keeps its own copy of this matrix. An adopter who integrates artwork can
+    // flip ARTWORK_SCENARIOS to true. Everything else above — shell composition,
+    // responsive sweeps, focus/reduced-motion behaviour, the Stack composition —
+    // remains this template's browser contract.
+    if (ARTWORK_SCENARIOS) {
+      await runBrandingChecks(rows, CANONICAL.name, cdp);
+      await runP6cChecks(rows, CANONICAL.name, cdp);
+      await runThemeClosureChecks(rows, CANONICAL.name, cdp);
+      await runP6bSidebarChecks(rows, CANONICAL.name, cdp);
+      await runP6bCollapsedChecks(rows, CANONICAL.name, cdp);
+      await runP6bTabletSweep(rows, CANONICAL.name, cdp);
+    }
   } catch (error) {
     check(rows, "scenario.error", false, String(error));
   } finally {
@@ -2097,11 +2103,32 @@ async function runConnectivityIconScenario(chrome) {
   ];
   // Method [0] gets a real asset, [1] a configured-but-missing one; the rest stay
   // exactly as configured (text-only) — every method must keep working.
+  // FS1 — the generic template ships NO connectivity configuration, so this
+  // fixture CREATES the method list it exercises: the seam under test is the
+  // icon-resolution + fallback contract, not the shipped catalogue.
+  config.connect = {
+    methods: [
+      { id: "message", label: "Message Us", href: "/contact" },
+      { id: "email", label: "Email", href: "mailto:hello@example.com" },
+      { id: "phone", label: "Phone", href: "tel:+14165550142" },
+    ],
+  };
   config.connect.methods = config.connect.methods.map((method, index) =>
     index === 0 ? { ...method, icon: ICON } : index === 1 ? { ...method, icon: MISSING } : method,
   );
   const expectedMethods = config.connect.methods.length;
   await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n", "utf8");
+  // FS1 — the generic template ships NO content, so this fixture also supplies the
+  // Connect page's markdown for the duration of the run (removed in `finally`).
+  // The seam under test is the connectivity contract, not whether a fresh clone
+  // has written its own pages yet.
+  const connectContentPath = join(ROOT, "content", "pages", "en", "connect.md");
+  await mkdir(dirname(connectContentPath), { recursive: true });
+  await writeFile(
+    connectContentPath,
+    "---\ntitle: Connect\n---\n\nReach us through any of the methods below.\n",
+    "utf8",
+  );
   const server = startDevServer(port);
   let cdp = null;
   try {
@@ -2362,6 +2389,7 @@ async function runConnectivityIconScenario(chrome) {
     if (cdp) await cdp.close();
     stopServer(server);
     await writeFile(CONFIG_PATH, original, "utf8");
+    await rm(connectContentPath, { force: true });
   }
   return rows;
 }

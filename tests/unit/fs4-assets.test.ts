@@ -12,40 +12,44 @@ import { siteConfig } from "@/config";
  * points `site.assets.<key>` at their own URL — both without touching components.
  */
 describe("FS-4 — canonical asset contract", () => {
-  it("the canonical site.assets block resolves to existing static assets", () => {
+  it("the shipped identity roles are real files under public/assets (no configuration required)", () => {
     const root = process.cwd();
-    // P6-2C — `logo`/`favicon` resolve to the generic runtime roles under
-    // `public/assets/` established in P6-2A (`logo-header.svg`, `favicon.svg`).
-    // APPROVED-ASSET INTEGRATION — `ogImage` is now POPULATED with the approved
-    // Foundation social-preview graphic (1200 × 630 PNG). The generated
-    // per-locale route stays in the engine as the documented FALLBACK for an
-    // absent key, and that absent-state behaviour is proven directly by
-    // `tests/unit/seo-metadata.test.ts` (`resolveOgImageUrl(undefined, …)`), so
-    // populating the canonical role does not weaken the optional contract.
-    const checks: Array<[string, string, () => boolean]> = [
-      ["logo", siteConfig.assets?.logo ?? "", () => existsSync(path.join(root, "public", "assets", "logo-header.svg"))],
-      ["favicon", siteConfig.assets?.favicon ?? "", () => existsSync(path.join(root, "public", "assets", "favicon.svg"))],
-      ["ogImage", siteConfig.assets?.ogImage ?? "", () => existsSync(path.join(root, "public", "assets", "og-image.png"))],
-    ];
-    for (const [key, url, exists] of checks) {
-      expect(url, `${key} must be configured on the canonical site`).not.toBe("");
-      expect(url.startsWith("https://"), `${key} URL must be absolute`).toBe(true);
-      expect(exists(), `${key} static asset must exist on disk`).toBe(true);
+    // FS1 — the generic template configures NO asset URLs: every identity role
+    // resolves to the shipped placeholder file, so a fresh clone renders a
+    // complete, un-branded site without editing `site.assets` at all. This is the
+    // contract that makes "clone → install → run" work on its own.
+    for (const role of ["logo-header.svg", "logo-footer.svg", "favicon.svg"]) {
+      expect(
+        existsSync(path.join(root, "public", "assets", role)),
+        `${role} must ship under public/assets/`,
+      ).toBe(true);
     }
-    expect(new URL(siteConfig.assets?.ogImage ?? "").pathname).toBe("/assets/og-image.png");
+    // …and the optional keys are genuinely optional: absent, never broken.
+    expect(siteConfig.assets?.ogImage).toBeUndefined();
+    expect(siteConfig.assets?.banners).toBeUndefined();
   });
 
-  it("the P6-2C logoFooter role + the P6-3B home banner resolve to existing static assets", () => {
+  it("every asset URL the configuration DOES provide is absolute and exists on disk", () => {
     const root = process.cwd();
-    const checks: Array<[string, string, () => boolean]> = [
-      ["logoFooter", siteConfig.assets?.logoFooter ?? "", () => existsSync(path.join(root, "public", "assets", "logo-footer.svg"))],
-      ["banners.home", siteConfig.assets?.banners?.home ?? "", () => existsSync(path.join(root, "public", "assets", "banner-home.png"))],
-    ];
-    for (const [key, url, exists] of checks) {
-      expect(url, `${key} must be configured on the canonical site`).not.toBe("");
+    const configured: Array<[string, string]> = [];
+    if (siteConfig.assets?.logo) configured.push(["logo", siteConfig.assets.logo]);
+    if (siteConfig.assets?.logoFooter) configured.push(["logoFooter", siteConfig.assets.logoFooter]);
+    if (siteConfig.assets?.favicon) configured.push(["favicon", siteConfig.assets.favicon]);
+    if (siteConfig.assets?.ogImage) configured.push(["ogImage", siteConfig.assets.ogImage]);
+    for (const [key, url] of configured) {
       expect(url.startsWith("https://"), `${key} URL must be absolute`).toBe(true);
-      expect(exists(), `${key} static asset must exist on disk`).toBe(true);
+      const relative = new URL(url).pathname.replace(/^\//, "");
+      expect(existsSync(path.join(root, "public", relative)), `${key} must exist on disk`).toBe(true);
     }
+  });
+
+  it("the footer logo role ships, and the optional banner role is unconfigured by default", () => {
+    const root = process.cwd();
+    expect(existsSync(path.join(root, "public", "assets", "logo-footer.svg"))).toBe(true);
+    // Banners are a per-page opt-in: the template configures none, so no banner
+    // artwork ships and nothing renders — the capability stays available without
+    // shipping example artwork.
+    expect(siteConfig.assets?.banners).toBeUndefined();
   });
 
   it("optional assets fail safely (absent keys are valid and resolve to defaults)", () => {

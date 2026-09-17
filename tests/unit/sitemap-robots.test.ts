@@ -72,28 +72,19 @@ describe("Phase S — sitemap & robots contract (deterministic, config/content-d
     }
   });
 });
-describe("Phase T — trust/publishing sitemap contract (locked exact inventory)", () => {
-  it("emits the full standardized regional and content inventory across all locales (219 locs)", async () => {
-    const entries = await sitemap();
-    const urls = entries.map((entry) => entry.url);
+describe("Phase T — trust/publishing sitemap contract (derived inventory)", () => {
+  it("publishes exactly the config-derived inventory the site actually serves", async () => {
+    const urls = (await sitemap()).map((entry) => entry.url);
 
-    expect(urls).toHaveLength(219);
-
-    for (const { code } of siteConfig.locales) {
-      // Listings.
-      expect(urls, code).toContain(`${siteConfig.url}/${code}/testimonials`);
-      expect(urls, code).toContain(`${siteConfig.url}/${code}/portfolio`);
-      expect(urls, code).toContain(`${siteConfig.url}/${code}/blog`);
-      // Portfolio details (2 canonical).
-      expect(urls, code).toContain(`${siteConfig.url}/${code}/portfolio/brand-refresh`);
-      expect(urls, code).toContain(`${siteConfig.url}/${code}/portfolio/digital-presence`);
-      // Blog details (2 PUBLISHED — the draft is excluded).
-      expect(urls, code).toContain(`${siteConfig.url}/${code}/blog/launch-checklist`);
-      expect(urls, code).toContain(`${siteConfig.url}/${code}/blog/getting-started`);
-      expect(urls, code).not.toContain(`${siteConfig.url}/${code}/blog/post-draft`);
-      // RSS feeds are NOT part of the XML sitemap.
-      expect(urls, code).not.toContain(`${siteConfig.url}/${code}/blog/rss.xml`);
-    }
+    // FS1 — the generic template ships NO content collections, no regions and no
+    // legal entries, so the sitemap is exactly the configuration-derived part: the
+    // root entry plus one route per configured locale. A clone publishes what it
+    // really serves — never phantom routes for content that does not exist.
+    expect(urls).toEqual([
+      siteConfig.url,
+      ...siteConfig.locales.map(({ code }) => `${siteConfig.url}/${code}`),
+    ]);
+    expect(new Set(urls).size, "no duplicate URLs").toBe(urls.length);
   });
 
   it("keeps every pre-existing sitemap invariant (robots + locale coverage)", async () => {

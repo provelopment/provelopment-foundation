@@ -47,26 +47,21 @@
 
   /* ══ FOUNDATION ACCENT — THE one hardcoded brand colour in the theme ═════
    *
-   * This is the ONLY place a Foundation brand colour is written in the theme.
-   * Change this single value and the whole Foundation re-colours: the wordmark/
-   * heading text, the selector (location/language) emphasis, the focus ring and
-   * the branded CTA fill all resolve through it. The dark scheme DERIVES its
-   * lifted tint from this same value (see the dark block) — it never stores a
-   * second brand hex.
+   * This is the ONLY place the default theme accent is written. Change this
+   * single value and the whole site re-colours: the site name/heading text, the
+   * selector (location/language) emphasis, the focus ring and the CTA fill all
+   * resolve through it. The dark scheme DERIVES its lifted tint from this same
+   * value (see the dark block) — it never stores a second brand hex.
    *
-   * The value is the DARKER Foundation blue (owner-selected), verified against
-   * the Foundation brand pack and brand-system governance:
-   *   - the pack's colour note approves "Foundation Blue Strong `#3F6791`" as
-   *     the functional derivative for text/control use, and
-   *   - it is the tint the approved lockup artwork uses for the FOUNDATION
-   *     wordmark letterforms, so the text heading matches the logo beside it.
-   * `#4F7CAC` (the canonical identity blue) is the ARTWORK colour: 4.37:1 on
-   * white fails the WCAG AA text minimum this token set guarantees, so it is
-   * deliberately not used for text. Crimson `#C5161D` is the provelopment.com
-   * expression and must never appear in a Foundation branding/emphasis role
-   * (errors/danger keep the separate `--destructive` role).
+   * TEMPLATE DEFAULT — deliberately neutral. The generic template ships no brand
+   * of its own: this slate value is a placeholder an adopter replaces with their
+   * own accent. Keep it at least this dark: the token is used for TEXT, and
+   * `tests/unit/design-tokens.test.ts` enforces the >= 4.5:1 WCAG AA minimum
+   * against both the light and dark canvases. The token name belongs to the
+   * platform (`--ui-foundation-accent` = the Foundation platform's default); a
+   * site overrides the resolved value through `--ui-brand-accent`.
    */
-  --ui-foundation-accent: #3f6791;
+  --ui-foundation-accent: #475569;
 
   /* The scheme-resolved theme colour every consumer reads. Identical to the
    * accent in LIGHT; derived from it in DARK. Components must consume THIS. */
@@ -108,13 +103,13 @@
  *
  * Brand hues are lifted (not reused verbatim) so every WCAG AA pair below
  * still meets >= 4.5:1 on the dark Neutral-Dark canvas — see
- * tests/unit/design-tokens.test.ts. Crimson `#C5161D` fails as TEXT on
- * `#0F172A` (2.98:1), and it is not a Foundation colour in any case.
+ * tests/unit/design-tokens.test.ts.
  *
  * There is NO second brand hex here: the lifted tint is DERIVED from the single
  * `--ui-foundation-accent` by mixing it halfway toward white
- * (`color-mix(in srgb, ... 50%, #ffffff)` = `#9FB3C8`, 8.29:1 on `#0F172A` —
- * equivalent contrast to the previously separate hand-picked tint, now derived).
+ * (`color-mix(in srgb, ... 50%, #ffffff)` = `#A3AAB4` for the shipped neutral
+ * default, 7.67:1 on `#0F172A`). Deriving keeps the contrast guarantee generic:
+ * it holds for any adopter accent that is dark enough for LIGHT-scheme text.
  * `--primary-foreground` stays the dark navy, keeping the same fill/on-fill
  * pairing direction as the light scheme.
  */

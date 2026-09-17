@@ -109,21 +109,16 @@ describe("P12-HG — schema / backward compatibility", () => {
     expect(siteAssetsSchema.safeParse({ headerGraphic: "/assets/header-graphic.svg" }).success).toBe(false);
   });
 
-  it("the shipped canonical Foundation config POPULATES this role with a BLANK default (ACTIVE, technically validated)", () => {
-    // OWNER RULING (2026-09) — the default Foundation configuration does NOT
-    // require a branded decorative header graphic: the role stays ACTIVATED and
-    // technically validated, and the artwork it points at is the BLANK
-    // TRANSPARENT placeholder. A deployment activates its own artwork by
-    // replacing the runtime file (the branded Foundation artwork is retained at
-    // `assets/branding/page-graphics/header-graphic.svg`).
+  it("the shipped template leaves this decorative role ABSENT (optional, nothing rendered)", () => {
+    // FS1 — the generic template configures no decorative header band: the role
+    // is OPTIONAL and its absence is a fully-supported state (nothing is painted).
+    // The blank placeholder still ships, so activating it is one config line.
     //
     // The band contributes ATTRIBUTES ONLY — no element, no layout height, no
-    // stacking context — so a blank default cannot regress the UI either.
-    expect(siteConfig.assets?.headerGraphic).toBeDefined();
+    // stacking context — so an absent or blank role cannot affect the UI.
+    expect(siteConfig.assets?.headerGraphic).toBeUndefined();
+    expect(availableHeaderGraphicPath(siteConfig.assets?.headerGraphic)).toBeUndefined();
     expect(existsSync(path.join(root, "public", "assets", "header-graphic.svg"))).toBe(true);
-    // Configured value names the canonical runtime role file, and it resolves.
-    expect(new URL(siteConfig.assets?.headerGraphic as string).pathname).toBe("/assets/header-graphic.svg");
-    expect(availableHeaderGraphicPath(siteConfig.assets?.headerGraphic)).toBe("/assets/header-graphic.svg");
     // The shipped default draws NOTHING (no paths, no shapes, no raster) and is
     // byte-identical to its declared placeholder source.
     const shipped = readFileSync(path.join(root, "public", "assets", "header-graphic.svg"), "utf8");
@@ -135,8 +130,8 @@ describe("P12-HG — schema / backward compatibility", () => {
     expect(shipped).not.toMatch(/<(path|rect|circle|ellipse|polygon|image|text)\b/i);
     expect(shipped).toMatch(/viewBox="0 0 4096 512"/);
     expect(shipped).not.toMatch(/#4F7CAC/i);
-    // …while the branded artwork for this role is preserved in the source package.
-    expect(existsSync(path.join(root, "assets", "branding", "page-graphics", "header-graphic.svg"))).toBe(true);
+    // …and no deployment-specific artwork ships for this role in the template.
+    expect(existsSync(path.join(root, "assets", "branding"))).toBe(false);
   });
 });
 
@@ -320,11 +315,11 @@ describe("P12-HG — separation + reusability contract", () => {
   });
 
   it("14. the completed footer-graphic role (P12-FG) remains independent of this role", () => {
-    // Both roles are now ACTIVATED, which is itself proof of independence: the
-    // two roles have their own keys, resolvers and renderers and never read each
-    // other (asserted immediately below).
-    expect(siteConfig.assets?.footerGraphic).toBeDefined();
-    expect(siteConfig.assets?.headerGraphic).toBeDefined();
+    // FS1 — neither decorative role is configured by the generic template, which
+    // is itself proof of independence: the two roles have their own keys,
+    // resolvers and renderers and never read each other (asserted below).
+    expect(siteConfig.assets?.footerGraphic).toBeUndefined();
+    expect(siteConfig.assets?.headerGraphic).toBeUndefined();
     expect(siteFooter).toContain("siteConfig.assets?.footerGraphic");
     // The two roles never read each other's key or resolver.
     expect(siteHeader).not.toContain("footerGraphic");

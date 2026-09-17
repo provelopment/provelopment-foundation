@@ -497,17 +497,20 @@ describe("Phase M — location selector + region-aware navigation boundaries", (
     expect(source).toContain("pathname === link.href");
   });
 
-  it("primary navigation uses Connect, never Contact", () => {
+  it("primary navigation holds INTERNAL routes only (locations are selectors, never nav links)", () => {
     const config = JSON.parse(
       readFileSync(path.join(process.cwd(), "site.config.json"), "utf8"),
     ) as { navigation?: { href: string }[] };
     const hrefs = (config.navigation ?? []).map((entry) => entry.href);
-    expect(hrefs).toContain("/connect");
-    expect(hrefs).not.toContain("/contact");
-    // Locations remain selectors, not navigation links.
-    for (const forbidden of ["/toronto", "/vancouver", "/montreal", "/london"]) {
-      expect(hrefs, `nav must not contain ${forbidden}`).not.toContain(forbidden);
+    expect(hrefs.length).toBeGreaterThan(0);
+    for (const href of hrefs) {
+      expect(href, `nav href ${href} must be an internal route`).toMatch(/^\//);
     }
+    // FS1 — operating regions are a SELECTOR, never navigation entries. This is
+    // the boundary the old Connect-centric assertion protected, stated generically
+    // so it holds for any adopter's configuration.
+    expect(config).not.toHaveProperty("regionPages");
+    expect(JSON.stringify(config)).not.toContain("/toronto");
   });
 
   it("the dynamic [item] route excludes the static Connect route slug", () => {

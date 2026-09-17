@@ -42,18 +42,18 @@ const RUNTIME_DIR = "public/assets";
  * repository root; `to` is a filename inside `public/assets/`.
  */
 export const MIRRORED = [
-  // ── Branding: the deployment's own identity + page graphics ──────────────
-  { from: "assets/branding/identity/favicon.svg", to: "favicon.svg", note: "favicon (derived from identity/mark.svg)" },
-  // Owner ruling (2026-09 closure pass) — the header and footer logo ROLES share
-  // ONE authoritative coloured source (`lockup-horizontal.svg`): the footer no
-  // longer resolves to the monochrome lockup. Both runtime basenames must still
-  // exist, because the roles are addressed by basename (`site.assets.logo` /
-  // `site.assets.logoFooter`), so both are derived from the same source file.
-  { from: "assets/branding/logos/lockup-horizontal.svg", to: "logo-header.svg", note: "header logo role" },
-  { from: "assets/branding/logos/lockup-horizontal.svg", to: "logo-footer.svg", note: "footer logo role — same coloured source as the header (owner 2026-09)" },
-  { from: "assets/branding/page-graphics/background-all.svg", to: "background-all.svg", note: "page-background role" },
-  { from: "assets/branding/page-graphics/status-graphic.svg", to: "status-graphic.svg", note: "status-graphic role" },
-  { from: "assets/branding/page-graphics/og-image.png", to: "og-image.png", note: "Open Graph role" },
+  // ── Identity roles: NEUTRAL placeholders are the template's shipped default ─
+  // The generic template ships no brand of its own: the identity roles resolve to
+  // `assets/placeholders/**`, so a fresh clone renders a neutral, un-branded site
+  // that an adopter replaces. Replace these files in place, or point the role at
+  // your own absolute URL in `site.assets` (see BRAND_ASSETS.md).
+  //
+  // The header and footer logo ROLES share ONE source: both runtime basenames must
+  // exist because the roles are addressed by basename (`site.assets.logo` /
+  // `site.assets.logoFooter`).
+  { from: "assets/placeholders/favicon.svg", to: "favicon.svg", note: "favicon role — neutral default" },
+  { from: "assets/placeholders/logo-header.svg", to: "logo-header.svg", note: "header logo role — neutral default" },
+  { from: "assets/placeholders/logo-header.svg", to: "logo-footer.svg", note: "footer logo role — same source as the header" },
 
   // ── Placeholders: the BLANK/GENERIC defaults a fresh install renders ─────
   { from: "assets/placeholders/header-graphic.svg", to: "header-graphic.svg", note: "decorative header band — blank default" },
@@ -68,7 +68,6 @@ export const MIRRORED = [
 export const MIRRORED_DIRECTORIES = [
   { from: "assets/icon-library/icons", to: RUNTIME_DIR, note: "generic icon library" },
   { from: "assets/platform-marks", to: RUNTIME_DIR, note: "platform/social marks" },
-  { from: "assets/branding/banners", to: RUNTIME_DIR, note: "per-page banner family (branded page graphics)" },
 ];
 
 /**

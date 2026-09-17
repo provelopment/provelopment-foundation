@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -305,6 +305,10 @@ describe("outbound server-action & isolation boundaries (Phase I)", () => {
   const siteConfigPath = path.join(process.cwd(), "site.config.json");
 
   function listTextFiles(directory: string): string[] {
+    // FS1 — the generic template ships no `content/` tree (and git cannot track
+    // empty directories), so a scanned directory may legitimately be absent. An
+    // absent directory simply has no files to scan; that is never an error.
+    if (!existsSync(directory)) return [];
     return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
       const entryPath = path.join(directory, entry.name);
       if (entry.isDirectory()) return listTextFiles(entryPath);

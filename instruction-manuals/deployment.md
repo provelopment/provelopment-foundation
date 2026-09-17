@@ -1,8 +1,8 @@
 # Deployment — taking a validated site live
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-17.1`
-> **Procedure validated against:** `main` @ `ccc29a5` (runtime commit `1114759`)
+> **Manual revision:** `2026-09-17.2`
+> **Procedure validated against:** Foundation template release `v2026.09.17-foundation-generic-template` (`b9f7a18`) + the FS1 repository split (public template / private reference site)
 > **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
 > **Master authority:** Provelopment root project — `.project/deployment-info/instruction-manuals/`
 >
@@ -124,3 +124,28 @@ a rollback always has a trustworthy anchor.
   project's documentation in the same task.
 - If anything about the deployment was unclear or manual, capture it in the
   project's knowledge/troubleshooting record so the next deployment is cheaper.
+
+## Re-pointing a provider project to a new repository
+
+When a project's source moves (e.g. the Foundation split, where the live site moved
+from the public template repository to a private site repository), **reuse the
+existing provider project** rather than creating a second one: the project holds the
+domains, TLS and build settings, and duplicating it risks a second production
+surface.
+
+1. Owner action, in the provider dashboard: **Settings -> Git -> Disconnect**, then
+   **Connect Git Repository** and select the new repository. The provider may need
+   newly granted access to that repository.
+2. Keep: production branch `main`, framework detection, install/build commands, root
+   directory, and **every** environment variable. Do **not** touch the domains.
+3. Trigger the first deployment from the new repository (a push, or a redeploy) and
+   wait for it to succeed.
+4. **Verify provenance, not just HTTP**: the provider must report the deployment
+   against the *new* repository, and the live site must still match the pre-move
+   baseline (identity, navigation, asset set and asset sizes).
+5. Confirm the **old** repository no longer receives production deployments. Leaving
+   both connected is how a de-bloated upstream silently becomes production.
+
+> A protected `*.vercel.app` deployment URL returns **HTTP 200 with a login page**.
+> Never treat a status-code check on a deployment URL as evidence that the
+> application is served - verify the canonical domain and inspect the payload.

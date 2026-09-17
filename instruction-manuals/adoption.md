@@ -1,8 +1,8 @@
 # Adoption — creating a new Foundation-derived project
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-17.1`
-> **Procedure validated against:** `main` @ `ccc29a5` (runtime commit `1114759`)
+> **Manual revision:** `2026-09-17.2`
+> **Procedure validated against:** Foundation template release `v2026.09.17-foundation-generic-template` (`b9f7a18`) + the FS1 repository split (public template / private reference site)
 > **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
 > **Master authority:** Provelopment root project — `.project/deployment-info/instruction-manuals/`
 >
@@ -253,3 +253,40 @@ reserved.
   downstream project owns only its own version history.
 - Never acquire the Foundation from a local sibling copy when the canonical GitHub repository is
   reachable; the GitHub clone is the auditable acquisition.
+
+## When the upstream product and the live site are the same codebase
+
+The most common shape early in a project's life is that the **public platform
+repository is also the live site's source**. That is convenient and it is a trap: the
+generic product then looks like it belongs to one site, and every adopter has to
+delete the maintainer's content and branding before they can start. Split the two
+repositories as soon as the product has a real adopter (FS1, 2026-09-17):
+
+| Artifact | Repository | Visibility | Deployment |
+| --- | --- | --- | --- |
+| **The template (the product)** | `provelopment-foundation` | public | **none** — Git hosting is the distribution surface |
+| **The reference site (the demonstration)** | `provelopment-foundation-site` | private | the live domain (e.g. `foundation.provelopment.com`) |
+
+Dependency direction is **template -> site**. The site is an ordinary downstream
+clone (see *The two adoption shapes* above) whose `origin` is its own private
+repository and whose `foundation` remote is the template.
+
+### Procedure actually followed (FS1)
+
+1. **Protect production first.** Record the live site's baseline: routes, identity,
+   navigation, asset names **and byte sizes**, and the deployed commit.
+2. **Create the site repository** (private, no starter files) and push the *existing*
+   history into it - never `git init`, never a squashed bootstrap commit.
+3. **Repoint the working clone**: rename `origin` -> `foundation`, add the new private
+   repository as `origin`, then `git push -u origin main`. Push **one** migration
+   baseline tag; never push the upstream release tags.
+4. **Have the owner re-point the provider project** to the new repository (see
+   `deployment.md`), keeping the existing project, domains and settings.
+5. **Verify production is sourced from the new repository** - the provider reports the
+   deployment against the new repo, and the live site matches the recorded baseline
+   (compare payload sizes, not just status codes).
+6. **Only then de-bloat the public repository**, on a branch, and land it by PR once
+   the provider no longer builds from it. De-bloating removes *site identity and
+   content*, never reusable capability.
+7. **Release the template** with an immutable tag, and record in the site's
+   `FOUNDATION_SOURCE.md` that it is a downstream adopter of that release.

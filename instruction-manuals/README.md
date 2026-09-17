@@ -1,8 +1,8 @@
 # Provelopment Foundation Instruction Manuals
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-17.1`
-> **Procedure validated against:** `main` @ `ccc29a5` (runtime commit `1114759`)
+> **Manual revision:** `2026-09-17.2`
+> **Procedure validated against:** Foundation template release `v2026.09.17-foundation-generic-template` (`b9f7a18`) + the FS1 repository split (public template / private reference site)
 > **Master authority:** Provelopment root project — `.project/deployment-info/instruction-manuals/`
 > **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
 >
@@ -127,12 +127,14 @@ copy is explicit and the check is explicit.
 
 > **Every repository that carries a distributed copy must be checked.** The receiver set grows as
 > projects are adopted (`02.demo-businesses` since the demo programme, `03.dot-com` since the
-> dot-com bootstrap). A parity claim is only ever made for receivers that were actually checked.
+> dot-com bootstrap, `00.foundation-template` + `01.foundation` since the FS1 split). A parity
+> claim is only ever made for receivers that were actually checked.
 
 ## Version table
 
 | Manual revision | Procedure validated against | Commit | Date |
 | --- | --- | --- | --- |
+| `2026-09-17.2` | Foundation template release `v2026.09.17-foundation-generic-template` + the FS1 repository split | `b9f7a18` (template) · `fb721b3` (reference-site baseline) | 2026-09-17 |
 | `2026-09-17.1` | `main` (single canonical presentation) | `ccc29a5` | 2026-09-17 |
 | `2026-09-16.3` | `main` (single canonical presentation) | `dae07b4` | 2026-09-16 |
 | `2026-09-16.2` | `main` (single canonical presentation) | `1114759` | 2026-09-16 |
@@ -140,7 +142,16 @@ copy is explicit and the check is explicit.
 | `2026-09-15.1` | `v2026.09.11-foundation-p6-3c-banner-sidebar-cta` | `f5c94da` | 2026-09-15 |
 | `2026-09-11.1` | `v2026.09.11-foundation-p6-3c-banner-sidebar-cta` | `f5c94da` | 2026-09-11 |
 
-> `2026-09-17.1` is validated by the **dot-com bootstrap** (`03.dot-com`) — the first time the
+> `2026-09-17.2` is validated by the **Foundation split (FS1)**: the public repository became the
+> **generic template product** and the live Foundation site moved to the private
+> `provelopment/provelopment-foundation-site` repository. It adds the **public-template /
+> private-reference-site** distinction and its repository map, the rule that the **public template
+> has no production deployment**, the provider-project **re-connect + production-provenance**
+> procedure, the **clean-clone acceptance gate** (which caught a CI-only hidden-directory
+> dependency), and the **template vs adopter test responsibility** split. See `adoption.md` →
+> *When the upstream product and the live site are the same codebase*, `deployment.md` →
+> *Re-pointing a provider project to a new repository*, `validation.md` → *Clean-clone acceptance*,
+> and `troubleshooting.md` entry 9.
 > **adoption** procedure was executed end to end, at Foundation `ccc29a5` (runtime `1114759`).
 > It adds the distinction between the two **adoption shapes** (vendored vs **direct downstream
 > clone**), the downstream-clone **runbook** that was actually followed, the mandatory

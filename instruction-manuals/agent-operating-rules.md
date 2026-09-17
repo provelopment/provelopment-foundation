@@ -1,8 +1,8 @@
 # Agent Operating Rules — working inside a Foundation adopter
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-17.1`
-> **Procedure validated against:** `main` @ `ccc29a5` (runtime commit `1114759`)
+> **Manual revision:** `2026-09-17.2`
+> **Procedure validated against:** Foundation template release `v2026.09.17-foundation-generic-template` (`b9f7a18`) + the FS1 repository split (public template / private reference site)
 > **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
 > **Master authority:** Provelopment root project — `.project/deployment-info/instruction-manuals/`
 >

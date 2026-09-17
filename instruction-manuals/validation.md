@@ -1,8 +1,8 @@
 # Validation — what "done" means
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-17.1`
-> **Procedure validated against:** `main` @ `ccc29a5` (runtime commit `1114759`)
+> **Manual revision:** `2026-09-17.2`
+> **Procedure validated against:** Foundation template release `v2026.09.17-foundation-generic-template` (`b9f7a18`) + the FS1 repository split (public template / private reference site)
 > **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
 > **Master authority:** Provelopment root project — `.project/deployment-info/instruction-manuals/`
 >
@@ -117,3 +117,36 @@ For every completed task, report:
 - Claiming a green build when the build was skipped because it was "only docs".
 - Rerunning a flaky suite without recording it.
 - Validating on a dirty tree and attributing someone else's breakage to the change.
+
+## Clean-clone acceptance (the adopter's gate)
+
+The repository gate proves the *working tree* is healthy. It does not prove that a
+**fresh clone by someone who has nothing else** is healthy - which is the only test
+that matters to an external user. Run it after every change that touches the shipped
+tree, and always before releasing a template:
+
+1. Clone the released ref into a directory **outside** the working workspace.
+2. `pnpm install`, then run the repository's whole gate in that clone.
+3. Start the documented quick start and confirm the site renders.
+4. Assert the stand-alone properties: one default locale, only the intended starter
+   content, no upstream identity, no live domain in configuration, and **no
+   dependency on directories that only exist in the maintainer workspace**.
+5. Delete the clone.
+
+**A hidden-dependency class this catches (FS1, 2026-09-17):** a working tree can
+contain **empty directories** (for example `content/`, recreated by a test fixture)
+that Git cannot track. Anything that scans such a directory then passes locally and
+fails in CI and in every fresh clone with `ENOENT`. Treat an absent scanned directory
+as nothing to scan - never as an error.
+
+### Template vs adopter test responsibility
+
+| Suite | Owner | Question it answers |
+| --- | --- | --- |
+| Template tests | the product | does the **reusable architecture** work? |
+| Reference-site tests | the site | does **this site** still look and behave as accepted? |
+| Adopter tests | each adopter | does **this deployment** satisfy its own acceptance? |
+
+Site-specific assertions (real content routes, brand identity, activated artwork)
+belong to the site, never to the product; capability assertions belong to the product
+and are never duplicated per site.

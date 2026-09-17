@@ -1,9 +1,9 @@
 # Provelopment Foundation Instruction Manuals
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-17.2`
+> **Manual revision:** `2026-09-17.3`
 > **Procedure validated against:** Foundation template release `v2026.09.17-foundation-generic-template` (`b9f7a18`) + the FS1 repository split (public template / private reference site)
-> **Master authority:** Provelopment root project — `.project/deployment-info/instruction-manuals/`
+> **Master authority:** maintained in the Provelopment governance repository (private; not part of this product)
 > **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
 >
 > This copy is **distributed**. It is byte-identical to the master. Edit the master
@@ -47,8 +47,8 @@ are operational procedure, not marketing.
 
 | | Location | Role |
 | --- | --- | --- |
-| **Master** | Provelopment root project / `.project/deployment-info/instruction-manuals/` | Authoritative. All edits happen here. |
-| **Distributed** | `01.foundation/instruction-manuals/`, `02.demo-businesses/instruction-manuals/`, `03.dot-com/instruction-manuals/`, and every Foundation-derived adopter project | Byte-identical copies of the master. |
+| **Master** | the maintainer's private governance repository (not part of this product) | Authoritative. All edits happen here. |
+| **Distributed** | `<project>/instruction-manuals/` in every Foundation-derived repository carrying a copy | A verbatim copy for readers working inside that project. Never edited directly. |
 
 **Edit rule:** a distributed copy is never edited independently. If a manual is
 wrong or incomplete, fix the master, review it, then propagate. Two divergent
@@ -59,11 +59,17 @@ self-describing: a reader working only inside an adopter repository can see wher
 the manual came from, which Foundation baseline it applies to, and that their
 copy is distributed.
 
+This package documents the **public Foundation product** and the workflows of a
+project built from it. The private governance repository that maintains it is not
+part of this product and is not required in order to use these manuals.
+
 ## Propagation procedure
 
 Run this when the master changes, and once per accepted Foundation release.
+Concrete commands for a particular workspace belong to that workspace's own
+governance documentation, not to these distributed manuals.
 
-1. **Update the master** — edit `Provelopment/.project/deployment-info/instruction-manuals/` (and only there).
+1. **Update the master** — edit the master copy only. Never edit a distributed copy.
 2. **Review** — read the changed manual end to end; confirm it is actionable and
    consistent with the manuals it cross-references. Bump the header revision if warranted.
 3. **Copy the complete file set** — propagate every master file, so additions and
@@ -71,65 +77,53 @@ Run this when the master changes, and once per accepted Foundation release.
    (`robocopy /MIR`, `rsync --delete`). A copy is reviewable, and a file that has
    genuinely disappeared from the master is removed from the receivers as its own
    deliberate, visible step:
+
    ```powershell
-   # run from the root repository (the one that contains .project/)
-   Copy-Item '.project\deployment-info\instruction-manuals\*.md'  '01.foundation\instruction-manuals\' -Force
+   Copy-Item '<master>\*.md'  '<receiver>\instruction-manuals\' -Force
    ```
+
    ```bash
-   # run from the root repository
-   cp .project/deployment-info/instruction-manuals/*.md 01.foundation/instruction-manuals/
+   cp <master>/*.md <receiver>/instruction-manuals/
    ```
+
 4. **Verify the exact file list** — the copies must contain exactly the master's
    files: no extras, no omissions.
 5. **Verify byte/hash parity** — see below. Not optional.
-6. **Update the receiving project's records** — Foundation: nothing beyond the
-   commit. Adopter: a row in `platform/SOURCE.md` recording the manual revision
-   alongside the Foundation baseline.
+6. **Update the receiving project's records** — an adopter records a row in
+   `platform/SOURCE.md` linking the manual revision to the Foundation baseline.
 7. **Commit the receiving repository** — separately from the master commit, with
    a conventional message naming the manual revision.
 
 ## Parity verification
 
-**PowerShell (Windows workspace):**
+Substitute `<master>` and `<receiver>` with the two locations being compared; the
+check is identical in every workspace.
+
+**PowerShell (Windows):**
 
 ```powershell
-# run from the root repository
-$master = '.project\deployment-info\instruction-manuals'
-foreach ($copy in @(
-  '01.foundation\instruction-manuals',
-  '02.demo-businesses\instruction-manuals',
-  '03.dot-com\instruction-manuals')) {
-  Write-Host "== $copy"
-  $a = Get-ChildItem $master -File | Sort-Object Name
-  $b = Get-ChildItem $copy   -File | Sort-Object Name
-  if ($a.Count -ne $b.Count) { Write-Host "  FILE-COUNT MISMATCH: $($a.Count) vs $($b.Count)" }
-  foreach ($f in $a) {
-    $h1 = (Get-FileHash $f.FullName -Algorithm SHA256).Hash
-    $h2 = if (Test-Path (Join-Path $copy $f.Name)) { (Get-FileHash (Join-Path $copy $f.Name) -Algorithm SHA256).Hash } else { 'MISSING' }
-    '{0,-28} {1}' -f $f.Name, $(if ($h1 -eq $h2) { 'MATCH' } else { 'DIFF' })
-  }
+$master = '<master>'
+$copy   = '<receiver>'
+$a = Get-ChildItem $master -File | Sort-Object Name
+$b = Get-ChildItem $copy   -File | Sort-Object Name
+if ($a.Count -ne $b.Count) { Write-Host "FILE-COUNT MISMATCH: $($a.Count) vs $($b.Count)" }
+foreach ($f in $a) {
+  $h1 = (Get-FileHash $f.FullName -Algorithm SHA256).Hash
+  $h2 = if (Test-Path (Join-Path $copy $f.Name)) { (Get-FileHash (Join-Path $copy $f.Name) -Algorithm SHA256).Hash } else { 'MISSING' }
+  '{0,-28} {1}' -f $f.Name, $(if ($h1 -eq $h2) { 'MATCH' } else { 'DIFF' })
 }
 ```
 
 **bash / macOS / Linux:**
 
 ```bash
-# run from the root repository
-for r in 01.foundation 02.demo-businesses 03.dot-com; do
-  diff -r .project/deployment-info/instruction-manuals "$r/instruction-manuals" \
-    && echo "$r PARITY OK"
-done
+diff -r '<master>' '<receiver>' && echo 'PARITY OK'
 ```
 
 `diff -r` is silent and exits 0 only when every file is byte-identical — that is
-the acceptance evidence. No synchronization tooling is required or wanted; the
-copy is explicit and the check is explicit.
-
-> **Every repository that carries a distributed copy must be checked.** The receiver set grows as
-> projects are adopted (`02.demo-businesses` since the demo programme, `03.dot-com` since the
-> dot-com bootstrap, `00.foundation-template` + `01.foundation` since the FS1 split). A parity
-> claim is only ever made for receivers that were actually checked.
-
+the acceptance evidence. No synchronization tooling is required or wanted. Parity
+is verified after every propagation, and additionally whenever a receiving
+project is adopted.
 ## Version table
 
 | Manual revision | Procedure validated against | Commit | Date |
@@ -171,7 +165,7 @@ copy is explicit and the check is explicit.
 > **canonical-baseline files** a vendoring helper does not copy. The header
 > terminology is defined above for the first time, which is why nine manuals
 > previously carried a stale, undefined baseline. See
-> `02.demo-businesses/docs/upgrades/foundation-dae07b4-shared-upgrade.md`.
+> the maintainer's private adopter upgrade records.
 >
 > The same upgrade pass also produced the **deployment-blocking** finding recorded in
 > `deployment.md` (Preconditions) and `troubleshooting.md` entry 7: a Git-integrated platform
@@ -179,25 +173,27 @@ copy is explicit and the check is explicit.
 > green gate can coexist with an unchanged production site.
 
 > `2026-09-16.2` re-issues the same procedures with the workspace paths updated by
-> the numbered-workspace migration: the governance home is now `.project/` (was
-> `.project-instructions/`) and the Foundation working directory is now
-> `01.foundation/` (was `ProvelopmentFoundation/`). No procedure changed.
-> `2026-09-16.1` re-issues the same procedures with the propagation/parity cycle
+> `2026-09-17.3` removes references to the maintainer's private governance locations
+> from these distributed manuals. No procedure changed: the propagation commands
+> and the parity check now use `<master>`/`<receiver>` placeholders, and the
+> concrete workspace procedure lives with the private governance documentation
+> rather than in the shipped package.
+> `2026-09-16.2` re-issued the same procedures with the workspace paths updated by
+> a workspace reorganisation: the governance home and the Foundation working
+> directory were renamed. No procedure changed.
+> `2026-09-16.1` re-issued the same procedures with the propagation/parity cycle
 > updated for the single-presentation architecture: the retired selectable-
 > presentation (preset) feature and the retired sibling demo repository are no
 > longer part of the cycle, and the parity check covers Foundation only.
-> `2026-09-15.1` re-issues the same procedures with the master authority path moved to
-> `.project/deployment-info/instruction-manuals/` (governance consolidation).
-> No procedure changed; the propagation and parity checks above are unchanged.
-
-Add a row whenever the manuals are propagated against a new Foundation baseline.
-
+> `2026-09-15.1` re-issued the same procedures with the master authority path moved
+> to its governance location. No procedure changed; the propagation and parity
+> checks above are unchanged.
 ## Manual index
 
 | Manual | Use it when |
 | --- | --- |
 | [`foundation-upgrade.md`](foundation-upgrade.md) | A newer Foundation release must be absorbed without damaging adopter-owned material. |
-| [`adoption.md`](adoption.md) | Creating a new Foundation-derived project (a single-site **downstream clone** like `03.dot-com`, or a multi-site **vendored** adopter, or a real customer). |
+| [`adoption.md`](adoption.md) | Creating a new Foundation-derived project (a single-site **downstream clone**, or a multi-site **vendored** adopter, or a real customer). |
 | [`site-customization.md`](site-customization.md) | Changing identity, navigation, CTA, presentation, theme, contact or metadata **without touching source**. |
 | [`branding-and-assets.md`](branding-and-assets.md) | Replacing logos, favicon, banners, sidebar icons or imagery; runtime roles vs business files. |
 | [`content-management.md`](content-management.md) | Writing/editing pages, offerings, portfolio, testimonials, FAQs, legal pages or dictionaries. |

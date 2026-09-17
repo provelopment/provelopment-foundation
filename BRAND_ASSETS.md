@@ -183,8 +183,8 @@ Both are fully supported and neither requires a code change:
     runtime stay in step.
 
 5.  Preserve or update the provenance record for that role — owner, source,
-    SHA-256, byte count, geometry. (Provelopment keeps its record in
-    .project/deployment-info/brands-provelopment/provenance/.)
+    SHA-256, byte count, geometry. (The platform maintainer keeps its own
+      provenance register outside this repository.)
 
 6.  DO NOT change code when the filename and role are unchanged. There is no
     component, schema, resolver, CSS or routing edit in this workflow.
@@ -696,7 +696,7 @@ config change, with no code change**. The branded Foundation master — and the
 measured `cover` crop it implies inside the wide, short header box — is retained in
 the source package
 (`assets/branding/page-graphics/header-graphic.svg`) and the living-pack provenance
-(`.project/deployment-info/brands-provelopment/provenance/display-graphics-provenance.json`);
+(the living-pack provenance record, maintained outside this repository);
 that crop remains a **Master-Brand-Architect-owned aesthetic judgement**, never a
 coding acceptance criterion.
 
@@ -902,7 +902,7 @@ instagram.svg  linkedin.png   github.svg
 | Missing / unapproved mark | **remains text-only** — no build failure, no broken image, no lost contact method |
 | Removal / disable | clear or delete the item's `icon` leaf; or remove the connectivity item entirely |
 | Requires code change to swap? | **no** |
-| Third-party provenance / trademark review | **mandatory and NOT performed by this document.** The admitted/withheld register and each mark's source owner, published use basis, colour variant and modifications live in the living brand pack: `.project/deployment-info/brands-provelopment/provelopment-foundation/social/platform-marks/` |
+| Third-party provenance / trademark review | **mandatory and NOT performed by this document.** The admitted/withheld register and each mark's source owner, published use basis, colour variant and modifications live in the maintainer's living brand pack (kept outside this repository) |
 
 > **Do not attach a mark to an invented destination.** Availability is not
 > activation. Do not add a mark for a platform that has not been admitted.

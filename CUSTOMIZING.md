@@ -236,7 +236,7 @@ semantic (`standard`/`prominent`). The Foundation never derives `href` from
 
 > in `FOUNDATION_UI_DEFAULTS` (`src/core/ui/defaults.ts`), so the resolved
 > configuration and the rendered site are unchanged. Historical records of the
-> feature remain under `.project/`.
+> feature are held in the maintainer's private governance repository.
 ### Configurable controls, assets & presentation modes (P5-5)
 
 P5-5 makes the "change the configuration, not the Foundation" experience real

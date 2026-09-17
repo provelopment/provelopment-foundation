@@ -1,10 +1,10 @@
 # Adoption — creating a new Foundation-derived project
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-17.2`
+> **Manual revision:** `2026-09-17.3`
 > **Procedure validated against:** Foundation template release `v2026.09.17-foundation-generic-template` (`b9f7a18`) + the FS1 repository split (public template / private reference site)
 > **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
-> **Master authority:** Provelopment root project — `.project/deployment-info/instruction-manuals/`
+> **Master authority:** maintained in the Provelopment governance repository (private; not part of this product)
 >
 > This copy is **distributed**. It is byte-identical to the master. Edit the master
 > upstream and propagate; never edit a distributed copy in place.
@@ -29,7 +29,7 @@ supported, and neither is a fork.
 | Foundation arrives as | a committed snapshot under `platform/`, reproduced into each site | the repository's own tree at the Foundation commit |
 | Source record | `platform/SOURCE.md` | `FOUNDATION_SOURCE.md` |
 | Upgraded by | `foundation-upgrade.md` — compare → apply | `foundation-upgrade.md`, treating the repository root as the platform tree |
-| Worked example | `02.demo-businesses` (several sites on **one shared** snapshot) | `03.dot-com` (single commercial site) |
+| Worked example | a multi-site adopter: several sites reproducing **one shared** snapshot | a single-site adopter: one re-branded checkout |
 
 Either way the Foundation relationship must be **explicit in the repository**: a source record
 naming the source repository, the **exact** Foundation commit or tag, the acquisition date and

@@ -1,10 +1,10 @@
 # Branding & Assets — runtime roles vs business files
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-17.2`
+> **Manual revision:** `2026-09-17.3`
 > **Procedure validated against:** Foundation template release `v2026.09.17-foundation-generic-template` (`b9f7a18`) + the FS1 repository split (public template / private reference site)
 > **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
-> **Master authority:** Provelopment root project — `.project/deployment-info/instruction-manuals/`
+> **Master authority:** maintained in the Provelopment governance repository (private; not part of this product)
 >
 > This copy is **distributed**. It is byte-identical to the master. Edit the master
 > upstream and propagate; never edit a distributed copy in place.

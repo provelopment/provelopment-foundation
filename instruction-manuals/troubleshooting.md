@@ -1,8 +1,8 @@
 # Troubleshooting — known, recurring, resolved
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-16.3`
-> **Procedure validated against:** `main` @ `dae07b4` (runtime commit `1114759`)
+> **Manual revision:** `2026-09-17.1`
+> **Procedure validated against:** `main` @ `ccc29a5` (runtime commit `1114759`)
 > **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
 > **Master authority:** Provelopment root project — `.project/deployment-info/instruction-manuals/`
 >
@@ -177,6 +177,41 @@ trigger, so the failure surfaces only as "production did not change".
 and treat "the live site did not change" as a deployment problem to investigate immediately —
 never as caching. Record the identity in the project's docs so the next agent does not have to
 rediscover it.
+
+---
+
+## 8. The site is not live and no deployment exists to debug — a missing provider project
+
+**Symptom.** The repository is green, merged and pushed, but the intended production hostname
+does not serve the site: the apex may resolve to the deployment provider and return
+`DEPLOYMENT_NOT_FOUND`, or the `www` host may not resolve at all (`No such host is known`).
+There is no build failure, because **there is no deployment to fail**.
+
+**Cause.** The provider **project itself was never created**, or exists but is not connected to
+this repository. A Git-integrated provider does not provision a project because a repository
+exists: project creation, repository connection, production branch and domain binding are set up
+once in the provider account. In a coding-agent environment there are normally **no provider
+credentials** (`vercel whoami` → *No existing credentials found*; no `VERCEL_TOKEN`; no
+`~/.vercel` auth store), so none of those steps can be performed from the repository side.
+
+**Safe resolution.**
+1. Confirm the diagnosis before touching anything: check the provider CLI auth state, the
+   repository's commit **statuses/checks** (a connected provider reports its own deployment
+   status; none present means it is not connected), and resolve the hostname to see what it
+   actually points at.
+2. **Do not** invent infrastructure, change DNS, or create provider resources on the owner's
+   behalf. Prepare the exact owner action instead: project name, repository, framework, root
+   directory, production branch, environment variables (usually none), the canonical domain and
+   whether the apex redirects to it, and the exact DNS record the provider's domain screen
+   asks for.
+3. Record the verified current DNS state (existing sibling hosts, and the MX/TXT records that
+   must not be modified) so the handover cannot damage mail.
+4. Report the deployment as **pending owner action** — never as deployed.
+
+**Prevention.** Treat "is a provider project connected to this repository?" as a **precondition
+of the bootstrap**, alongside the first green gate. Verify it with evidence (provider auth
+state, repository deployment statuses) rather than assuming a push will deploy. — See
+`deployment.md` (Preconditions, and *Domain and DNS*).
 
 ---
 

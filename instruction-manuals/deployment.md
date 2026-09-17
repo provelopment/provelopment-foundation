@@ -1,8 +1,8 @@
 # Deployment — taking a validated site live
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-16.3`
-> **Procedure validated against:** `main` @ `dae07b4` (runtime commit `1114759`)
+> **Manual revision:** `2026-09-17.1`
+> **Procedure validated against:** `main` @ `ccc29a5` (runtime commit `1114759`)
 > **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
 > **Master authority:** Provelopment root project — `.project/deployment-info/instruction-manuals/`
 >
@@ -39,6 +39,15 @@ worked examples) lives in the project's own deployment guide. This manual is the
 - Deployment configuration is normally an **owner action**: prepare the exact
   proposed change (provider project, root directory, domain, DNS record) and hand
   it over rather than improvising infrastructure.
+- **The provider project must already exist and be connected to the repository.** A
+  provider that builds from Git does **not** create a project by itself: the project, its
+  repository connection, its production branch and its domains are set up once, in the provider
+  account. Verify this before planning a deployment rather than assuming a push will deploy.
+  A coding-agent environment typically holds **no provider credentials** — check
+  (`vercel whoami`, or the equivalent) and, if unauthenticated, treat the whole step as an
+  owner action (`troubleshooting.md` entry 8). A site whose project has not been created is
+  simply **not live**; nothing is broken by that, but it must be reported as pending, never as
+  deployed.
 
 ## Critical checks before going live
 
@@ -53,6 +62,27 @@ worked examples) lives in the project's own deployment guide. This manual is the
 | **CTA present and correctly placed** | Once, reachable, in the top region — not inside navigation. |
 | **Responsive behaviour** | Mobile, tablet and desktop all render correctly. |
 | **No horizontal overflow** | Including long-content cases (emails, labels). |
+
+## Domain and DNS (owner action)
+
+Before proposing any DNS change, **read the zone first** — DNS is shared with email and other
+services.
+
+1. Find the authoritative nameservers and the current records for the apex and the intended
+   `www` host (`Resolve-DnsName <host> -Type A/CNAME/NS/MX/TXT`).
+2. Look at how **existing** hosts in the same zone are wired and follow that convention (for
+   example sibling subdomains pointing at `<hash>.vercel-dns-017.com`); do not invent a new
+   pattern.
+3. Propose **only** the records the site needs. **Never modify MX, SPF/DKIM/DMARC or any other
+   mail record** as part of a website deployment.
+4. Publish **one canonical hostname**. If the convention is apex → `www`, the apex must
+   **redirect** to the canonical host rather than serve a second canonical URL; the configured
+   `site.url` must be the canonical form exactly.
+5. An apex that already resolves to the provider but returns `DEPLOYMENT_NOT_FOUND` means the
+   domain is pointed at the provider with **no deployment behind it** — that is a missing
+   provider project, not a DNS defect.
+6. Never guess a DNS value. Take the exact target from the provider's domain screen and hand it
+   over; report the exact blocker if you lack access.
 
 ## Live QA
 

@@ -1,8 +1,8 @@
 # Provelopment Foundation Instruction Manuals
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-16.3`
-> **Procedure validated against:** `main` @ `dae07b4` (runtime commit `1114759`)
+> **Manual revision:** `2026-09-17.1`
+> **Procedure validated against:** `main` @ `ccc29a5` (runtime commit `1114759`)
 > **Master authority:** Provelopment root project — `.project/deployment-info/instruction-manuals/`
 > **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
 >
@@ -18,7 +18,7 @@ nowhere else; every manual's header uses exactly these terms.
 | Term | Meaning | Where it lives |
 | --- | --- | --- |
 | **Manual revision** | The version of this manual **set**. Bumped when the procedures change. Not a Foundation release. | The header of every manual + the version table below. |
-| **Procedure validated against** | The exact Foundation ref on which this revision of the procedure was last exercised **end to end, with recorded evidence**. A procedure statement is only trustworthy to this ref. | The header of every manual. |
+| **Procedure validated against** | The exact Foundation ref on which this manual **set** was last exercised **end to end, with recorded evidence** — for *any* procedure in the set. A procedure statement is only trustworthy to the ref at which *that* procedure was last exercised; the version table records which run produced the current revision. | The header of every manual. |
 | **Adopter baseline** | The Foundation ref a **specific adopter project** actually runs. Independent per adopter. | That project's `platform/SOURCE.md`. |
 | **Target ref** | The immutable ref **selected for one upgrade** (a release tag, or a full commit SHA when no tag covers the accepted state — never a moving branch name). | The upgrade record + `platform/SOURCE.md` after acceptance. |
 
@@ -48,7 +48,7 @@ are operational procedure, not marketing.
 | | Location | Role |
 | --- | --- | --- |
 | **Master** | Provelopment root project / `.project/deployment-info/instruction-manuals/` | Authoritative. All edits happen here. |
-| **Distributed** | `01.foundation/instruction-manuals/` and every Foundation-derived adopter project | Byte-identical copies of the master. |
+| **Distributed** | `01.foundation/instruction-manuals/`, `02.demo-businesses/instruction-manuals/`, `03.dot-com/instruction-manuals/`, and every Foundation-derived adopter project | Byte-identical copies of the master. |
 
 **Edit rule:** a distributed copy is never edited independently. If a manual is
 wrong or incomplete, fix the master, review it, then propagate. Two divergent
@@ -96,7 +96,9 @@ Run this when the master changes, and once per accepted Foundation release.
 # run from the root repository
 $master = '.project\deployment-info\instruction-manuals'
 foreach ($copy in @(
-  '01.foundation\instruction-manuals')) {
+  '01.foundation\instruction-manuals',
+  '02.demo-businesses\instruction-manuals',
+  '03.dot-com\instruction-manuals')) {
   Write-Host "== $copy"
   $a = Get-ChildItem $master -File | Sort-Object Name
   $b = Get-ChildItem $copy   -File | Sort-Object Name
@@ -113,23 +115,40 @@ foreach ($copy in @(
 
 ```bash
 # run from the root repository
-diff -r .project/deployment-info/instruction-manuals 01.foundation/instruction-manuals && echo "FOUNDATION PARITY OK"
+for r in 01.foundation 02.demo-businesses 03.dot-com; do
+  diff -r .project/deployment-info/instruction-manuals "$r/instruction-manuals" \
+    && echo "$r PARITY OK"
+done
 ```
 
 `diff -r` is silent and exits 0 only when every file is byte-identical — that is
 the acceptance evidence. No synchronization tooling is required or wanted; the
 copy is explicit and the check is explicit.
 
+> **Every repository that carries a distributed copy must be checked.** The receiver set grows as
+> projects are adopted (`02.demo-businesses` since the demo programme, `03.dot-com` since the
+> dot-com bootstrap). A parity claim is only ever made for receivers that were actually checked.
+
 ## Version table
 
 | Manual revision | Procedure validated against | Commit | Date |
 | --- | --- | --- | --- |
+| `2026-09-17.1` | `main` (single canonical presentation) | `ccc29a5` | 2026-09-17 |
 | `2026-09-16.3` | `main` (single canonical presentation) | `dae07b4` | 2026-09-16 |
 | `2026-09-16.2` | `main` (single canonical presentation) | `1114759` | 2026-09-16 |
 | `2026-09-16.1` | `main` (single canonical presentation) | `1114759` | 2026-09-16 |
 | `2026-09-15.1` | `v2026.09.11-foundation-p6-3c-banner-sidebar-cta` | `f5c94da` | 2026-09-15 |
 | `2026-09-11.1` | `v2026.09.11-foundation-p6-3c-banner-sidebar-cta` | `f5c94da` | 2026-09-11 |
 
+> `2026-09-17.1` is validated by the **dot-com bootstrap** (`03.dot-com`) — the first time the
+> **adoption** procedure was executed end to end, at Foundation `ccc29a5` (runtime `1114759`).
+> It adds the distinction between the two **adoption shapes** (vendored vs **direct downstream
+> clone**), the downstream-clone **runbook** that was actually followed, the mandatory
+> `origin`/`foundation` remote topology, the rule that a downstream project keeps its own version
+> history (upstream release tags are **not** pushed downstream), and the provider-credential
+> precondition in `deployment.md` + `troubleshooting.md` entry 8. `foundation-upgrade.md` was not
+> re-exercised by this run; its last full exercise remains `2026-09-16.3` @ `dae07b4`.
+>
 > `2026-09-16.3` is the first revision **validated by a real upgrade run**, not by
 > review. The DemoBusinesses shared-platform upgrade (`f5c94da` → `dae07b4`) was
 > executed with this procedure and its findings are folded back in:
@@ -167,7 +186,7 @@ Add a row whenever the manuals are propagated against a new Foundation baseline.
 | Manual | Use it when |
 | --- | --- |
 | [`foundation-upgrade.md`](foundation-upgrade.md) | A newer Foundation release must be absorbed without damaging adopter-owned material. |
-| [`adoption.md`](adoption.md) | Creating a new Foundation-derived project (Demo 3/4 or a real customer). |
+| [`adoption.md`](adoption.md) | Creating a new Foundation-derived project (a single-site **downstream clone** like `03.dot-com`, or a multi-site **vendored** adopter, or a real customer). |
 | [`site-customization.md`](site-customization.md) | Changing identity, navigation, CTA, presentation, theme, contact or metadata **without touching source**. |
 | [`branding-and-assets.md`](branding-and-assets.md) | Replacing logos, favicon, banners, sidebar icons or imagery; runtime roles vs business files. |
 | [`content-management.md`](content-management.md) | Writing/editing pages, offerings, portfolio, testimonials, FAQs, legal pages or dictionaries. |

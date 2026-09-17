@@ -1,8 +1,8 @@
 # Adoption — creating a new Foundation-derived project
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-16.3`
-> **Procedure validated against:** `main` @ `dae07b4` (runtime commit `1114759`)
+> **Manual revision:** `2026-09-17.1`
+> **Procedure validated against:** `main` @ `ccc29a5` (runtime commit `1114759`)
 > **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
 > **Master authority:** Provelopment root project — `.project/deployment-info/instruction-manuals/`
 >
@@ -16,6 +16,35 @@ or a real customer site — from an **approved Foundation release**, so that the
 project starts with the platform *and* the operating knowledge it needs.
 
 This manual is generic. It is not specific to any one business or directory name.
+
+## Adoption shapes
+
+A Foundation-derived project is created in one of two shapes. Choose deliberately — both are
+supported, and neither is a fork.
+
+| | **Vendored** | **Direct downstream clone** |
+| --- | --- | --- |
+| Shape | the Foundation lives under a `platform/` directory inside the project | the project **is** a Foundation checkout, re-branded and re-configured |
+| Use it when | one repository hosts **several** sites, or the platform and business layers must be held apart with a divergence check | the project is **one site** and its owner wants the Foundation in place, with no vendoring layer |
+| Foundation arrives as | a committed snapshot under `platform/`, reproduced into each site | the repository's own tree at the Foundation commit |
+| Source record | `platform/SOURCE.md` | `FOUNDATION_SOURCE.md` |
+| Upgraded by | `foundation-upgrade.md` — compare → apply | `foundation-upgrade.md`, treating the repository root as the platform tree |
+| Worked example | `02.demo-businesses` (several sites on **one shared** snapshot) | `03.dot-com` (single commercial site) |
+
+Either way the Foundation relationship must be **explicit in the repository**: a source record
+naming the source repository, the **exact** Foundation commit or tag, the acquisition date and
+method, the adoption shape, and the remote topology. Never write a version the project is not
+actually running.
+
+### Remote topology (both shapes)
+
+The **downstream repository is always `origin`**. The Foundation must never be the downstream
+`origin`, or downstream work will be pushed upstream. Name the upstream remote `foundation`:
+
+```text
+origin       → the project's own repository
+foundation   → provelopment/provelopment-foundation
+```
 
 ## Prerequisites
 
@@ -142,6 +171,64 @@ recommended next step. The project must remain **self-describing** — a future
 agent should recover context from the project's own files and Git history without
 the original conversation.
 
+## Downstream clone bootstrap (single-site)
+
+The runbook actually exercised to create a new single-site project by cloning the Foundation
+from GitHub. Run it from the workspace root, with the project's numbered directory name already
+reserved.
+
+1. **Reserve the name** — take the next free `NN.<logical-name>` in the workspace and add it to
+   the root repository's `.gitignore` **before** cloning, so the independent repository can
+   never be absorbed by the root repository's tracking.
+2. **Select the Foundation ref** — an accepted release tag, or the **exact** accepted commit SHA
+   when no tag covers that state. Never a moving branch name.
+3. **Clone from GitHub** — the acquisition source is the canonical GitHub repository, never a
+   sibling working copy:
+   ```bash
+   git clone https://github.com/provelopment/provelopment-foundation.git NN.<logical-name>
+   ```
+4. **Pin and verify** — `git rev-parse HEAD` must equal the selected SHA; check out that exact
+   commit if the clone's `main` has moved on.
+5. **Rename the remote** — `git remote rename origin foundation`.
+6. **Create the downstream repository** — empty (no README, no `.gitignore`, no licence),
+   default branch `main`, private for a commercial project unless the owner has approved
+   otherwise.
+7. **Add `origin`** — the new downstream URL.
+8. **Push the pristine baseline** — push the untouched Foundation state to `origin/main` and set
+   upstream tracking. That commit is the project's **rollback reference**; do not squash it and
+   do not `git init` a fresh history beside it.
+9. **Branch** — `bootstrap/<project>-foundation` for all identity work, so the acquisition point
+   and the customization stay separately reviewable.
+10. **Record provenance** — `FOUNDATION_SOURCE.md` (source repository, canonical URL, exact
+    SHA/tag, acquisition date and method, downstream repository, remote topology, adoption
+    shape, adoption status).
+11. **Apply the approved identity** — from the brand pack in the root governance project; follow
+    `branding-and-assets.md`. Never design a new identity; never edit the master pack to fit a
+    site.
+12. **Configure the site** — `site.config.json`: identity, canonical `site.url`, locale(s),
+    enabled features, navigation, CTA, theme (`site-customization.md`). Remove inherited example
+    configuration that would misdescribe the site (`https://www.example.com` must never survive
+    as a production URL).
+13. **Reduce content honestly** — keep the site factually correct and neutral instead of
+    inventing commercial copy; a **disabled feature must not remain in navigation**, and every
+    navigation target must return 200.
+14. **Re-verify the inherited tests** — the Foundation's **reference-site** suites test the
+    Foundation's *own* reference site: exclude them from the project gate, expose them as
+    separate commands, and add the project's own acceptance tests.
+15. **Run the full gate** (`validation.md`) — assets check, types, lint, unit tests, build,
+    audit, browser smoke.
+16. **Verify the production build locally** — serve the build and check identity roles, routes,
+    assets and canonical metadata **before** any deployment.
+17. **PR and merge** — the bootstrap lands through a reviewable PR, not directly on `main`.
+18. **Deploy** (`deployment.md`) — connect the provider project and deploy. Provider-project
+    creation and domain/DNS changes are normally **owner actions**; hand over the exact steps.
+19. **Verify production** — routes 200, identity correct, no `example.com`, no broken assets,
+    responsive shell intact.
+20. **Record** — a bootstrap record in the project (date, source SHA, baseline commit, branding
+    source, validation results, deployment commit, deviations) plus the project's own tag.
+21. **Document the workspace** — root project map, `VERSION_CONTROL.md` entry, changelog, memory
+    and the project's programme plan.
+
 ## Completion criteria
 
 - [ ] independent repository with its own remote;
@@ -162,3 +249,7 @@ the original conversation.
 - Never configure DNS/Vercel/GitHub settings on the owner's behalf without an
   explicit instruction.
 - Never claim a green gate that was not actually run (see `validation.md`).
+- Never push the upstream Foundation's release tags into the downstream repository — a
+  downstream project owns only its own version history.
+- Never acquire the Foundation from a local sibling copy when the canonical GitHub repository is
+  reachable; the GitHub clone is the auditable acquisition.

@@ -112,8 +112,8 @@ export interface UiConfigInput {
  * completeness invariant (assertResolvedUiConfigComplete)
  * ```
  *
- * CONTRACT DECISIONS (locked, owner-approved; see .project/plan/archive/todo-milestone-ui-02.md,
- * amended by the single-presentation closure — .project/CHANGELOG.md):
+ * CONTRACT DECISIONS (locked, owner-approved; see the UI-02 milestone contract (retired plan; Git history),
+ * amended by the single-presentation closure — the project changelog (Git history)):
  *
  * 1. ONE canonical presentation. There is no presentation/profile selection
  *    layer: resolution is exactly `override ?? FOUNDATION_UI_DEFAULTS.<leaf>`.

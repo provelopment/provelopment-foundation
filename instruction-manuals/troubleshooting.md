@@ -1,8 +1,8 @@
 # Troubleshooting — known, recurring, resolved
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-17.1`
-> **Procedure validated against:** `main` @ `ccc29a5` (runtime commit `1114759`)
+> **Manual revision:** `2026-09-17.2`
+> **Procedure validated against:** Foundation template release `v2026.09.17-foundation-generic-template` (`b9f7a18`) + the FS1 repository split (public template / private reference site)
 > **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
 > **Master authority:** Provelopment root project — `.project/deployment-info/instruction-manuals/`
 >
@@ -227,3 +227,27 @@ task is in flight.
 Add a problem here only when it has **recurred** and the resolution is **proven**.
 Use the four-part shape. Do not turn this manual into a chronological log — that
 belongs in the project's knowledge record.
+
+## 9. CI fails on a directory that exists in your working tree but not in a fresh clone
+
+`ENOENT: no such file or directory, scandir .../content`
+
+**Cause.** Git does not track empty directories. A test fixture, a build step or a
+manual experiment can leave an empty directory behind locally, so anything that scans
+it passes on your machine and fails in CI and in every fresh clone.
+
+**Fix.** Make the scan tolerate absence - an absent directory contains no files to
+scan:
+
+```ts
+if (!existsSync(directory)) return [];
+```
+
+**Prevention.** Run the clean-clone acceptance gate (`validation.md`) before releasing
+anything, and treat "works locally, fails in CI" as a hidden dependency until proven
+otherwise.
+
+**Related trap (the same class).** A provider project still connected to the **old**
+repository after a source move: production then keeps building from the upstream (now
+de-bloated) tree. Verify the provider reports the deployment against the new
+repository, and that the old one receives no production deployments.

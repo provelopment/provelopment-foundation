@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
 import { MIRRORED, MIRRORED_DIRECTORIES, RUNTIME_ONLY, buildPlan, checkMirrors } from "../../scripts/sync-runtime-assets.mjs";
@@ -7,14 +7,15 @@ import { MIRRORED, MIRRORED_DIRECTORIES, RUNTIME_ONLY, buildPlan, checkMirrors }
 /**
  * ASSET LIBRARY TAXONOMY + RUNTIME MIRROR (owner-directed, 2026-09).
  *
- * The Foundation has FOUR source asset categories with distinct ownership, and
+ * The Foundation has THREE source asset categories with distinct ownership, and
  * ONE deterministic relationship to the runtime delivery directory:
  *
- *   assets/branding/        deployment/business-specific artwork (Provelopment
- *                           Foundation marks, logos, page graphics)
  *   assets/icon-library/    reusable, NON-business-specific generic icons — ALL
  *                           retained, used or not (the template's icon store)
- *   assets/placeholders/    blank/generic defaults for a fresh installation
+ *   assets/placeholders/    blank/generic defaults for a fresh installation —
+ *                           these ALSO serve as the template's neutral identity
+ *                           (favicon / logo roles), because a generic template
+ *                           ships no deployment-specific brand artwork (FS1)
  *   assets/platform-marks/  royalty-free platform/social-service marks
  *   public/assets/**        BYTE-IDENTICAL derivative of the above; never a
  *                           second, independently maintained authority
@@ -37,7 +38,7 @@ const readRuntime = (file: string) => readFileSync(path.join(ROOT, "public", "as
 const marks = () =>
   names("platform-marks").filter((name) => /\.(svg|png|jpe?g|webp|gif|avif)$/i.test(name));
 
-describe("asset taxonomy — the four source categories exist and stay distinct", () => {
+describe("asset taxonomy — the three source categories exist and stay distinct", () => {
   it("carries one directory per ownership category", () => {
     const subdirectories = (category: string) =>
       readdirSync(dir(category), { withFileTypes: true })
@@ -45,40 +46,37 @@ describe("asset taxonomy — the four source categories exist and stay distinct"
         .map((entry) => entry.name)
         .sort();
     // Each category is populated either with role files or with its own
-    // sub-structure (branding groups banners/identity/logos/page-graphics).
-    expect(subdirectories("branding")).toEqual(["banners", "identity", "logos", "page-graphics"]);
+    // sub-structure (the icon library groups icons/licensing).
     expect(subdirectories("icon-library")).toEqual(["icons", "licensing"]);
     expect(names("placeholders").length).toBeGreaterThan(0);
     expect(marks()).toHaveLength(7);
+    // FS1 — the template ships NO deployment-specific brand artwork at all: the
+    // identity roles resolve to the neutral placeholders above.
+    expect(existsSync(dir("branding")), "assets/branding must not ship").toBe(false);
   });
 
-  it("keeps the deployment's branding artwork in assets/branding/", () => {
-    expect(names("branding", "identity")).toContain("mark.svg");
-    expect(names("branding", "identity")).toContain("favicon.svg");
-    expect(names("branding", "logos").length).toBeGreaterThanOrEqual(8);
-    for (const graphic of ["background-all.svg", "status-graphic.svg", "header-graphic.svg", "footer-graphic.svg"]) {
-      expect(names("branding", "page-graphics")).toContain(graphic);
+  it("ships NO deployment-specific brand artwork — the identity roles use the neutral placeholders", () => {
+    // FS1 — de-bloating removed the reference site's brand pack (marks, logos,
+    // page graphics, banners) from the public template. What remains is the
+    // generic asset SYSTEM: role files a clone replaces.
+    const placeholder = readSource("placeholders", "logo-header.svg");
+    expect(placeholder).toContain("<svg");
+    // The identity files a fresh clone renders ARE the placeholder sources…
+    expect(readRuntime("logo-header.svg")).toBe(placeholder);
+    expect(readRuntime("logo-footer.svg")).toBe(placeholder);
+    expect(readRuntime("favicon.svg")).toBe(readSource("placeholders", "favicon.svg"));
+    // …and no Foundation brand hex or wordmark survives in the runtime identity.
+    for (const role of ["logo-header.svg", "logo-footer.svg", "favicon.svg"]) {
+      expect(readRuntime(role), `${role} must not carry Foundation branding`).not.toMatch(
+        /4F7CAC|3F6791|Provelopment/i,
+      );
     }
-    // Owner-directed (2026-09 closure pass) — the persistent per-page banner
-    // family is a SOURCE asset beneath assets/, never a runtime-only exception.
-    expect(names("branding", "banners")).toHaveLength(10);
-    for (const banner of names("branding", "banners")) {
-      expect(banner, `${banner} must be a PNG banner role`).toMatch(/^banner-[a-z]+\.png$/);
-    }
-    // Business branding never holds generic library icons or blank placeholders.
-    const branding = [...names("branding"), ...names("branding", "identity"), ...names("branding", "logos")];
-    expect(branding.filter((name) => /^icon-/.test(name))).toEqual([]);
-    expect(branding.filter((name) => /placeholder/i.test(name))).toEqual([]);
   });
 
   it("keeps graphic directories free of documentation (docs live with their category)", () => {
     // Owner-directed (2026-09 closure pass): a graphic directory holds graphics.
-    // The brand-system spec belongs beside the branding category it documents,
-    // and the platform-mark registers belong with the marks they document.
-    expect(names("branding", "page-graphics").every((name) => !name.endsWith(".md"))).toBe(true);
-    expect(names("branding", "banners").every((name) => !name.endsWith(".md"))).toBe(true);
-    // …and the relocated documents are exactly where their readers expect them.
-    expect(names("branding")).toContain("branding-schema.md");
+    // The platform-mark registers belong with the marks they document.
+    expect(names("platform-marks").every((name) => !name.endsWith(".md") || name.startsWith("platform-marks"))).toBe(true);
     expect(names("platform-marks")).toContain("platform-marks-provenance.md");
     expect(names("platform-marks")).toContain("platform-marks-withheld.md");
   });
@@ -131,11 +129,10 @@ describe("asset taxonomy — the four source categories exist and stay distinct"
 
 describe("runtime mirror — one deterministic source → derivative relationship", () => {
   it("declares a source for every runtime role the template serves", () => {
-    expect(MIRRORED.length).toBeGreaterThanOrEqual(10);
+    expect(MIRRORED.length).toBeGreaterThanOrEqual(9);
     expect(MIRRORED_DIRECTORIES.map((entry) => entry.from)).toEqual([
       "assets/icon-library/icons",
       "assets/platform-marks",
-      "assets/branding/banners",
     ]);
     // Every explicitly mirrored role file carries a human explanation.
     for (const row of [...MIRRORED, ...MIRRORED_DIRECTORIES]) expect(row.note.length).toBeGreaterThan(0);
@@ -163,32 +160,29 @@ describe("runtime mirror — one deterministic source → derivative relationshi
     // Owner-directed (2026-09 closure pass): the ten `banner-*.png` files used to
     // be the only RUNTIME_ONLY entries. The invariant is that a persistent
     // runtime visual asset always has an authoritative source beneath `assets/`,
-    // so the allowlist is empty and the banners are ordinary mirrored files.
+    // so the allowlist stays empty.
     expect(RUNTIME_ONLY).toEqual([]);
     const planned = new Map(buildPlan().map((row) => [row.to, row.from]));
-    for (const banner of names("branding", "banners")) {
-      expect(planned.get(banner), `${banner} must be mirrored from a source`).toBe(
-        `assets/branding/banners/${banner}`,
+    // FS1 — every runtime file the template still serves is mirrored from one.
+    for (const role of ["favicon.svg", "logo-header.svg", "logo-footer.svg"]) {
+      expect(planned.get(role), `${role} must be mirrored from a source`).toBe(
+        `assets/placeholders/${role === "logo-footer.svg" ? "logo-header.svg" : role}`,
       );
     }
   });
 
-  it("derives the header AND footer logo roles from ONE authoritative coloured source", () => {
-    // Owner-directed (2026-09 closure pass): the footer uses the same coloured
-    // lockup as the header; the monochrome lockup stays available as a source
-    // asset but is no longer an active default.
+  it("derives the header AND footer logo roles from ONE neutral source", () => {
     const role = (to: string) => MIRRORED.find((row) => row.to === to);
     const header = role("logo-header.svg");
     const footer = role("logo-footer.svg");
-    expect(header?.from).toBe("assets/branding/logos/lockup-horizontal.svg");
+    expect(header?.from).toBe("assets/placeholders/logo-header.svg");
     expect(footer?.from).toBe(header?.from);
     // Both runtime files really are that source, byte for byte.
     expect(readRuntime("logo-header.svg")).toBe(readRuntime("logo-footer.svg"));
-    expect(readRuntime("logo-footer.svg")).toBe(readSource("branding", "logos", "lockup-horizontal.svg"));
-    // The footer no longer resolves to the monochrome artwork…
-    expect(MIRRORED.some((row) => row.from === "assets/branding/logos/lockup-mono.svg")).toBe(false);
-    // …which remains a retained, optional branding source asset.
-    expect(names("branding", "logos")).toContain("lockup-mono.svg");
+    expect(readRuntime("logo-footer.svg")).toBe(readSource("placeholders", "logo-header.svg"));
+    // No deployed brand lockup is mirrored: the template has no brand of its own,
+    // and a clone replaces the placeholder (in place, or via `site.assets.*`).
+    expect(MIRRORED.some((row) => row.from.startsWith("assets/branding/"))).toBe(false);
   });
 
   it("mirrors the whole icon library, so every generic icon is runtime-available", () => {

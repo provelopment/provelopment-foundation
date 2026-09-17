@@ -3,6 +3,19 @@
 **This is the ONE authoritative document for every replaceable branding asset in
 the Foundation runtime.**
 
+> **Template scope (FS1).** This is the **generic public template**, so it ships
+> **no brand of its own**: the identity roles (favicon, header logo, footer logo)
+> resolve to the neutral files in `assets/placeholders/`, and the artwork-only roles
+> (page banners, page background, decorative header/footer band, status graphic,
+> social-preview image) ship **nothing** — they stay off until you configure them.
+> There is no `assets/branding/` tree here: supplying brand artwork is the
+> adopter's job. The rich, fully-branded example is the private reference site at
+> <https://foundation.provelopment.com>.
+>
+> Everything below is the **role contract** — filenames, formats, dimensions, config
+> keys, fallbacks, replacement and disable procedures — and it applies identically
+> whether you replace a shipped placeholder or activate a role for the first time.
+
 It exists so that an owner or a downstream adopter can answer every asset question
 **without reading source code**:
 
@@ -19,8 +32,8 @@ Will it be cropped?  Will it be scaled?
 Every role has an explicit answer below.
 
 > Other documents **point here** and do not restate the contract:
-> [`README.md`](README.md) · [`CUSTOMIZING.md`](CUSTOMIZING.md) · the living brand
-> packs under `.project/deployment-info/brands-provelopment/`.
+> [`README.md`](README.md) · [`CUSTOMIZING.md`](CUSTOMIZING.md) · the brand packs that
+> hold an adopter's approved masters (they live **outside** the runtime tree — §11).
 >
 > [`instruction-manuals/branding-and-assets.md`](instruction-manuals/branding-and-assets.md)
 > describes the role/asset *concept* and the banner + navigation-icon behaviours.
@@ -48,20 +61,16 @@ the artwork / owner review process and is never a coding gate.
 
 ### 1.1 Source assets vs runtime assets (the two-tree model)
 
-The Foundation keeps **one authority per file** and **four source categories**,
+The Foundation keeps **one authority per file** and **three source categories**,
 and derives everything the browser can fetch from them:
 
 ```text
-assets/branding/          deployment / business-specific artwork
-  banners/                the ten page-banner graphics (banner-<page>.png)
-  identity/               the identity mark + favicon
-  logos/                  logo lockups (wordmark/emblem/monochrome variants)
-  page-graphics/          background, header/footer/status graphics, OG image
-  branding-schema.md      the brand-system specification (docs live with the
-                          category they document, never inside a graphic folder)
+assets/placeholders/      blank / generic defaults for a fresh installation —
+                          these ARE the shipped identity too (favicon + both logo
+                          roles), because the generic template ships no
+                          deployment-specific brand artwork
 assets/icon-library/      reusable NON-business-specific generic icons
                           (ALL retained — used or unused)
-assets/placeholders/      blank / generic defaults for a fresh installation
 assets/platform-marks/    royalty-free platform / social-service marks
                           (+ their provenance / withheld registers)
 
@@ -75,9 +84,9 @@ public/assets/            the ONLY directory the running site fetches
 | One authority | A file is **edited in `assets/**`** and mirrored. `public/assets/**` is a byte-identical **derivative**, never a second place to maintain artwork |
 | Deterministic | `pnpm assets:sync` writes the mirror; `pnpm assets:check` (and `tests/unit/asset-taxonomy-mirror.test.ts`) fails on any drift, on a missing declared source, and on any **undeclared** file appearing under `public/assets/` |
 | Build-safe | `pnpm build` runs the mirror first, so a deployment can never ship a stale or half-applied asset move |
-| No permanent exceptions | every **persistent** runtime visual asset has an authoritative source beneath `assets/**` — including the ten page banners (`assets/branding/banners/`). `RUNTIME_ONLY` (the explicit, reasoned allowlist in the mirror manifest) is **empty by design**; a generated, source-less asset would still have to be declared there with a reason |
+| No permanent exceptions | every **persistent** runtime visual asset has an authoritative source beneath `assets/**`. `RUNTIME_ONLY` (the explicit, reasoned allowlist in the mirror manifest) is **empty by design**; a generated, source-less asset would still have to be declared there with a reason |
 | No junk drawer | `assets/placeholders/` holds blank/generic defaults only — never business branding, never general-purpose icons |
-| Graphics ≠ documents | a graphic directory holds graphics; documentation lives with the category it documents (`assets/branding/branding-schema.md`, `assets/platform-marks/platform-marks-*.md`) |
+| Graphics ≠ documents | a graphic directory holds graphics; documentation lives with the category it documents (`assets/platform-marks/platform-marks-*.md`) |
 
 ---
 
@@ -1084,13 +1093,16 @@ contract. Production artwork may be replaced, updated, or omitted without changi
 the branding engine when the documented filename/type/runtime contract is preserved.
 ```
 
-The **living brand packs** that carry the approved masters, and the **provenance
+The **brand packs** that carry an adopter's approved masters, and the **provenance
 records** that tie source ↔ living ↔ runtime byte-for-byte, live outside the
-runtime tree:
+runtime tree. The Foundation's own brand pack lives in its private project
+governance repository and is deliberately **not** part of this template's
+distribution — keep yours wherever your brand process belongs (a `brand/`
+directory, a design repository, a design-system tool):
 
 ```text
-.project/deployment-info/brands-provelopment/provelopment-foundation/   # living masters
-.project/deployment-info/brands-provelopment/provenance/                # provenance records
+<your brand pack>/          # living masters — never under assets/ or public/assets/
+<your provenance records>/  # the source ↔ living ↔ runtime mapping you maintain
 ```
 
 The runtime never reads those paths. It reads `public/assets/<basename>` only —

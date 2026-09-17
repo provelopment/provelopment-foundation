@@ -1,14 +1,13 @@
-# Line-ending policy for the Foundation repository.
+# Line-ending policy.
 #
-# `instruction-manuals/` holds the DISTRIBUTED copies of the root master
-# instruction manuals. They must stay byte-identical to
-# `.project/deployment-info/instruction-manuals/` in the root
-# governance repository and are verified with SHA-256 (procedure in that
+# `instruction-manuals/` holds the DISTRIBUTED copies of the master instruction
+# manuals published by the upstream project. They must stay byte-identical to
+# their master source and are verified with SHA-256 (procedure in that
 # directory's README). Automatic line-ending conversion would silently break
 # that contract on any machine with `core.autocrlf=true`, so the manuals are
 # stored and checked out verbatim — no text conversion, ever.
 #
-# Edit the MASTER and re-propagate; never edit a distributed copy in place.
+# Edit the MASTER upstream and re-propagate; never edit a distributed copy in place.
 instruction-manuals/** -text
 
 # Asset artwork is verified BYTE-FOR-BYTE.

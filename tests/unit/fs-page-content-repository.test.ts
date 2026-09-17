@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import path from "node:path";
+
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { parsePageFile } from "@/adapters/content/frontmatter";
 import {
@@ -62,19 +65,46 @@ describe("createFileSystemPageContentRepository", () => {
   const repository = createFileSystemPageContentRepository({
     defaultLocale,
   });
+  const fixtureDir = path.join(process.cwd(), "content", "pages", defaultLocale);
+  const fixtureSlug = "fs1-fixture-page";
+  const fixturePath = path.join(fixtureDir, `${fixtureSlug}.md`);
 
-  it("finds content for the requested locale", async () => {
-    const page = await repository.findBySlug("about", defaultLocale);
-
-    expect(page?.locale).toBe(defaultLocale);
-    expect(page?.title).toBe("About");
+  it("ships NO content: the template's content system is empty until an adopter adds files", async () => {
+    // FS1 — the generic template ships ONE authored landing page (configuration +
+    // dictionary) and no content files at all. Every collection is therefore empty
+    // until markdown appears under `content/<collection>/<locale>/`, and the
+    // adapter must report that absence cleanly rather than failing.
+    expect(await repository.listSlugs(defaultLocale)).toEqual([]);
+    expect(await repository.findBySlug("about", defaultLocale)).toBeNull();
   });
 
-  it("falls back to the default locale when a translation is missing", async () => {
-    const page = await repository.findBySlug("about", "sv");
+  describe("with a markdown fixture present", () => {
+    beforeAll(() => {
+      mkdirSync(fixtureDir, { recursive: true });
+      writeFileSync(fixturePath, "---\ntitle: Fixture Page\n---\n\nBody copy\n", "utf8");
+    });
 
-    expect(page?.locale).toBe(defaultLocale);
-    expect(page?.title).toBe("About");
+    afterAll(() => {
+      rmSync(fixturePath, { force: true });
+    });
+
+    it("finds content for the requested locale", async () => {
+      const page = await repository.findBySlug(fixtureSlug, defaultLocale);
+
+      expect(page?.locale).toBe(defaultLocale);
+      expect(page?.title).toBe("Fixture Page");
+    });
+
+    it("falls back to the default locale when a translation is missing", async () => {
+      const page = await repository.findBySlug(fixtureSlug, "sv");
+
+      expect(page?.locale).toBe(defaultLocale);
+      expect(page?.title).toBe("Fixture Page");
+    });
+
+    it("lists page slugs for a locale", async () => {
+      expect(await repository.listSlugs(defaultLocale)).toEqual([fixtureSlug]);
+    });
   });
 
   it("returns null for slugs that do not exist in any locale", async () => {
@@ -86,24 +116,6 @@ describe("createFileSystemPageContentRepository", () => {
   it("rejects unsafe slugs and malformed locales", async () => {
     expect(await repository.findBySlug("../secrets", defaultLocale)).toBeNull();
     expect(await repository.findBySlug("about", "../etc")).toBeNull();
-  });
-
-  it("lists page slugs for a locale", async () => {
-    const slugs = await repository.listSlugs(defaultLocale);
-    // The en locale's inventory: generic pages + connect + Phase M regional
-    // landing files (london, los-angeles, new-york, toronto) — page
-    // inventories are per-locale. Vancouver/Montreal were pruned.
-    expect(slugs).toEqual([
-      "about",
-      "connect",
-      "contact",
-      "london",
-      "los-angeles",
-      "new-york",
-      "resources",
-      "sydney",
-      "toronto",
-    ]);
   });
 
   it("returns an empty list for a locale with no content", async () => {

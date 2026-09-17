@@ -135,11 +135,15 @@ describe("P6-2D — assetPathFromUrl", () => {
     expect(assetPathFromUrl("not a url")).toBe("not a url");
   });
 
-  it("resolves every configured generic branding role to a same-origin /assets/<file> path", () => {
-    const assets = siteConfig.assets;
-    expect(assetPathFromUrl(assets?.logo)).toBe("/assets/logo-header.svg");
-    expect(assetPathFromUrl(assets?.logoFooter)).toBe("/assets/logo-footer.svg");
-    expect(assetPathFromUrl(assets?.banners?.home)).toBe("/assets/banner-home.png");
-    expect(assetPathFromUrl(assets?.favicon)).toBe("/assets/favicon.svg");
+  it("the shipped template configures no asset URLs — every identity role defaults to its runtime file", () => {
+    // FS1: the generic template ships `assets: {}`. Each role resolves to the
+    // shipped placeholder under `public/assets/`, so there is nothing to rewrite
+    // here and a fresh clone renders a complete, un-branded site. The URL→path
+    // contract itself is exercised by the cases above.
+    expect(siteConfig.assets?.logo).toBeUndefined();
+    expect(siteConfig.assets?.logoFooter).toBeUndefined();
+    expect(siteConfig.assets?.favicon).toBeUndefined();
+    expect(siteConfig.assets?.ogImage).toBeUndefined();
+    expect(siteConfig.assets?.banners).toBeUndefined();
   });
 });

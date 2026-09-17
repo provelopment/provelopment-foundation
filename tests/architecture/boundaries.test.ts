@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -305,6 +305,10 @@ describe("outbound server-action & isolation boundaries (Phase I)", () => {
   const siteConfigPath = path.join(process.cwd(), "site.config.json");
 
   function listTextFiles(directory: string): string[] {
+    // FS1 — the generic template ships no `content/` tree (and git cannot track
+    // empty directories), so a scanned directory may legitimately be absent. An
+    // absent directory simply has no files to scan; that is never an error.
+    if (!existsSync(directory)) return [];
     return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
       const entryPath = path.join(directory, entry.name);
       if (entry.isDirectory()) return listTextFiles(entryPath);
@@ -497,17 +501,20 @@ describe("Phase M — location selector + region-aware navigation boundaries", (
     expect(source).toContain("pathname === link.href");
   });
 
-  it("primary navigation uses Connect, never Contact", () => {
+  it("primary navigation holds INTERNAL routes only (locations are selectors, never nav links)", () => {
     const config = JSON.parse(
       readFileSync(path.join(process.cwd(), "site.config.json"), "utf8"),
     ) as { navigation?: { href: string }[] };
     const hrefs = (config.navigation ?? []).map((entry) => entry.href);
-    expect(hrefs).toContain("/connect");
-    expect(hrefs).not.toContain("/contact");
-    // Locations remain selectors, not navigation links.
-    for (const forbidden of ["/toronto", "/vancouver", "/montreal", "/london"]) {
-      expect(hrefs, `nav must not contain ${forbidden}`).not.toContain(forbidden);
+    expect(hrefs.length).toBeGreaterThan(0);
+    for (const href of hrefs) {
+      expect(href, `nav href ${href} must be an internal route`).toMatch(/^\//);
     }
+    // FS1 — operating regions are a SELECTOR, never navigation entries. This is
+    // the boundary the old Connect-centric assertion protected, stated generically
+    // so it holds for any adopter's configuration.
+    expect(config).not.toHaveProperty("regionPages");
+    expect(JSON.stringify(config)).not.toContain("/toronto");
   });
 
   it("the dynamic [item] route excludes the static Connect route slug", () => {

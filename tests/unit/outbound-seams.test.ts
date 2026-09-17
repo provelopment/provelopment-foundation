@@ -61,18 +61,22 @@ function fetchThrowing(error: Error): typeof fetch {
   }) as unknown as typeof fetch;
 }
 
+/** Explicit seam fixtures — the shipped template declares every provider OFF. */
+const BOOKING_FIXTURE = { provider: "external-url", url: "https://booking.example.test/book" } as const;
+const MAPS_FIXTURE = { provider: "google" } as const;
+
 describe("outbound seam contract — bounded provider-neutral results (Phase I)", () => {
   it("booking and maps resolve link actions carrying only kind/provider/href", () => {
-    const bookingResolver = createBookingActionResolver(siteConfig.bookingFeature);
+    const bookingResolver = createBookingActionResolver(BOOKING_FIXTURE);
     const bookingAction = bookingResolver.resolve({ locale: siteConfig.defaultLocale });
     expect(bookingAction.kind).toBe("link");
     expect(Object.keys(bookingAction).sort()).toEqual(["href", "kind", "provider"]);
     expect(bookingAction).toMatchObject({ provider: "external-url" });
-    expect(bookingAction).toMatchObject({ href: siteConfig.bookingFeature?.url });
+    expect(bookingAction).toMatchObject({ href: BOOKING_FIXTURE.url });
   });
 
   it("a maps link action is bounded to kind/provider/href (adapter builds the URL, result never does)", () => {
-    const mapsResolver = createDirectionLinkResolver(siteConfig.mapsFeature);
+    const mapsResolver = createDirectionLinkResolver(MAPS_FIXTURE);
     const directionsAction = mapsResolver.resolve(locationFixture);
     expect(directionsAction.kind).toBe("link");
     // The result is the bounded provider-neutral shape: destination + opaque
@@ -153,10 +157,10 @@ describe("outbound seam contract — configured-but-invalid fails loudly, never 
 
 describe("outbound seam contract — no substitution, no fabrication (Phase I)", () => {
   it("a link seam never substitutes a different provider", () => {
-    const booking = createBookingActionResolver(siteConfig.bookingFeature).resolve({
+    const booking = createBookingActionResolver(BOOKING_FIXTURE).resolve({
       locale: siteConfig.defaultLocale,
     });
-    const directions = createDirectionLinkResolver(siteConfig.mapsFeature).resolve(
+    const directions = createDirectionLinkResolver(MAPS_FIXTURE).resolve(
       locationFixture,
     );
     expect(booking.kind === "link" && booking.provider).toBe("external-url");
@@ -180,11 +184,14 @@ describe("outbound seam contract — no substitution, no fabrication (Phase I)",
     expect(networkFailure).toEqual({ ok: false, kind: "adapterError" });
   });
 
-  it("the shipped demo baseline honors its explicit providers", () => {
-    expect(siteConfig.analytics).toEqual({ provider: "vercel" });
-    expect(siteConfig.mapsFeature?.provider).toBe("google");
-    expect(siteConfig.bookingFeature?.provider).toBe("external-url");
-    expect(siteConfig.bookingFeature?.url).toBeTruthy();
+  it("the shipped template baseline declares every provider explicitly (all optional capabilities OFF)", () => {
+    // FS1 — the generic template enables none of the optional outbound
+    // capabilities: a fresh clone makes no external request and claims no
+    // integration. Each seam therefore resolves its explicit OFF state, and the
+    // contact form stays the labelled demo stub (which never reports success).
+    expect(siteConfig.analytics).toEqual({ provider: "none" });
+    expect(siteConfig.mapsFeature?.provider).toBe("none");
+    expect(siteConfig.bookingFeature?.provider).toBe("none");
     expect(siteConfig.contactFeature?.provider).toBe("stub");
   });
 });

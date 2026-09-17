@@ -777,8 +777,7 @@ subsystem. Findings:
   attributed, not a Foundation legal conclusion. The Foundation ships **no consent
   gate** — no banner, no consent cookie, no analytics-gating capability. A future
   consent capability would require a concrete requirement that cannot be satisfied
-  through configuration/documentation alone;revisit conditions are recorded in
-  `.project/plan/archive/todo-milestone-u.md` (which now records the full audit.
+  through configuration/documentation alone.
 ### Locale integration (Phase G composing)
 
 Maps composes with the Phase G locale resolution — there is no second
@@ -1135,8 +1134,7 @@ and its deployments were removed. The engine architecture those milestones
 established — vocabulary-driven resolution, identity-free shared primitives, a
 pure decision core, the shared modal/accessibility contract and the committed CDP
 matrix — is unchanged, and is still exactly what the canonical presentation runs
-on. Historical records: `.project/CHANGELOG.md`,
-`.project/memory/`, `.project/plan/archive/`.
+on. The detailed milestone history is preserved in this repository's Git history.
 ### Theme/layout separation
 
 The composition leaves (`shell`, `navigation`) select the layout & interaction

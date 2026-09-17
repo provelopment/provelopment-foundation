@@ -125,15 +125,11 @@ describe("P12-SG — schema / configuration contract", () => {
     );
   });
 
-  it("2. the canonical config ACTIVATES the integrated status graphic (role declared, artwork shipped)", () => {
-    // APPROVED-ASSET INTEGRATION — the approved Foundation status graphic exists
-    // in the living brand pack, so the role is POPULATED and the artwork is
-    // shipped in the runtime role directory under the role's own filename.
-    const configured = siteConfig.assets?.statusGraphic ?? "";
-    expect(configured).not.toBe("");
-    expect(new URL(configured).pathname).toBe("/assets/status-graphic.svg");
-    const runtimeAssets = readdirSync(path.join(root, "public", "assets"));
-    expect(runtimeAssets.some((name) => /^status-graphic\./i.test(name))).toBe(true);
+  it("2. the shipped template leaves the status-graphic role ABSENT (the capability is additive)", () => {
+    // FS1 — no status artwork ships: the role is optional, and its absence means
+    // the status surfaces render their heading/actions alone (proven below). An
+    // adopter activates it by configuring `site.assets.statusGraphic`.
+    expect(siteConfig.assets?.statusGraphic).toBeUndefined();
     // The role is declared in the schema + the config interface (additive only).
     expect(schema).toContain("statusGraphic: z");
     expect(siteConfigSource).toContain("readonly statusGraphic?: string;");
@@ -361,15 +357,13 @@ describe("P12-SG — separation, reusability and role independence", () => {
     expect(layout).toContain("getSiteNavLinks(locale)");
   });
 
-  it("23. the sibling header/footer graphics are SHIPPED and still never touch this seam", () => {
-    // APPROVED-ASSET INTEGRATION — both sibling decorative roles are shipped as
-    // distributable files AND both are activated. The header role's band is
-    // `cover`-painted inside the 2.6:1-19.5:1 header box, so its 8:1 artwork is
-    // magnified and cropped; that is an artwork/owner judgement recorded in the
-    // living-pack provenance, not a coding gate. Either way the status seam stays
-    // strictly independent: the status component and layout never name or read them.
-    expect(siteConfig.assets?.footerGraphic).toBeDefined();
-    expect(siteConfig.assets?.headerGraphic).toBeDefined();
+  it("23. the sibling header/footer graphics remain OPTIONAL and never touch this seam", () => {
+    // FS1 — neither sibling decorative role is configured by the generic
+    // template, so nothing renders for them; both still ship their blank
+    // placeholder runtime files, and the status seam stays strictly independent:
+    // the status component and layout never name or read them.
+    expect(siteConfig.assets?.footerGraphic).toBeUndefined();
+    expect(siteConfig.assets?.headerGraphic).toBeUndefined();
     const runtimeAssets = readdirSync(path.join(root, "public", "assets"));
     expect(runtimeAssets.some((name) => /^(footer|header)-graphic\./i.test(name))).toBe(true);
     // Neither sibling role is reused as a status-graphic fixture.

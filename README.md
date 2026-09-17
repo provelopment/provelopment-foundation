@@ -1,146 +1,152 @@
 # Provelopment Foundation
 
-An open-source, re-brandable web platform template that helps small
-businesses establish and maintain a web presence. Starts frontend-only,
-architected to grow into full-stack without a rewrite.
+An open-source, re-brandable web platform template for small businesses: a
+**configuration-first** site foundation that turns JSON, Markdown and assets into a
+complete, accessible, multilingual website. Starts frontend-only, architected to
+grow into full-stack without a rewrite.
 
-Clone it, make it yours by editing **configuration, content, and assets
-only**, then deploy — [`CUSTOMIZING.md`](CUSTOMIZING.md) walks you through
-the whole process.
+This repository is the **reusable product**. It ships **no brand of its own** — a
+starter page, neutral placeholder graphics, one default language and a complete,
+reusable architecture. You make it yours by editing **configuration, content and
+assets only**; platform code does not need to change.
 
-## One canonical presentation, one Foundation
+## Why it exists
 
-The Foundation ships **ONE canonical presentation** — the site you get from the
-shipped configuration. There is **no presentation selector and no switching**:
-the presentation is resolved by the shared UI engine (typography, rhythm, surface,
-header, hero + density/content-width/radius) onto the renderer via `data-ui-*`
-attributes — no per-presentation CSS, no per-presentation forks. See
-`CUSTOMIZING.md` → *The `ui.presentation` block* for the full matrix.
+Most small-business sites are rebuilt from scratch. The Foundation provides the
+proven parts once — routing, a content system, localization, a configurable shell,
+theme tokens, asset roles, accessibility, SEO metadata, validation and deployment —
+so a new site starts from a working baseline instead of an empty folder.
 
-> The former selectable-presentation feature (a header dropdown linking five
-> externally hosted demo deployments) was **retired in 2026-09**: the profile
-> table, the `ui.preset` key and those sibling deployments are gone.
+## Quick start
 
-## Tech Stack
-
-- [Next.js](https://nextjs.org) 16 (App Router) · React 19 · TypeScript
-- Tailwind CSS v4
-- Vitest
-- pnpm package manager
-- Multi-lingual by design (`[locale]` routing, dictionaries, per-locale
-  content)
-
-## Getting Started
+Tested from a fresh clone (Node.js 22+, pnpm):
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) — you will be redirected
-to the default locale.
+Open [http://localhost:3000](http://localhost:3000) — you are redirected to the
+default locale. The starter renders immediately: no content or artwork has to be
+deleted first.
 
-## Making It Yours
+Before production, **replace the placeholder values**: `site.url`, `site.name`,
+`site.tagline` and `site.description` in `site.config.json`, the starter copy in
+`config/i18n/en.json`, and the graphics in `assets/placeholders/`.
 
-1. Edit `site.config.json` — site name, tagline, contact, social links,
-   navigation, enabled features. Every field is validated at build time.
-2. Replace the Markdown pages in `content/pages/<locale>/` with your own.
-3. Swap the assets — the source tree is `assets/` (`branding/`, `icon-library/`,
-   `placeholders/`, `platform-marks/`) and `public/assets/` is its byte-identical
-   runtime mirror (`pnpm assets:sync`). For your own graphics, replace
-   `assets/branding/...` (e.g. `identity/favicon.svg`, `logos/lockup-horizontal.svg`
-   → `logo-header.svg` **and** `logo-footer.svg` — both logo roles share that one
-   coloured source) and re-run `pnpm assets:sync`; adopters may equally
-   overwrite `public/assets/*` in place. The decorative header/footer graphics ship
-   **blank by default** (a transparent placeholder) — the branded masters are
-   retained at `assets/branding/page-graphics/`. The page banners are ordinary
-   source assets too (`assets/branding/banners/`), never a runtime-only exception.
-   [`BRAND_ASSETS.md`](BRAND_ASSETS.md) is the authoritative, complete
-   **brand-asset swap contract** for every replaceable graphic role (filename,
-   format, dimensions, transparency, crop behaviour, config key, disable
-   procedure). The social-preview image needs no file: it is generated per locale
-   by default, and `site.assets.ogImage` points it at your own 1200 × 630
-   PNG/JPEG when you have one.
-4. **Change the appearance without touching source:** side-bar/top/bottom menu
-   presentation modes, sidebar disclosure icons/text (`ui.navigation.sidebar`),
-   navigation icons/regions, and the primary CTA's icon/state
-   (`ui.cta.*`) are all configuration. The primary CTA renders **once** in the
-   shell's top region (below the header, above the content) at every width —
-   never inside the sidebar, the bottom bar, or a mobile menu (P6-3C). Sidebar
-   page icons render at **16 × 16** and come from the reusable icon library
-   (`assets/icon-library/`) unless you configure your own; the sidebar open/close
-   **control** renders at **24 × 24** and is left-aligned with the same ≈5px inset
-   the shell CTA uses. The Foundation's brand colour is ONE value
-   (`--ui-brand-accent` in `src/app/globals.css`) that drives both the wordmark and
-   every theme-driven highlight. Replace any icon in
-   `public/assets/`
-   (in place or via `"icon": "my-icon.svg"`) — see
-   `CUSTOMIZING.md` → *Configurable controls, assets & presentation modes (P5-5)*.
-5. Add locales, deploy to Vercel, and keep up to date with upstream —
-   all documented in [`CUSTOMIZING.md`](CUSTOMIZING.md).
-
-## Operating manuals
-
-This repository ships a complete **instruction-manuals/** package — the operational
-knowledge required to adopt, configure, customize, upgrade, validate and deploy a
-Foundation-derived site.
-
-> **Start with [`instruction-manuals/README.md`](instruction-manuals/README.md).**
-
-The manuals are **distributed artifacts** of a master source retained in the
-Provelopment root project. Do not edit them here; changes are made upstream and
-propagated (the index documents the propagation and parity procedure).
-
-## Scripts
-
-| Command | Purpose |
-| --- | --- |
-| `pnpm dev` | Development server |
-| `pnpm build` | Production build |
-| `pnpm start` | Serve the production build |
-| `pnpm lint` | ESLint |
-| `pnpm test` | Unit and architecture-boundary tests |
-| `pnpm exec tsc --noEmit` | Typecheck |
-
-## Project Layout
-
-See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the authoritative description
-of the hexagonal (ports and adapters) boundaries:
+## Repository structure
 
 ```
-src/app         # Next.js routes under src/app/[locale], layouts, globals.css tokens
-src/components  # Presentation components (site, shell, and shared ui primitives)
+src/app         # Next.js App Router routes under src/app/[locale], layouts, globals.css tokens
+src/components  # Presentation components (site, shell, shared ui primitives)
 src/core        # Framework-independent domain concepts and the UI engine
 src/application # Use-case ports and services
 src/adapters    # Concrete integrations (filesystem content, analytics, booking, maps)
 src/config      # Site configuration schema and loaders
-config/i18n     # Localized JSON dictionaries (9 supported locales)
-content         # Markdown collections (pages, legal, offerings, posts, testimonials, portfolio)
-assets           # SOURCE asset tree: branding/ (banners·identity·logos·page-graphics) · icon-library/ · placeholders/ · platform-marks/ (edit here)
-public/assets    # RUNTIME mirror of assets/** (logo-header.svg, logo-footer.svg, favicon.svg, banner-*.png, icon-*.svg, sidebar-*.svg) — written by scripts/sync-runtime-assets.mjs
-tests           # Architecture boundary, unit, and CDP browser matrix tests
+config/i18n     # Localized JSON dictionaries (one shipped locale: en)
+content         # Markdown collections — EMPTY by default (pages, legal, offerings, posts, testimonials, portfolio)
+assets          # SOURCE asset tree: placeholders/ (neutral defaults) · icon-library/ · platform-marks/  (edit here)
+public/assets   # RUNTIME mirror of assets/** — written by scripts/sync-runtime-assets.mjs
+scripts         # Deterministic asset mirror (assets:sync / assets:check)
+tests           # Architecture-boundary, unit and CDP browser-matrix tests
 ```
+
+The Foundation ships **one authored page** (the configuration-driven landing page)
+and **no content files**: every collection is empty until you add Markdown. Technical
+routes (`/sitemap.xml`, `/robots.txt`) and generated metadata are not content pages.
+
+## Customize identity
+
+1. **Configuration** — `site.config.json` is validated at build time (a bad edit
+   fails with an actionable message). It drives the site name, tagline,
+   description, contact details, social links, navigation, enabled capabilities
+   and the resolved UI.
+2. **Text and colour** — the visible landing-page copy lives in
+   `config/i18n/en.json`; the single theme accent is one value in
+   `src/app/globals.css` (`--ui-foundation-accent`). Change it and the whole site
+   re-colours; keep it dark enough to meet the WCAG AA contrast gate.
+3. **Graphics** — replace the neutral files in `assets/placeholders/`
+   (`logo-header.svg` serves the header **and** footer logo role, `favicon.svg`,
+   `header-graphic.svg`, `footer-graphic.svg`, `sidebar-*.svg`), then run
+   `pnpm assets:sync`. You may equally point `site.assets.*` at your own absolute
+   URLs. [`BRAND_ASSETS.md`](BRAND_ASSETS.md) is the complete role contract
+   (filename, format, dimensions, config key, replacement and disable procedure).
+
+The template ships **no** `assets/branding/` tree and no example artwork: identity
+is yours to supply. Artwork-only roles (page banners, page background, status
+graphic, social-preview image) ship nothing and stay off until configured.
+
+## Add content
+
+Create `content/<collection>/<locale>/<slug>.md` with `title` frontmatter — e.g.
+`content/pages/en/about.md` creates `/en/about`. The collections are `pages`,
+`legal`, `offerings`, `posts`, `testimonials` and `portfolio`; a page whose file is
+absent returns a proper 404 rather than an empty shell. Navigation entries are
+configuration (`navigation[]`), and their labels come from
+`config/i18n/en.json` → `navigation.items`.
+
+## Enable capabilities
+
+Optional capabilities are off in the starter and are enabled purely by
+configuration: analytics (`vercel`), maps directions links (`google`), booking
+(`external-url`), the contact inquiry provider (`stub` or `webhook`), and the
+`offerings` / `testimonials` / `portfolio` / `blog` collections. Their routes,
+adapters and components ship with the template — see
+[`CUSTOMIZING.md`](CUSTOMIZING.md).
+
+## Validate
+
+These are the repository's real gates (all runnable locally; the first five also
+run in CI):
+
+```bash
+pnpm assets:check            # runtime mirror is byte-identical to its sources
+pnpm exec tsc --noEmit       # types
+pnpm lint                    # eslint
+pnpm test                    # unit + architecture-boundary tests (vitest)
+pnpm build                   # production build
+pnpm audit                   # dependency audit
+pnpm test:browser            # headless-Chrome CDP browser matrix (needs Chrome)
+```
+
+## Deploy
+
+Your site deploys from **your own repository** to Vercel. Follow
+[`DEPLOYMENT.md`](DEPLOYMENT.md) — the same runbook is used for the live reference
+site. No environment variables are required for a default build.
+
+> This **template repository has no production deployment of its own**: GitHub is
+> its distribution and documentation surface, and CI is its gate.
+
+## Upgrade
+
+Keep your clone connected to the template repository and absorb new revisions the
+documented way:
+
+```bash
+git remote add upstream https://github.com/provelopment/provelopment-foundation.git
+git fetch upstream
+```
+
+Then follow
+[`instruction-manuals/foundation-upgrade.md`](instruction-manuals/foundation-upgrade.md),
+which classifies platform-owned vs adopter-owned material and protects your
+configuration, content, assets and branding.
 
 ## Documentation
 
-- [`BRAND_ASSETS.md`](BRAND_ASSETS.md) — **the authoritative brand-asset swap
-  contract**: every replaceable graphic role, its exact filename/type/dimension
-  contract, its config key, its fallback, and how to replace, swap or disable it
-  without touching code
-- [`instruction-manuals/README.md`](instruction-manuals/README.md) — **operating
-  manuals**: adoption, upgrade, customization, branding/assets, content,
-  validation, deployment, agent rules, troubleshooting
-- [`CUSTOMIZING.md`](CUSTOMIZING.md) — downstream user guide: what to edit,
-  adding locales, deploying, syncing with upstream
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) — boundaries, dependency direction,
-  internationalization blueprint
-- [`DEPLOYMENT.md`](DEPLOYMENT.md) — launch runbook (Vercel, domains,
-  verification checklist)
-- [`AGENTS.md`](AGENTS.md) — operating contract for AI coding agents
+- [`CUSTOMIZING.md`](CUSTOMIZING.md) — the downstream user guide: what to edit, adding locales, deploying, staying in sync
+- [`BRAND_ASSETS.md`](BRAND_ASSETS.md) — the authoritative **brand-asset swap contract**: every replaceable graphic role
+- [`DEPLOYMENT.md`](DEPLOYMENT.md) — the launch runbook
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — boundaries, dependency direction, internationalization blueprint
+- [`instruction-manuals/README.md`](instruction-manuals/README.md) — the operating manuals: adoption, upgrade, customization, branding, content, validation, deployment, troubleshooting
+- [`AGENTS.md`](AGENTS.md) — the operating contract for AI coding agents
 
-## Deployment
+## Live reference implementation
 
-Your site deploys to Vercel directly from your own repository. See
-[`DEPLOYMENT.md`](DEPLOYMENT.md) for the complete runbook.
-
-
+The rich, real-world example is a **separate, private** repository that adopts the
+Foundation and is deployed at **<https://foundation.provelopment.com>** — the
+Foundation website itself: real content, its own brand installation and the
+capabilities this template provides. The template does not ship that site's content
+or branding, and the reference site's source is not part of the open-source
+distribution.

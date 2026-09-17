@@ -11,23 +11,27 @@ import {
 } from "./support/theme-tokens";
 
 /**
- * FOUNDATION SINGLE-SOURCE THEME COLOUR (owner-directed, 2026-09).
+ * SINGLE-SOURCE THEME COLOUR.
  *
- * The owner's requirement is literal: there must be ONE place where the
- * Foundation colour is set, so that one future colour change controls the
- * wordmark/heading, the selector highlights, the focus emphasis and the branded
- * CTA roles.
+ * The requirement is literal: there must be ONE place where the theme accent is
+ * set, so that one future colour change controls the site name/heading, the
+ * selector highlights, the focus emphasis and the CTA roles.
  *
- *   ONE hardcoded Foundation accent  (#3F6791 — the darker Foundation blue)
+ *   ONE hardcoded accent  (the value shipped in globals.css)
  *                    ↓
  *        --ui-brand-accent  (semantic, scheme-resolved)
  *         ↙        ↓         ↘
- *    wordmark   selectors   focus/CTA
+ *     heading   selectors   focus/CTA
  *                    ↓
  *        derived dark tint via color-mix()  (no second brand hex)
  *
  * These assertions inspect DECLARATIONS (not prose): a documentation comment that
  * names a colour is not an independently maintained value.
+ *
+ * The expected accent is READ FROM the stylesheet rather than duplicated here, so
+ * this contract cannot freeze a colour the template is free to change: FS1 made
+ * the shipped default a neutral template value (an adopter replaces it with their
+ * own brand accent).
  */
 const ROOT = process.cwd();
 const read = (...segments: string[]) => readFileSync(path.join(ROOT, ...segments), "utf8");
@@ -36,22 +40,22 @@ const { light, dark } = schemeScopes(css);
 const lightRaw = declarations(light);
 const darkRaw = declarations(dark);
 
-/** The approved darker Foundation blue (brand pack: "Foundation Blue Strong"). */
-const APPROVED_ACCENT = "#3f6791";
+/** The ONE accent the template ships — taken from the stylesheet itself. */
+const ACCENT = (lightRaw["--ui-foundation-accent"] ?? "").trim().toLowerCase();
 
 /** Count `--token: <value>;` declarations whose value is exactly `hex`. */
 const declarationsOf = (hex: string) =>
   (css.match(new RegExp(`--[\\w-]+\\s*:\\s*${hex}\\s*;`, "gi")) ?? []).length;
 
 
-describe("Foundation accent — exactly ONE hardcoded source", () => {
-  it("declares the approved darker Foundation blue as the single base value", () => {
-    expect(lightRaw["--ui-foundation-accent"]?.toLowerCase()).toBe(APPROVED_ACCENT);
+describe("theme accent — exactly ONE hardcoded source", () => {
+  it("declares a single accent base value, written exactly once", () => {
+    expect(ACCENT, "the accent must be a plain hex value").toMatch(/^#[0-9a-f]{6}$/);
     // The value is written ONCE in the whole stylesheet…
     expect((css.match(/--ui-foundation-accent\s*:/g) ?? []).length).toBe(1);
     // …and no other declaration repeats that hex (a copy would silently freeze
     // one of the consumers when the accent changes).
-    expect(declarationsOf(APPROVED_ACCENT), "copies of the accent hex").toBe(1);
+    expect(declarationsOf(ACCENT), "copies of the accent hex").toBe(1);
   });
 
   it("keeps the retired separate dark brand hex out of the token set", () => {
@@ -63,7 +67,7 @@ describe("Foundation accent — exactly ONE hardcoded source", () => {
   it("resolves the scheme-resolved token from the base value (light)", () => {
     expect(lightRaw["--ui-brand-accent"]?.trim()).toBe("var(--ui-foundation-accent)");
     const { light: resolved } = schemeTokens();
-    expect(resolved["--ui-brand-accent"]).toBe(APPROVED_ACCENT);
+    expect(resolved["--ui-brand-accent"]).toBe(ACCENT);
   });
 
   it("DERIVES the dark tint from the same value instead of storing a second hex", () => {
@@ -72,7 +76,7 @@ describe("Foundation accent — exactly ONE hardcoded source", () => {
     expect(darkAccent).toMatch(
       /^color-mix\(in srgb,\s*var\(--ui-foundation-accent\)\s+[\d.]+%,\s*#[0-9a-fA-F]{6}\)$/,
     );
-    expect(darkAccent.toLowerCase()).not.toContain(APPROVED_ACCENT);
+    expect(darkAccent.toLowerCase()).not.toContain(ACCENT);
 
     const { light: l, dark: d } = schemeTokens();
     expect(d["--ui-brand-accent"], "dark must be a lifted variant").not.toBe(l["--ui-brand-accent"]);
@@ -116,7 +120,7 @@ describe("Foundation accent — every branded consumer DERIVES from it", () => {
   it("keeps the destructive/error role OUT of the brand token", () => {
     expect(lightRaw["--destructive"]?.toLowerCase()).toBe("#dc2626");
     expect(css).not.toMatch(/--destructive:\s*var\(--ui-brand-accent\)/);
-    expect(lightRaw["--destructive"]?.toLowerCase()).not.toBe(APPROVED_ACCENT);
+    expect(lightRaw["--destructive"]?.toLowerCase()).not.toBe(ACCENT);
   });
 
   it("carries NO crimson brand token (provelopment.com's colour)", () => {

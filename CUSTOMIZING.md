@@ -11,16 +11,20 @@ want to turn it into their own website. The core idea:
 
 ## What is the Provelopment Foundation?
 
-The Provelopment Foundation is the **actual modeled site and the canonical
-demonstration of the template**. `foundation.provelopment.com` is both the real
-Foundation website and the reference implementation. Everything the template
-can do is visible there.
+There are **two distinct artifacts**, and they are not the same repository:
 
-The Foundation is a **display and demonstration shell**, not an operational
-business. `example.com`, `hello@example.com`, the booking/contact/maps/connect
-placeholders, and the demonstration "operating regions" are **intentional
-placeholders** — a real deployment replaces them. Do not treat them as
-operational contacts or services.
+| Artifact | Repository | Role |
+| --- | --- | --- |
+| **Foundation template** | [`provelopment/provelopment-foundation`](https://github.com/provelopment/provelopment-foundation) | **This repository** — the reusable generic product: minimal starter, one default locale, neutral placeholder identity, **no deployment of its own**. This is what you clone. |
+| **Foundation reference site** | `provelopment/provelopment-foundation-site` (private) | The rich, fully-branded real-world demonstration deployed at `foundation.provelopment.com`. Its source is not part of the open-source distribution. |
+
+The dependency direction is **template → reference site**: the live site adopts the
+template, it does not define it. Everything the template *can* do is visible on the
+reference site, which is why it is linked here as the example to compare against.
+
+`example.com`, `hello@example.com`, the booking/contact/maps/connect placeholders,
+the starter copy and the neutral graphics are **intentional placeholders** — your
+deployment replaces them. Do not treat them as operational contacts or services.
 
 ## One Foundation, one canonical presentation
 
@@ -954,11 +958,12 @@ utilities referencing your `:root` values at runtime.
 
 ### One theme colour (required invariant)
 
-The Foundation has **exactly ONE hardcoded brand value**. Everything else derives
-from it — including the dark scheme, which never stores a second brand hex:
+The template ships **exactly ONE hardcoded accent value**, deliberately neutral.
+Everything else derives from it — including the dark scheme, which never stores a
+second hex:
 
 ```text
-   --ui-foundation-accent: #3f6791;        ← the ONE value you change
+   --ui-foundation-accent: #475569;        ← the ONE value you change
               ↓
    --ui-brand-accent  (scheme-resolved)
      light: var(--ui-foundation-accent)
@@ -966,23 +971,20 @@ from it — including the dark scheme, which never stores a second brand hex:
               ↓
       ┌───────┴────────┐
  --primary           --ring
- (wordmark, brand    (focus ring, selector
+ (site name, brand   (focus ring, selector
   text, CTA fill)     emphasis, accent-color)
                     ↕
    select[data-selector] { accent-color: var(--ui-brand-accent) }
 ```
 
-Setting that one value re-colours the Foundation wordmark **and** every
+Setting that one value re-colours the site name/heading **and** every
 application-controlled highlight together, so the two can never drift apart.
-`#3f6791` is the approved *functional* Foundation blue (the DARKER blue —
-"Foundation Blue Strong", the tint the approved lockup artwork uses for its
-wordmark letterforms); the canonical identity colour `#4f7cac` is the **artwork**
-colour (emblem/lockup geometry) and is deliberately not used for text, because
-4.37:1 on white is below the WCAG AA text minimum. The dark scheme's lifted tint is
-**derived** (`color-mix(in srgb, var(--ui-foundation-accent) 50%, #ffffff)` =
-`#9fb3c8`, 8.29:1 on `#0F172A`) — never a second brand hex. `#c5161d`
-(Provelopment Crimson) is the **provelopment.com** expression and must never appear
-in a Foundation branding/emphasis role.
+Replace `#475569` with your own accent. It is used for TEXT, so keep it at least as
+dark as this neutral slate: `tests/unit/design-tokens.test.ts` enforces the WCAG AA
+4.5:1 minimum against both the light and the dark canvas. The dark scheme's lifted
+tint is **derived** (`color-mix(in srgb, var(--ui-foundation-accent) 50%, #ffffff)`
+= `#a3aab4` for the shipped default, 7.67:1 on `#0F172A`) — never a second hex, and
+nothing else in the theme needs editing.
 
 `tests/unit/theme-color-contract.test.ts` enforces the relationship: exactly one
 hardcoded accent declaration (the approved value), both consumers derived, a
@@ -1439,20 +1441,18 @@ Status (P6-2D/P6-3B/P6-3C — brand presentation composed; header mark + scaled 
 
 > **Shipped reference artwork (installed).** The canonical Foundation site now ships the
 > **owner-approved Provelopment Foundation brand artwork** at three of these roles:
-> `favicon` (`identity/favicon.svg`, Foundation Blue `#4F7CAC`), `logo-header` (the
-> horizontal lockup `logos/lockup-horizontal.svg`) and `logo-footer` (the restrained
-> single-tone lockup `logos/lockup-mono.svg`). Each was installed as a **byte-identical
-> copy** (SHA-256 verified) from the living brand pack
-> `.project/deployment-info/brands-provelopment/provelopment-foundation/` in the ROOT governance
-> repository, and is recorded in that pack's
-> `provenance/identity-provenance.json` → `runtime_role_mapping`. The roles themselves
-> remain **generic and replaceable** — this is still a file swap, with no component or
-> configuration change — and no runtime code references the brand pack or the retired
-> archive (`deployment-info/archive/`, removed from the root repository on 14 Sep 2026).
+> `favicon`, `logo-header` and `logo-footer` are the three identity roles. In the
+> **generic template** all three resolve to the neutral files in
+> `assets/placeholders/` (`favicon.svg` and `logo-header.svg`; the footer role shares
+> the header source). The private reference site replaces them with its own
+> byte-identical brand install — which is exactly the swap described here: a file
+> replacement (or a `site.assets.*` URL) with no component or configuration change.
+> No runtime code references a brand pack at all, and no brand pack ships with this
+> template.
 > The expanded reverse variants (`lockup-reversed-mono.svg`, `lockup-reversed-color.svg`,
 > `lockup-reversed-knockout.svg`) are **not** consumed by any runtime role yet.
 
-#### Source asset tree — `assets/` (the four ownership categories)
+#### Source asset tree — `assets/` (the three ownership categories)
 
 The repository carries the **source** asset tree in `assets/`. It is NOT served
 under `public/`; the runtime files are byte-identical mirrors of it (see below):
@@ -1605,9 +1605,9 @@ Two honest caveats:
    no broken image, no lost contact method. The visible label is always the
    accessible name.
 
-Admitted-mark provenance and the withheld register —
-`.project/deployment-info/brands-provelopment/provelopment-foundation/social/platform-marks/`
-(official source owner, published use basis, colour variant, modifications and
+Admitted-mark provenance and the withheld register live with the marks themselves —
+`assets/platform-marks/platform-marks-provenance.md` (official source owner,
+published use basis, colour variant, modifications and
 preconditions P-1…P-4). Note that platform brand rules sometimes require a
 particular colour variant for a particular surface, and the engine applies **no**
 recolouring or filter — see *Precondition P-1* for the two black variants.

@@ -32,8 +32,8 @@ Will it be cropped?  Will it be scaled?
 Every role has an explicit answer below.
 
 > Other documents **point here** and do not restate the contract:
-> [`README.md`](README.md) · [`CUSTOMIZING.md`](CUSTOMIZING.md) · the living brand
-> packs under `.project/deployment-info/brands-provelopment/`.
+> [`README.md`](README.md) · [`CUSTOMIZING.md`](CUSTOMIZING.md) · the brand packs that
+> hold an adopter's approved masters (they live **outside** the runtime tree — §11).
 >
 > [`instruction-manuals/branding-and-assets.md`](instruction-manuals/branding-and-assets.md)
 > describes the role/asset *concept* and the banner + navigation-icon behaviours.
@@ -1093,13 +1093,16 @@ contract. Production artwork may be replaced, updated, or omitted without changi
 the branding engine when the documented filename/type/runtime contract is preserved.
 ```
 
-The **living brand packs** that carry the approved masters, and the **provenance
+The **brand packs** that carry an adopter's approved masters, and the **provenance
 records** that tie source ↔ living ↔ runtime byte-for-byte, live outside the
-runtime tree:
+runtime tree. The Foundation's own brand pack lives in its private project
+governance repository and is deliberately **not** part of this template's
+distribution — keep yours wherever your brand process belongs (a `brand/`
+directory, a design repository, a design-system tool):
 
 ```text
-.project/deployment-info/brands-provelopment/provelopment-foundation/   # living masters
-.project/deployment-info/brands-provelopment/provenance/                # provenance records
+<your brand pack>/          # living masters — never under assets/ or public/assets/
+<your provenance records>/  # the source ↔ living ↔ runtime mapping you maintain
 ```
 
 The runtime never reads those paths. It reads `public/assets/<basename>` only —

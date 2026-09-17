@@ -1441,20 +1441,18 @@ Status (P6-2D/P6-3B/P6-3C — brand presentation composed; header mark + scaled 
 
 > **Shipped reference artwork (installed).** The canonical Foundation site now ships the
 > **owner-approved Provelopment Foundation brand artwork** at three of these roles:
-> `favicon` (`identity/favicon.svg`, Foundation Blue `#4F7CAC`), `logo-header` (the
-> horizontal lockup `logos/lockup-horizontal.svg`) and `logo-footer` (the restrained
-> single-tone lockup `logos/lockup-mono.svg`). Each was installed as a **byte-identical
-> copy** (SHA-256 verified) from the living brand pack
-> `.project/deployment-info/brands-provelopment/provelopment-foundation/` in the ROOT governance
-> repository, and is recorded in that pack's
-> `provenance/identity-provenance.json` → `runtime_role_mapping`. The roles themselves
-> remain **generic and replaceable** — this is still a file swap, with no component or
-> configuration change — and no runtime code references the brand pack or the retired
-> archive (`deployment-info/archive/`, removed from the root repository on 14 Sep 2026).
+> `favicon`, `logo-header` and `logo-footer` are the three identity roles. In the
+> **generic template** all three resolve to the neutral files in
+> `assets/placeholders/` (`favicon.svg` and `logo-header.svg`; the footer role shares
+> the header source). The private reference site replaces them with its own
+> byte-identical brand install — which is exactly the swap described here: a file
+> replacement (or a `site.assets.*` URL) with no component or configuration change.
+> No runtime code references a brand pack at all, and no brand pack ships with this
+> template.
 > The expanded reverse variants (`lockup-reversed-mono.svg`, `lockup-reversed-color.svg`,
 > `lockup-reversed-knockout.svg`) are **not** consumed by any runtime role yet.
 
-#### Source asset tree — `assets/` (the four ownership categories)
+#### Source asset tree — `assets/` (the three ownership categories)
 
 The repository carries the **source** asset tree in `assets/`. It is NOT served
 under `public/`; the runtime files are byte-identical mirrors of it (see below):
@@ -1607,9 +1605,9 @@ Two honest caveats:
    no broken image, no lost contact method. The visible label is always the
    accessible name.
 
-Admitted-mark provenance and the withheld register —
-`.project/deployment-info/brands-provelopment/provelopment-foundation/social/platform-marks/`
-(official source owner, published use basis, colour variant, modifications and
+Admitted-mark provenance and the withheld register live with the marks themselves —
+`assets/platform-marks/platform-marks-provenance.md` (official source owner,
+published use basis, colour variant, modifications and
 preconditions P-1…P-4). Note that platform brand rules sometimes require a
 particular colour variant for a particular surface, and the engine applies **no**
 recolouring or filter — see *Precondition P-1* for the two black variants.

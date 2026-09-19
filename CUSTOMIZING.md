@@ -16,11 +16,12 @@ There are **two distinct artifacts**, and they are not the same repository:
 | Artifact | Repository | Role |
 | --- | --- | --- |
 | **Foundation template** | [`provelopment/provelopment-foundation`](https://github.com/provelopment/provelopment-foundation) | **This repository** — the reusable generic product: minimal starter, one default locale, neutral placeholder identity, **no deployment of its own**. This is what you clone. |
-| **Foundation reference site** | `provelopment/provelopment-foundation-site` (private) | The rich, fully-branded real-world demonstration deployed at `foundation.provelopment.com`. Its source is not part of the open-source distribution. |
+| **The live Foundation site** | `provelopment/provelopment-web` (private) | The Provelopment Foundation's own website, deployed at `foundation.provelopment.com`. It is one **site profile** in a private multi-site application that derives from this template. Its source is not part of the public template distribution. |
 
-The dependency direction is **template → reference site**: the live site adopts the
-template, it does not define it. Everything the template *can* do is visible on the
-reference site, which is why it is linked here as the example to compare against.
+The dependency direction is **template → adopting site**: a site adopts the template, it
+does not define it. The live Foundation site is a useful real-world example to compare
+against — but this repository is a complete, standalone starting point, and you do not
+need that site, its application or its content to build yours.
 
 `example.com`, `hello@example.com`, the booking/contact/maps/connect placeholders,
 the starter copy and the neutral graphics are **intentional placeholders** — your
@@ -1444,7 +1445,7 @@ Status (P6-2D/P6-3B/P6-3C — brand presentation composed; header mark + scaled 
 > `favicon`, `logo-header` and `logo-footer` are the three identity roles. In the
 > **generic template** all three resolve to the neutral files in
 > `assets/placeholders/` (`favicon.svg` and `logo-header.svg`; the footer role shares
-> the header source). The private reference site replaces them with its own
+> the header source). A deployment replaces them with its own
 > byte-identical brand install — which is exactly the swap described here: a file
 > replacement (or a `site.assets.*` URL) with no component or configuration change.
 > No runtime code references a brand pack at all, and no brand pack ships with this

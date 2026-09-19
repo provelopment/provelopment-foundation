@@ -1,6 +1,6 @@
 # Provelopment Foundation
 
-An open-source, re-brandable web platform template for small businesses: a
+A re-brandable web platform template for small businesses: a
 **configuration-first** site foundation that turns JSON, Markdown and assets into a
 complete, accessible, multilingual website. Starts frontend-only, architected to
 grow into full-stack without a rewrite.
@@ -112,8 +112,8 @@ pnpm test:browser            # headless-Chrome CDP browser matrix (needs Chrome)
 ## Deploy
 
 Your site deploys from **your own repository** to Vercel. Follow
-[`DEPLOYMENT.md`](DEPLOYMENT.md) — the same runbook is used for the live reference
-site. No environment variables are required for a default build.
+[`DEPLOYMENT.md`](DEPLOYMENT.md). No environment variables are required for a default
+build.
 
 > This **template repository has no production deployment of its own**: GitHub is
 > its distribution and documentation surface, and CI is its gate.
@@ -142,11 +142,25 @@ configuration, content, assets and branding.
 - [`instruction-manuals/README.md`](instruction-manuals/README.md) — the operating manuals: adoption, upgrade, customization, branding, content, validation, deployment, troubleshooting
 - [`AGENTS.md`](AGENTS.md) — the operating contract for AI coding agents
 
-## Live reference implementation
+## The live Foundation site
 
-The rich, real-world example is a **separate, private** repository that adopts the
-Foundation and is deployed at **<https://foundation.provelopment.com>** — the
-Foundation website itself: real content, its own brand installation and the
-capabilities this template provides. The template does not ship that site's content
-or branding, and the reference site's source is not part of the open-source
-distribution.
+The real-world example is **<https://foundation.provelopment.com>** — the Provelopment
+Foundation's own website: real content, its own brand installation, and the capabilities
+this template provides.
+
+Its source is **not** in this repository and is **not** part of the public template
+distribution. That site is served by the private downstream application
+`provelopment/provelopment-web`, where it is one **site profile** among several — a
+multi-site application that derives from this template. A previously separate
+reference-site repository (`provelopment-foundation-site`) was archived when those sites
+were consolidated, and it is **not** the current implementation.
+
+You do not need that site, its application or its content to use this template: this
+repository is a complete, standalone starting point.
+
+## Licence
+
+**No licence has been granted yet, and this repository has no `LICENSE` file.** The
+source is publicly readable, but the permissions people normally associate with an
+open-source project do **not** currently apply. Choosing and adding a licence is an open
+project decision; until it is made, do not assume permission to reuse the code.

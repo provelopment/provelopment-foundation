@@ -9,8 +9,9 @@ the Foundation runtime.**
 > (page banners, page background, decorative header/footer band, status graphic,
 > social-preview image) ship **nothing** — they stay off until you configure them.
 > There is no `assets/branding/` tree here: supplying brand artwork is the
-> adopter's job. The rich, fully-branded example is the private reference site at
-> <https://foundation.provelopment.com>.
+> adopter's job. A fully-branded real-world example is the live Foundation site at
+> <https://foundation.provelopment.com>; its source lives in a private downstream
+> application rather than in this repository.
 >
 > Everything below is the **role contract** — filenames, formats, dimensions, config
 > keys, fallbacks, replacement and disable procedures — and it applies identically

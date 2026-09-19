@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from "vitest";
  *
  * The shared shell's mobile disclosure is used by every navigation composition:
  * the drawer (this site), the sidebar rail, and the overlay. Its label was
- * `Show Sidebar` / `Hide Sidebar`, which named ONE visual composition rather than
+ * `Show navigation` / `Hide navigation`, which named ONE visual composition rather than
  * the thing the control actually does. The shared control must describe
  * NAVIGATION, not a particular composition, so the vocabulary is now
  * composition-neutral: `Show navigation` / `Hide navigation`.
@@ -43,6 +43,15 @@ import { ShellMobileNav } from "@/components/shell";
 import { getDictionary } from "@/config/i18n";
 
 const dictionary = getDictionary("en");
+
+/**
+ * The RETIRED composition-specific terms.
+ *
+ * Built from parts deliberately: these are the exact strings this suite exists to
+ * prove ABSENT, so they must not be silently rewritten by a project-wide copy
+ * sweep.
+ */
+const RETIRED_TERMS = ["Show", "Hide", "Close"].map((verb) => [verb, "Sidebar"].join(" "));
 
 /** The shared control, rendered through the SHIPPED copy (not a mock). */
 const mobileNavHtml = (): string =>
@@ -82,9 +91,9 @@ describe("VIS1P — the shared mobile navigation control names navigation, not a
     for (const state of ["closed", "open"] as const) {
       disclosureState = state;
       const html = mobileNavHtml();
-      expect(html, state).not.toContain("Show Sidebar");
-      expect(html, state).not.toContain("Hide Sidebar");
-      expect(html, state).not.toContain("Close Sidebar");
+      for (const term of RETIRED_TERMS) {
+        expect(html, `${state} should not render "${term}"`).not.toContain(term);
+      }
     }
   });
 
@@ -101,9 +110,9 @@ describe("VIS1P — the shared mobile navigation control names navigation, not a
     ];
     for (const file of sources) {
       const source = readFileSync(path.join(root, file), "utf8");
-      expect(source, file).not.toContain("Show Sidebar");
-      expect(source, file).not.toContain("Hide Sidebar");
-      expect(source, file).not.toContain("Close Sidebar");
+      for (const term of RETIRED_TERMS) {
+        expect(source, `${file} should not contain "${term}"`).not.toContain(term);
+      }
     }
   });
 

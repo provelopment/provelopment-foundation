@@ -57,6 +57,6 @@ tree stays clean.
   collapsed-by-default + always expandable (never a dead-end), immersive
   `floating` rail static/non-collapsible, and the immersive OVERLAY mobile
   contract (vertical navigation, content-appropriate bounded width, explicit
-  "Close Sidebar" control that closes with focus-return + inert/scroll restore);
+  "Close navigation" control that closes with focus-return + inert/scroll restore);
 - responsive landmark exclusivity and deterministic unique ids;
 - Adaptive's bottom-bar **More** disclosure through the same Drawer path.

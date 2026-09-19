@@ -638,6 +638,45 @@ export const legalEntrySchema = z.object({
   label: z.string().min(1, "must not be empty"),
 });
 
+/**
+ * The OPTIONAL secondary / footer navigation group.
+ *
+ * A footer group is a DISTINCT navigation concern, and this block is the only
+ * surface that expresses it. It is deliberately separate from:
+ *
+ *  - `navigation[]`     — the PRIMARY navigation (menu, sidebar, bottom bar);
+ *  - `connect.methods[]`— connection/contact METHODS (email, phone, messaging);
+ *  - `socialLinks[]`    — profile/connectivity destinations;
+ *  - `legal[]`          — policy documents.
+ *
+ * It exists so a site can surface contextual destinations (Home, How It Works,
+ * About, Help, the source repository) in the footer WITHOUT misrepresenting them
+ * as contact methods — which is exactly what using `connect.methods` as a footer
+ * group forced.
+ *
+ * What this block deliberately does NOT do:
+ *  - it does not alter the primary navigation in any way;
+ *  - it does not create or imply routes — a footer link is a link, never
+ *    evidence that a page exists;
+ *  - it does not drive sitemap discovery (route discovery reads the CONTENT
+ *    model, never navigation config);
+ *  - its heading is never a link.
+ *
+ * Items reuse the established `navigationItemSchema`, so there is ONE link
+ * contract (internal vs external href, optional decorative icon, `disabled`
+ * semantics) rather than a second parallel link model. The sidebar-only leaves
+ * (`position`, `iconOpen`, `iconClosed`) are accepted for shape-compatibility
+ * but have no meaning in a footer group and are ignored by the footer renderer.
+ */
+export const footerNavigationSchema = z
+  .object({
+    /** The group heading. OPTIONAL, plain text, never a link. */
+    heading: z.string().min(1, "must not be empty").optional(),
+    /** The group's links, rendered in configuration order. */
+    items: z.array(navigationItemSchema).min(1, "must list at least one item"),
+  })
+  .strict();
+
 export const featuresConfigSchema = z.object({
   /** Optional functionality, each consumed by its own adapter. */
   analytics: z
@@ -972,6 +1011,12 @@ export const siteConfigFileSchema = z.object({
    * alone never exposes a route.
    */
   legal: z.array(legalEntrySchema).optional(),
+  /**
+   * Optional SECONDARY / footer navigation group — a distinct navigation
+   * concern from `navigation[]`, `connect.methods`, `socialLinks` and `legal`.
+   * Absent → no footer group is rendered (every existing site is unaffected).
+   */
+  footerNavigation: footerNavigationSchema.optional(),
   /**
    * UI system configuration (UI-01). Optional, intent-level contract
    * namespace; see ARCHITECTURE.md — UI System Architecture & Configuration

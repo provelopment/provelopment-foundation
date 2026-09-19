@@ -111,6 +111,7 @@ fail the build with actionable error messages.
 | `contact` | Public contact email |
 | `socialLinks` | Outbound profile links (`platform`, `label`, `href`, optional `icon`) rendered as **text links** in the footer Connect column; `icon` is the **generic optional connectivity icon/mark seam** — one leaf for every platform, supplementary and decorative; see *Connectivity icons* below |
 | `navigation` | Header navigation entries (label + href) |
+| `footerNavigation` | **Optional** secondary / footer navigation group (`heading` + `items`) — see *Secondary / footer navigation* below |
 | `features` | Feature flags, e.g. `analytics.provider` |
 | `ui` | Intent-level UI namespace — shell, navigation patterns, density, CTA, theme, presentation; see below |
 
@@ -119,6 +120,52 @@ the sitemap, canonical URLs, and hreflang alternates.
 
 Read configuration only through the loader exports from `src/config`; never
 import the JSON file directly from components.
+
+### Secondary / footer navigation — `footerNavigation`
+
+`footerNavigation` is an **optional** group of links rendered in the footer. It exists
+because a footer group is a **navigation** concern, not a connection one — before this
+surface existed, a footer group could only be expressed through `connect.methods`, which
+misrepresents a project link (Home, About, Help) as a contact method.
+
+```jsonc
+"footerNavigation": {
+  "heading": "Project",                       // optional; plain text, never a link
+  "items": [
+    { "label": "Home",   "href": "/" },
+    { "label": "About",  "href": "/about" },
+    { "label": "Help",   "href": "/help" },
+    { "label": "GitHub", "href": "https://github.com/example/example" }
+  ]
+}
+```
+
+Keep it distinct from the surfaces beside it:
+
+| Surface | Meaning |
+| --- | --- |
+| `navigation[]` | the **primary** navigation (menu, sidebar, bottom bar) |
+| `footerNavigation` | a **secondary / footer** navigation group |
+| `connect.methods[]` | connection/contact **methods** (message form, email, phone, messaging) |
+| `socialLinks[]` | profile / connectivity destinations |
+| `legal[]` | policy documents |
+
+The contract:
+
+- the whole block is **optional** — omit it and no group is rendered;
+- `heading` is optional and is **plain text, never a link** (a group label has no
+  destination);
+- `items` reuse the shared navigation-item contract, so an internal `href` becomes a
+  locale-prefixed route and an external `href` opens in a new tab with
+  `rel="noreferrer"` — identical semantics to every other link surface, not a second
+  implementation;
+- labels resolve through `config/i18n/<locale>.json` → `navigation.items` (keyed by
+  `href`), exactly like the primary navigation, and fall back to the configured `label`;
+- it does **not** change the primary navigation, does **not** create routes, and does
+  **not** add anything to the sitemap — a footer link is a link, never evidence that a
+  page exists;
+- the sidebar-only leaves (`position`, `iconOpen`, `iconClosed`) have no meaning in a
+  footer group and are ignored if set.
 
 ### The `ui` namespace (one canonical presentation, configuration-first)
 
@@ -689,6 +736,30 @@ string, wrong length) fail the build with an actionable message.
 Pages live at `content/pages/<locale>/<slug>.md`. Frontmatter sets the page
 title; the body is rendered as Markdown.
 
+### The home page is OPTIONAL, and may be authored as content (`home.md`)
+
+The locale root (`/{locale}`) renders the generic, configuration-driven starter homepage
+**unless you author it as content**: add `content/pages/<locale>/home.md` and the
+locale-root route renders THAT, through the same content repository as every other page —
+same Markdown treatment, same per-locale fallback, same trust boundary.
+
+```markdown
+---
+title: Your Site Name — what you do
+---
+
+## Start here
+
+Your homepage body, in Markdown.
+```
+
+- **Optional.** With no `home.md` you keep the generic starter homepage, unchanged — so
+  this is purely additive for every existing site.
+- **The slug is reserved.** `/home` is never a public route and never appears in the
+  sitemap, because the home page's real URL is the locale root.
+- **Metadata stays configuration-driven** at the locale root (site name + description
+  from `site.config.json`); the file's `title` renders as the page's `h1`.
+
 - Wire new pages into `navigation` in `site.config.json`.
 - Missing translations fall back to the default locale automatically.
 - The sitemap is derived from the **content model** (every page that has a
@@ -698,6 +769,10 @@ title; the body is rendered as Markdown.
 - Markdown (including any raw HTML in the file) is rendered as-is. These are
   authored, site-owner files — treat them like source code, never as
   untrusted user input.
+- Wide Markdown **tables** scroll locally, inside their own region, instead of
+  forcing the whole page to scroll sideways on a narrow viewport. The table stays
+  real tabular markup (`<table>/<thead>/<th>/<td>`) and the scroll region is
+  keyboard-reachable; nothing is shrunk or clipped away.
 - Interface strings (buttons, headings outside page bodies) live in the
   dictionaries under `config/i18n/<locale>.json` (see §4).
 
@@ -709,8 +784,13 @@ title; the body is rendered as Markdown.
 
 All content bodies (pages, offerings, legal) are localized the same way: a
 locale-specific file at `content/<type>/<locale>/<slug>.md` is served when
-present; otherwise the repository falls back to the default-locale body. The
-shipped template localizes every page and the demo content to all 9 locales.
+present; otherwise the repository falls back to the default-locale body.
+
+The shipped template is intentionally minimal: it declares **one** locale (`en`) and
+ships **no content files at all**, so a fresh clone renders the configuration-driven
+starter homepage with every collection empty. Adding a locale is data work — add
+`config/i18n/<locale>.json` and the matching `content/**/<locale>/` files; no platform
+code changes are required.
 
 > **Fallback is intentional, not a bug.** A localized URL (e.g.
 > `/de/legal/privacy`) with a missing translation serves the default-locale

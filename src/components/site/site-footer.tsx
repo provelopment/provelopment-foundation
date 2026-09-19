@@ -45,6 +45,26 @@ export async function SiteFooter({ locale, directionLinkResolver }: SiteFooterPr
         label: dictionary.navigation.items[item.href] ?? item.label,
     }));
 
+    // SECONDARY / footer navigation group (optional) — a distinct navigation
+    // concern from the primary `navigation`, from the connection methods, from
+    // `socialLinks` and from `legal`. Labels resolve through the SAME
+    // `navigation.items` dictionary override the primary list uses, so a shared
+    // destination is spelled the same way in both places. A configured `icon` is
+    // passed through (never silently dropped) and rendered by the shared
+    // `NavItem` decorative-icon contract; `disabled` semantics pass through too.
+    // The sidebar-only leaves (`position`, `iconOpen`, `iconClosed`) have no
+    // meaning in a footer group and are deliberately ignored here.
+    const footerNavGroup = siteConfig.footerNavigation;
+    const footerNavLinks: readonly ContextNavLink[] = (footerNavGroup?.items ?? []).map(
+        (item, index) => ({
+            href: item.href,
+            key: `footer-nav:${index}`,
+            label: dictionary.navigation.items[item.href] ?? item.label,
+            icon: item.icon,
+            disabled: item.disabled,
+        }),
+    );
+
     // Phase M refinement — the footer Connect section is a pure gateway:
     //  - the section HEADING is the Connect-page link (ContextConnectHeading,
     //    resolved by the same URL-authoritative core resolver the header uses);
@@ -81,6 +101,15 @@ export async function SiteFooter({ locale, directionLinkResolver }: SiteFooterPr
         siteConfig.socialLinks,
     );
 
+    // The Connect column is a CONNECTION surface, so it renders only when there is
+    // something to connect to: at least one configured method, or at least one
+    // social/profile destination. Its gateway HEADING is rendered only when
+    // methods exist — the heading IS a link to the Connect page, so rendering it
+    // with nothing beneath it (or on a site that serves no Connect page) would
+    // advertise an empty group and, for such a site, a dead destination.
+    const hasConnectionMethods = methodLinks.length > 0;
+    const hasConnectivity = hasConnectionMethods || socialLinks.length > 0;
+
     // P12-FG — the optional DECORATIVE footer graphic (`site.assets.footerGraphic`,
     // the `footer-graphic` role). Resolved through the SAME generic availability
     // rule as the banner/background roles, so configured-but-missing (or absent)
@@ -110,36 +139,70 @@ export async function SiteFooter({ locale, directionLinkResolver }: SiteFooterPr
                     <BusinessInfo locale={locale} directionLinkResolver={directionLinkResolver} />
                 )}
 
-                <div>
-                    <ContextConnectHeading
-                        locale={locale}
-                        label={dictionary.sections.connect}
-                    />
+                {hasConnectivity ? (
+                    <div>
+                        {/* The section heading IS the Connect-page link, so it renders
+                            only when method links exist beneath it — never as a bare
+                            heading over an empty group, and never on a site that
+                            serves no Connect page. */}
+                        {hasConnectionMethods ? (
+                            <ContextConnectHeading
+                                locale={locale}
+                                label={dictionary.sections.connect}
+                            />
+                        ) : null}
 
-                    <ContextNavLinks
-                        locale={locale}
-                        links={methodLinks}
-                        className="mt-3 space-y-2"
-                        linkClassName="hover:text-primary"
-                        demoBadgeLabel={dictionary.connect.demoBadge}
-                    />
+                        {hasConnectionMethods ? (
+                            <ContextNavLinks
+                                locale={locale}
+                                links={methodLinks}
+                                className="mt-3 space-y-2"
+                                linkClassName="hover:text-primary"
+                                demoBadgeLabel={dictionary.connect.demoBadge}
+                            />
+                        ) : null}
 
-                    {/* CONNECTIVITY ICON SEAM — social/profile destinations, in the
-                        SAME Connect column, rendered through the shared link +
-                        decorative-icon path. Text-only canonical behavior is
-                        unchanged (an icon-less item renders exactly the label); a
-                        configured icon adds supplementary artwork (`[icon] Label`,
-                        1em, `aria-hidden`). An empty `socialLinks` list renders
-                        nothing at all — the canonical Foundation's state. */}
-                    {socialLinks.length > 0 ? (
+                        {/* CONNECTIVITY ICON SEAM — social/profile destinations, in the
+                            SAME Connect column, rendered through the shared link +
+                            decorative-icon path. Text-only canonical behavior is
+                            unchanged (an icon-less item renders exactly the label); a
+                            configured icon adds supplementary artwork (`[icon] Label`,
+                            1em, `aria-hidden`). An empty `socialLinks` list renders
+                            nothing at all — the canonical Foundation's state. */}
+                        {socialLinks.length > 0 ? (
+                            <ContextNavLinks
+                                locale={locale}
+                                links={socialLinks}
+                                className={hasConnectionMethods ? "mt-3 space-y-2" : "space-y-2"}
+                                linkClassName="hover:text-primary"
+                            />
+                        ) : null}
+                    </div>
+                ) : null}
+
+                {/* SECONDARY / footer navigation group (optional). A plain-text
+                    group heading (never a link) over the configured links, rendered
+                    through the SAME shared link path as every other list — so
+                    internal/external semantics, `aria-current`, the decorative icon
+                    contract and `disabled` handling are inherited, not reimplemented.
+                    The heading doubles as the landmark's accessible name; without one
+                    the footer's generic navigation label is used. */}
+                {footerNavLinks.length > 0 ? (
+                    <nav aria-label={footerNavGroup?.heading ?? dictionary.navigation.footerLabel}>
+                        {footerNavGroup?.heading ? (
+                            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                                {footerNavGroup.heading}
+                            </h2>
+                        ) : null}
+
                         <ContextNavLinks
                             locale={locale}
-                            links={socialLinks}
-                            className="mt-3 space-y-2"
+                            links={footerNavLinks}
+                            className={footerNavGroup?.heading ? "mt-3 space-y-2" : "space-y-2"}
                             linkClassName="hover:text-primary"
                         />
-                    ) : null}
-                </div>
+                    </nav>
+                ) : null}
 
                 <nav aria-label={dictionary.navigation.footerLabel}>
                     <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">

@@ -1,8 +1,8 @@
 # Validation — what "done" means
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-17.3`
-> **Procedure validated against:** Foundation template release `v2026.09.17-foundation-generic-template` (`b9f7a18`) + the FS1 repository split (public template / private reference site)
+> **Manual revision:** `2026-09-19.1`
+> **Procedure validated against:** Foundation template release `v2026.09.17-foundation-generic-template` (`b9f7a18`) + the current public/private topology (the public reusable product `provelopment-foundation`, and the live Foundation site implemented as a site profile in the private downstream `provelopment-web`)
 > **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
 > **Master authority:** maintained in the Provelopment governance repository (private; not part of this product)
 >
@@ -144,7 +144,7 @@ as nothing to scan - never as an error.
 | Suite | Owner | Question it answers |
 | --- | --- | --- |
 | Template tests | the product | does the **reusable architecture** work? |
-| Reference-site tests | the site | does **this site** still look and behave as accepted? |
+| Site tests | the site owner | does **this site** still look and behave as accepted? |
 | Adopter tests | each adopter | does **this deployment** satisfy its own acceptance? |
 
 Site-specific assertions (real content routes, brand identity, activated artwork)

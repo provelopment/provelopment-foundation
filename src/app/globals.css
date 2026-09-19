@@ -443,8 +443,45 @@ select[data-selector]:focus-visible {
 
 .prose table {
   border-collapse: collapse;
-  margin: 1rem 0;
+  /* Vertical rhythm is owned by the scroll wrapper (`.prose-table-scroll`), so a
+     table inside it must not add its own margin. */
+  margin: 0;
   width: 100%;
+}
+
+/*
+ * ── Markdown table horizontal-overflow safety ────────────────────────────────
+ *
+ * A Markdown table is real tabular content: its natural minimum width is fixed
+ * by its cells, so on a narrow viewport a wide table can be WIDER than the
+ * article column. Without a local overflow strategy that becomes PAGE-LEVEL
+ * horizontal overflow — the whole document scrolls sideways, which breaks the
+ * reading experience on every page that contains the table.
+ *
+ * The treatment is deliberately the SAME one the project already uses for
+ * fenced code blocks (`.prose pre { overflow-x: auto }`): the table stays a real
+ * `<table>` with real `<thead>/<tr>/<th>/<td>` semantics, and a wrapper provides
+ * a LOCAL horizontal scroll region so the wide content stays usable.
+ *
+ * Why a wrapper rather than `display: block` on the table itself: changing a
+ * table's `display` removes it from the table formatting context and can change
+ * how assistive technology exposes its table semantics. A wrapper keeps the
+ * table's own display and role untouched.
+ *
+ * `tabindex="0"` (applied by `MarkdownContent`) makes the scroll region
+ * KEYBOARD-reachable: `overflow-x: auto` alone would leave the clipped columns
+ * reachable by pointer/touch but not by keyboard. Focus styling is intentionally
+ * NOT declared here — the single global `:focus-visible` ring already applies.
+ *
+ * The wrapper is created only around tables, so every other Markdown element
+ * renders exactly as before, and on a viewport wide enough for the table the
+ * wrapper is visually transparent (`width: 100%` still fills the column and no
+ * scrollbar appears).
+ */
+.prose-table-scroll {
+  margin: 1rem 0;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .prose th,

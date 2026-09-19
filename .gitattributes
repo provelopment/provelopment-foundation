@@ -21,3 +21,11 @@ instruction-manuals/** -text
 # runtime mirror verbatim.
 assets/** -text
 public/assets/** -text
+
+# `LICENSE` is the CANONICAL Apache License 2.0 text, installed byte-for-byte
+# from <https://www.apache.org/licenses/LICENSE-2.0.txt> and never paraphrased,
+# reformatted or extended (no copyright-holder name is filled in — the canonical
+# appendix placeholders stay as published). It is legal evidence as well as
+# configuration, so it is stored and checked out verbatim, for the same reason
+# the distributed manuals and the artwork are. Do not reflow it.
+LICENSE -text

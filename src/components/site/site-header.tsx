@@ -117,7 +117,11 @@ export function SiteHeader({ locale, resolved }: SiteHeaderProps) {
                     <Link
                         href={`/${locale}`}
                         aria-label={siteConfig.name}
-                        className="ui-site-header-brand inline-flex items-center"
+                        // VIS1C — a >= 44px-tall HIT AREA for the brand/home link.
+                        // The lockup artwork stays at its `h-8` visual scale; the
+                        // interactive box around it grows so the site's primary
+                        // "go home" target is comfortably tappable.
+                        className="ui-site-header-brand inline-flex min-h-11 min-w-11 items-center"
                     >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img

@@ -238,7 +238,9 @@ describe("P12-HG — layout-independence contract", () => {
     expect(siteHeader).toContain('className="md:hidden"');
     expect(siteHeader).toContain('mobilePattern === "drawer" || mobilePattern === "overlay"');
     // The header still exposes its brand link + navigation landmark.
-    expect(siteHeader).toContain('className="ui-site-header-brand inline-flex items-center"');
+    // VIS1C — the brand link now carries the >= 44px hit-area contract; the lockup
+    // inside it keeps its own visual scale (asserted on the next line).
+    expect(siteHeader).toContain('className="ui-site-header-brand inline-flex min-h-11 min-w-11 items-center"');
     expect(siteHeader).toContain("ui-site-header-logo h-8 w-auto");
     // No z-index/positioning on the band that could confine the fixed panels.
     // (`background-position` is a paint-only longhand, so match the properties,

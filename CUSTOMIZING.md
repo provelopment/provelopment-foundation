@@ -251,7 +251,7 @@ The canonical values are `balanced` / `balanced` / `default` / `default` /
 override applies to that dimension only, and any combination of vocabulary values
 is valid.
 
-P5-4/P6-1 — the responsive mobile sidebar navigation (the "Show Sidebar" drawer /
+P5-4/P6-1 — the responsive mobile sidebar navigation (the "Show navigation" drawer /
 overlay disclosure) always renders ONE navigation item per line in every
 composition; follow the shared list composition in `site-header.tsx` rather than
 adding composition-specific styling.
@@ -414,7 +414,7 @@ and `""` is the deliberate "hide this element" value.
 On the **desktop/tablet collapsible rail** there is one P0-1 exception: a
 collapsible rail is **never a dead-end**, so when `open` and `close` are both
 fully empty (`icon: ""` + `text: ""`) the rail toggle stays reachable and falls
-back to the localized label ("Show Sidebar"/"Hide Sidebar") — no invented text,
+back to the localized label ("Show navigation"/"Hide navigation") — no invented text,
 no broken image, no empty box.
 
 #### Sidebar disclosure — ONE vocabulary, one control (P6-1)
@@ -423,8 +423,8 @@ Every sidebar disclosure across every breakpoint says the same thing:
 
 | State | Desktop/tablet rail toggle (covers the aside rail) | Mobile drawer/overlay trigger + close |
 | --- | --- | --- |
-| disclosure **closed** | `Show Sidebar` (flips to this while collapsed) | trigger label `Show Sidebar` |
-| disclosure **open** | `Hide Sidebar` (flips to this while open) | close control `Hide Sidebar` |
+| disclosure **closed** | `Show navigation` (flips to this while collapsed) | trigger label `Show navigation` |
+| disclosure **open** | `Hide navigation` (flips to this while open) | close control `Hide navigation` |
 
 - The labels are the localized `navigation.showSidebar` / `navigation.hideSidebar`
   dictionary values (one per locale), reused by the `ui.navigation.sidebar.open/close.text`
@@ -485,7 +485,7 @@ and the same left-side vertical position.
 - **Full-height right border.** The rail's `border-inline-end` spans the whole
   sidebar/page-shell row (browser-measured `rail=774` vs `main=774` at 1280),
   not merely the navigation content.
-- **Toggle.** The `ui.navigation.sidebar.open/close` (Show/Hide Sidebar)
+- **Toggle.** The `ui.navigation.sidebar.open/close` (Show/Hide navigation)
   disclosure toggle stays present and keyboard-operable in **both** states
   (`aria-expanded` reflects the state; `aria-controls` targets the persistent
   panel). No `viewSidebar`/`closeSidebar`/`sidebarToggle` vocabulary. A
@@ -546,7 +546,7 @@ The sidebar (the ≥md aside rail) has three explicit presentation modes:
 | --- | --- |
 | `open` | Normal sidebar — icons (when configured) **and** labels. **Default.** |
 | `compact` | Sidebar stays visible but renders **icon-only** navigation: labels of icon-bearing items are visually hidden (kept for screen readers); items without an icon keep their label so nothing becomes invisible. The same class marker implements top/bottom menus. |
-| `closed` | The persistent rail is **not displayed**; the responsive "Show Sidebar" disclosure remains the way navigation is reached. Distinct from `compact`. |
+| `closed` | The persistent rail is **not displayed**; the responsive "Show navigation" disclosure remains the way navigation is reached. Distinct from `compact`. |
 
 The distinction is modeled explicitly in the configuration/state (never a CSS
 accident): `mode` is a validated vocabulary value, and the renderer hides
@@ -573,7 +573,7 @@ top-nav, or bottom bar).
 at all — the header navigation landmark (≥md), the bottom bar (<md), or the
 aside rail respectively disappears. No empty placeholder, no orphaned
 `aria-controls` target, no layout gap. On surfaces that own other navigation
-(the responsive "Show Sidebar" disclosure), that other mechanism is untouched.
+(the responsive "Show navigation" disclosure), that other mechanism is untouched.
 
 #### Navigation items — icons, regions, disabled
 
@@ -675,7 +675,7 @@ the control that consumes them.
 { "ui": { "navigation": { "sidebar": { "open": { "icon": "", "text": "" } } } } }
 ```
 
-On the **mobile** disclosure the "Show Sidebar" trigger is not rendered (the
+On the **mobile** disclosure the "Show navigation" trigger is not rendered (the
 adopter explicitly chose to hide both its elements); nothing else changes —
 Escape, backdrop, and focus return still apply to any disclosure that IS
 rendered. On the **desktop/tablet collapsible rail** the toggle stays reachable
@@ -1319,8 +1319,8 @@ without changing component source code.
 | `banner-*` | `public/assets/banner-home.png` | `site.assets.banners["home"]` → `PageBanner` (P6-3B — a per-page banner above the header) |
 | `sidebar-default-icon-open` | `public/assets/sidebar-default-icon-open.svg` | the sidebar navigation-item EXPANDED default (P6-3B — a large dot) |
 | `sidebar-default-icon-closed` | `public/assets/sidebar-default-icon-closed.svg` | the sidebar navigation-item COLLAPSED default (P6-3B — a large plus) |
-| `sidebar-open` | `public/assets/sidebar-open.svg` | `ui.navigation.sidebar.open.icon` default (`DEFAULT_SIDEBAR_OPEN_ICON`) — the live Show Sidebar control graphic |
-| `sidebar-close` | `public/assets/sidebar-close.svg` | `ui.navigation.sidebar.close.icon` default (`DEFAULT_SIDEBAR_CLOSE_ICON`) — the live Hide Sidebar control graphic |
+| `sidebar-open` | `public/assets/sidebar-open.svg` | `ui.navigation.sidebar.open.icon` default (`DEFAULT_SIDEBAR_OPEN_ICON`) — the live Show navigation control graphic |
+| `sidebar-close` | `public/assets/sidebar-close.svg` | `ui.navigation.sidebar.close.icon` default (`DEFAULT_SIDEBAR_CLOSE_ICON`) — the live Hide navigation control graphic |
 | `favicon` | `public/assets/favicon.svg` | `site.assets.favicon` → `metadata.icons.icon` (the live browser tab icon) |
 | `footer-graphic` | `public/assets/footer-graphic.svg` | `site.assets.footerGraphic` → `FooterGraphic` (P12-FG — ONE global decorative footer graphic / watermark layer behind the footer content; **not** the footer logo) — **approved artwork integrated and ACTIVE** |
 | `header-graphic` | `public/assets/header-graphic.svg` | `site.assets.headerGraphic` → the header's own background band (P12-HG — ONE global decorative header band behind the logo/navigation; **not** the header logo and **not** a page banner) — **approved artwork integrated and ACTIVE** (technically validated; the measured `cover` crop is an artwork/owner review item, not a coding gate) |

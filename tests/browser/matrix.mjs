@@ -677,7 +677,7 @@ async function runAdaptiveMobile(rows, cdp) {
   await sleep(120);
 
   // P5-1 — adaptive More drawer follows the SAME shared sidebar contract:
-  // bounded width + explicit Close Sidebar control with icon (preserved More entry).
+  // bounded width + explicit Close navigation control with icon (preserved More entry).
   await openTrigger(cdp, "#shell-bottom-more", "#shell-bottom-more-panel");
   const mp = await cdp.evaluate(`(() => {
     const d = document.querySelector('#shell-bottom-more-panel');

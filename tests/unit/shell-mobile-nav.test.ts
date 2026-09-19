@@ -14,7 +14,7 @@ import { describe, expect, it, vi } from "vitest";
  * P5-1/P6-1 — Sidebar-parity SSR contract (what closed markup must ALWAYS expose):
  *  - the mobile trigger renders the recognizable open-sidebar icon (svg with
  *    the shared `ui-mobile-nav-icon` marker) PLUS the explicit action label
- *    ("Show Sidebar" — the ONE P6-1 vocabulary — never a bare "Menu"/
+ *    ("Show navigation" — the ONE P6-1 vocabulary — never a bare "Menu"/
  *    "Primary navigation" trigger on the closed control);
  *  - the trigger conveys disclosure state via `aria-expanded="false"` and
  *    `aria-controls="<id>-panel"` (deterministic B1 relationship);
@@ -42,21 +42,21 @@ const el = (type: string, props: Record<string, unknown> | null, ...children: Re
   createElement(type, props, ...children);
 
 describe("ShellMobileNav — P5-1 mobile sidebar contract (closed SSR)", () => {
-  it("trigger exposes the recognizable open icon + \"Show Sidebar\" action label", () => {
+  it("trigger exposes the recognizable open icon + \"Show navigation\" action label", () => {
     const html = renderToStaticMarkup(
       ShellMobileNav({
         pattern: "drawer",
-        triggerLabel: "Show Sidebar",
+        triggerLabel: "Show navigation",
         id: "shell-mobile-nav",
         className: "md:hidden",
-        closeLabel: "Hide Sidebar",
+        closeLabel: "Hide navigation",
         children: el("nav", null, "Nav content"),
       }),
     );
-    expect(html).toContain("Show Sidebar");
+    expect(html).toContain("Show navigation");
     // P5-5/P6-1 — the open control icon is now a configurable asset (`<img>` with
     // the shared ui-mobile-nav-icon marker); the P5-1 browser contract (the
-    // marker + the visible "Show Sidebar" label) is unchanged.
+    // marker + the visible "Show navigation" label) is unchanged.
     expect(html).toMatch(/<img[^>]*class="[^"]*ui-mobile-nav-icon/);
     expect(html).toContain('/assets/sidebar-open.svg');
     // The trigger is not an icon-only control: the visible action label is the
@@ -69,10 +69,10 @@ describe("ShellMobileNav — P5-1 mobile sidebar contract (closed SSR)", () => {
     const html = renderToStaticMarkup(
       ShellMobileNav({
         pattern: "overlay",
-        triggerLabel: "Show Sidebar",
+        triggerLabel: "Show navigation",
         id: "shell-mobile-nav",
         className: "md:hidden",
-        closeLabel: "Hide Sidebar",
+        closeLabel: "Hide navigation",
         children: el("nav", null, "Nav content"),
       }),
     );
@@ -88,7 +88,7 @@ describe("ShellMobileNav — P5-1 mobile sidebar contract (closed SSR)", () => {
     const html = renderToStaticMarkup(
       ShellMobileNav({
         pattern: "drawer",
-        triggerLabel: "Show Sidebar",
+        triggerLabel: "Show navigation",
         id: "shell-client-nav",
         className: "md:hidden",
         children: el("ul", null),

@@ -54,12 +54,12 @@ export interface ShellBottomBarProps {
   readonly pageBindings: readonly PageRegionBinding[];
   /** Localized demo badge label (for `demoOnly` items). */
   readonly demoBadgeLabel?: string;
-  /** P6-1 — label for the explicit "Hide Sidebar" control in the More drawer
+  /** P6-1 — label for the explicit "Hide navigation" control in the More drawer
    * (the shared sidebar contract; absent → no close control renders). */
   readonly closeLabel?: string;
   /** P5-5 — bottom-menu presentation mode (open | compact | closed). */
   readonly mode?: MenuMode;
-  /** P5-5 — configuration for the shared "Hide Sidebar" disclosure control. */
+  /** P5-5 — configuration for the shared "Hide navigation" disclosure control. */
   readonly sidebarClose?: { readonly icon?: string; readonly text?: string };
 }
 

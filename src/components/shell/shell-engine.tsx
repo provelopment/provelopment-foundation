@@ -67,7 +67,7 @@ export interface ShellEngineProps {
   readonly asideContent?: ReactNode;
   /**
    * P6-1 — localized labels for the sidebar disclosure toggle: `show` while
-   * the rail is collapsed ("Show Sidebar"), `hide` while open ("Hide Sidebar").
+   * the rail is collapsed ("Show navigation"), `hide` while open ("Hide navigation").
    * Same vocabulary as the mobile drawer/overlay trigger + close control.
    */
   readonly sidebarLabels?: { readonly show: string; readonly hide: string };
@@ -86,11 +86,11 @@ export interface ShellEngineProps {
     readonly moreLabel: string;
     readonly links: readonly ShellBottomBarLink[];
     readonly demoBadgeLabel?: string;
-    /** P6-1 — label for the explicit "Hide Sidebar" control in the More drawer. */
+    /** P6-1 — label for the explicit "Hide navigation" control in the More drawer. */
     readonly closeLabel?: string;
     /** P5-5 — bottom-menu presentation mode (open | compact | closed). */
     readonly mode?: MenuMode;
-    /** P5-5 — configuration for the shared "Close Sidebar" disclosure control. */
+    /** P5-5 — configuration for the shared "Close navigation" disclosure control. */
     readonly sidebarClose?: { readonly icon?: string; readonly text?: string };
   };
   /** Client nav context: current locale + configured region page bindings. */
@@ -219,11 +219,11 @@ export function ShellEngine({
     // public/assets (availableIconName), so no broken image can be composed.
     const openControl = resolveControlPresentation(sidebarOpen ?? {}, {
       defaultIcon: DEFAULT_SIDEBAR_OPEN_ICON,
-      fallbackText: sidebarLabels?.show ?? "Show Sidebar",
+      fallbackText: sidebarLabels?.show ?? "Show navigation",
     });
     const closeControl = resolveControlPresentation(sidebarClose ?? {}, {
       defaultIcon: DEFAULT_SIDEBAR_CLOSE_ICON,
-      fallbackText: sidebarLabels?.hide ?? "Hide Sidebar",
+      fallbackText: sidebarLabels?.hide ?? "Hide navigation",
     });
     // P0-1 — the sidebar capability is configured (not hard-coded per band):
     // `resolved.shell.sidebar.collapsible` is the declarative intent. The

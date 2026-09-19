@@ -250,7 +250,7 @@ describe("ShellEngine — Sidebar-drawer tablet (collapsed-sidebar) + mutually e
         footer,
         mainId: "main",
         navigationLabel: "Primary",
-        sidebarLabels: { show: "Show Sidebar", hide: "Hide Sidebar" },
+        sidebarLabels: { show: "Show navigation", hide: "Hide navigation" },
         asideContent: rail,
         ...base,
       }),
@@ -259,7 +259,7 @@ describe("ShellEngine — Sidebar-drawer tablet (collapsed-sidebar) + mutually e
     expect(html).toContain("aria-expanded=");
     expect(html).toContain("aria-controls=");
     // P6-1 — the disclosure uses the ONE Show/Hide vocabulary.
-    expect(html).toContain("Hide Sidebar");
+    expect(html).toContain("Hide navigation");
   });
 
   it("P6-3C — the CTA renders ONCE in the top region, never inside either aside band", () => {

@@ -59,7 +59,7 @@ export interface ShellMobileNavProps {
    */
   readonly open?: { readonly icon?: string; readonly text?: string };
   /**
-   * P0-1/P5-5/P6-1 — the "Hide Sidebar" control, with the SAME configurable
+   * P0-1/P5-5/P6-1 — the "Hide navigation" control, with the SAME configurable
    * presentation as the open control. Wired to the Drawer close mechanism.
    */
   readonly close?: { readonly icon?: string; readonly text?: string };
@@ -90,7 +90,7 @@ export function ShellMobileNav({
   });
   const closeControl = resolveControlPresentation(close ?? {}, {
     defaultIcon: DEFAULT_SIDEBAR_CLOSE_ICON,
-    fallbackText: closeLabel ?? "Hide Sidebar",
+    fallbackText: closeLabel ?? "Hide navigation",
   });
 
   const dialogContent = (
@@ -100,7 +100,7 @@ export function ShellMobileNav({
         <button
           type="button"
           onClick={closeDisclosure}
-          aria-label={closeControl.text === "" ? (closeLabel ?? "Close Sidebar") : undefined}
+          aria-label={closeControl.text === "" ? (closeLabel ?? "Close navigation") : undefined}
           className="ui-drawer-close mt-4 flex w-full items-center justify-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
         >
           <DisclosureIcon asset={closeControl.icon} className="ui-mobile-nav-icon h-8 w-8 shrink-0" />

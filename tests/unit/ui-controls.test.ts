@@ -54,16 +54,16 @@ describe("P5-5 — closed vocabulary", () => {
 });
 
 describe("P5-5 — resolveControlPresentation (empty-string semantics)", () => {
-  const fallback = { defaultIcon: "sidebar-open.svg", fallbackText: "Show Sidebar" };
+  const fallback = { defaultIcon: "sidebar-open.svg", fallbackText: "Show navigation" };
 
   it("missing icon → shipped default asset; missing text → localized fallback label", () => {
-    expect(resolveControlPresentation({}, fallback)).toEqual({ icon: "sidebar-open.svg", text: "Show Sidebar", visible: true });
+    expect(resolveControlPresentation({}, fallback)).toEqual({ icon: "sidebar-open.svg", text: "Show navigation", visible: true });
   });
 
   it("custom icon filename is honored (Option B asset replacement)", () => {
     expect(resolveControlPresentation({ icon: "my-icon.svg" }, fallback)).toEqual({
       icon: "my-icon.svg",
-      text: "Show Sidebar",
+      text: "Show navigation",
       visible: true,
     });
   });
@@ -79,7 +79,7 @@ describe("P5-5 — resolveControlPresentation (empty-string semantics)", () => {
   it("explicit `icon: \"\"` → text-only control", () => {
     expect(resolveControlPresentation({ icon: "" }, fallback)).toEqual({
       icon: "",
-      text: "Show Sidebar",
+      text: "Show navigation",
       visible: true,
     });
   });

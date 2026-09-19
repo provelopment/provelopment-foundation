@@ -143,7 +143,7 @@ export default async function LocaleLayout({
   const dictionary = getDictionary(locale);
   const navLinks = getSiteNavLinks(locale);
   // P5-5 — `navigation.sidebar.mode: "closed"` means the persistent aside rail
-  // is not composed (the responsive disclosure/`Show Sidebar` control remains
+  // is not composed (the responsive disclosure/`Show navigation` control remains
   // the way navigation is reached). Distinct from `compact` (rail present,
   // icon-only) and `open`.
   const sidebarClosed = resolvedUi.navigation.sidebar.mode === "closed";
@@ -227,7 +227,7 @@ export default async function LocaleLayout({
         label: dictionary.navigation.primaryLabel,
         moreLabel: dictionary.navigation.moreMenu,
         links: navLinks,
-        // P6-1 — one vocabulary: the disclosure close control says "Hide Sidebar".
+        // P6-1 — one vocabulary: the disclosure close control says "Hide navigation".
         closeLabel: dictionary.navigation.hideSidebar,
         // P5-5 — the bottom navigation shares the same three-state menu
         // contract (open | compact | closed) as the top/sidebar menus.
@@ -293,7 +293,7 @@ export default async function LocaleLayout({
           mainId="main"
           mainClassName="flex-1"
           navigationLabel={dictionary.navigation.primaryLabel}
-          // P6-1 — the rail disclosure uses the ONE Show/Hide Sidebar vocabulary
+          // P6-1 — the rail disclosure uses the ONE Show/Hide navigation vocabulary
           // (same as the mobile trigger/close); represented by the localized
           // labels + the configured open/close control content (icon screened
           // against public/assets by the framework layer below).

@@ -79,7 +79,7 @@ export function SiteHeader({ locale, resolved }: SiteHeaderProps) {
     );
 
     // P5-4 — Shared responsive navigation contract: the mobile sidebar
-    // disclosure (drawer AND overlay — the whole "Show Sidebar" contract)
+    // disclosure (drawer AND overlay — the whole "Show navigation" contract)
     // presents navigation as a clean VERTICAL list, one item per line. The
     // horizontal `flex flex-wrap` class belongs ONLY to the ≥md header
     // top-navigation; previously the drawer pattern reused that horizontal

@@ -1,8 +1,8 @@
 # Adoption — creating a new Foundation-derived project
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-17.3`
-> **Procedure validated against:** Foundation template release `v2026.09.17-foundation-generic-template` (`b9f7a18`) + the FS1 repository split (public template / private reference site)
+> **Manual revision:** `2026-09-19.1`
+> **Procedure validated against:** Foundation template release `v2026.09.17-foundation-generic-template` (`b9f7a18`) + the current public/private topology (the public reusable product `provelopment-foundation`, and the live Foundation site implemented as a site profile in the private downstream `provelopment-web`)
 > **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
 > **Master authority:** maintained in the Provelopment governance repository (private; not part of this product)
 >
@@ -212,9 +212,10 @@ reserved.
 13. **Reduce content honestly** — keep the site factually correct and neutral instead of
     inventing commercial copy; a **disabled feature must not remain in navigation**, and every
     navigation target must return 200.
-14. **Re-verify the inherited tests** — the Foundation's **reference-site** suites test the
-    Foundation's *own* reference site: exclude them from the project gate, expose them as
-    separate commands, and add the project's own acceptance tests.
+14. **Re-verify the inherited tests** — the suites that ship with the template test the
+    template's *own* demonstration content: treat the ones the project replaces as
+    adopter-owned, expose them as separate commands, and add the project's own acceptance
+    tests.
 15. **Run the full gate** (`validation.md`) — assets check, types, lint, unit tests, build,
     audit, browser smoke.
 16. **Verify the production build locally** — serve the build and check identity roles, routes,
@@ -259,17 +260,22 @@ reserved.
 The most common shape early in a project's life is that the **public platform
 repository is also the live site's source**. That is convenient and it is a trap: the
 generic product then looks like it belongs to one site, and every adopter has to
-delete the maintainer's content and branding before they can start. Split the two
-repositories as soon as the product has a real adopter (FS1, 2026-09-17):
+delete the maintainer's content and branding before they can start. Separate the
+product from the site as soon as the product has a real adopter (FS1, 2026-09-17;
+superseded by the consolidated downstream application, 2026-09):
 
 | Artifact | Repository | Visibility | Deployment |
 | --- | --- | --- | --- |
 | **The template (the product)** | `provelopment-foundation` | public | **none** — Git hosting is the distribution surface |
-| **The reference site (the demonstration)** | `provelopment-foundation-site` | private | the live domain (e.g. `foundation.provelopment.com`) |
+| **The live site (a downstream implementation)** | a private downstream application (for example `provelopment-web`) | private | the live domain (e.g. `foundation.provelopment.com`) |
 
-Dependency direction is **template -> site**. The site is an ordinary downstream
-clone (see *The two adoption shapes* above) whose `origin` is its own private
-repository and whose `foundation` remote is the template.
+Dependency direction is **template -> downstream application**. A downstream
+application is an ordinary downstream clone (see *The two adoption shapes* above)
+whose `origin` is its own private repository and whose `foundation` remote is the
+template. One downstream application may implement **several** sites as separate
+site profiles; that is a property of the downstream application, not of Foundation.
+The public template remains fully and independently usable without any downstream
+application: adopting it never requires one.
 
 ### Procedure actually followed (FS1)
 

@@ -11,6 +11,7 @@ import { RegionStructuredData } from "@/components/site/region-structured-data";
 import { siteConfig } from "@/config";
 import { resolveRegionalPageContext } from "@/application/page-context";
 import { buildLanguageAlternates } from "@/core/locale";
+import { HOME_CONTENT_SLUG } from "@/core/page-content";
 import { regionsForLocale, regionalPath, buildRegionalLanguageAlternates } from "@/core/regional-pages";
 import { buildOpenGraphData, buildTwitterData, resolveOgImageUrl } from "@/core/seo-metadata";
 
@@ -30,8 +31,15 @@ const localeCodes = siteConfig.locales.map((locale) => locale.code);
  * when added, must be listed here too so there is exactly one page
  * architecture: static routes keep precedence; `[item]` serves regional
  * landings and the remaining flat content pages.
+ *
+ * `HOME_CONTENT_SLUG` is reserved for the same reason: a site's home page may be
+ * authored as ordinary content, but it is served by the locale-root route
+ * (`/{locale}`) — never as `/{locale}/home`. The slug is imported from the ONE
+ * authority (`@/core/page-content`) so this list, the home route and the sitemap
+ * cannot drift.
  */
 const STATIC_ROUTE_SLUGS: ReadonlySet<string> = new Set([
+  HOME_CONTENT_SLUG,
   "about",
   "connect",
   "contact",

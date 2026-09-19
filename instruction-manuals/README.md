@@ -1,8 +1,8 @@
 # Provelopment Foundation Instruction Manuals
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-17.3`
-> **Procedure validated against:** Foundation template release `v2026.09.17-foundation-generic-template` (`b9f7a18`) + the FS1 repository split (public template / private reference site)
+> **Manual revision:** `2026-09-19.1`
+> **Procedure validated against:** Foundation template release `v2026.09.17-foundation-generic-template` (`b9f7a18`) + the current public/private topology (the public reusable product `provelopment-foundation`, and the live Foundation site implemented as a site profile in the private downstream `provelopment-web`)
 > **Master authority:** maintained in the Provelopment governance repository (private; not part of this product)
 > **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
 >
@@ -128,7 +128,8 @@ project is adopted.
 
 | Manual revision | Procedure validated against | Commit | Date |
 | --- | --- | --- | --- |
-| `2026-09-17.2` | Foundation template release `v2026.09.17-foundation-generic-template` + the FS1 repository split | `b9f7a18` (template) · `fb721b3` (reference-site baseline) | 2026-09-17 |
+| `2026-09-19.1` | Foundation template release `v2026.09.17-foundation-generic-template` + the current public/private topology (public product + private downstream application) | `b9f7a18` (template) | 2026-09-19 |
+| `2026-09-17.2` | Foundation template release `v2026.09.17-foundation-generic-template` + the FS1 repository split | `b9f7a18` (template) · `fb721b3` (historical baseline) | 2026-09-17 |
 | `2026-09-17.1` | `main` (single canonical presentation) | `ccc29a5` | 2026-09-17 |
 | `2026-09-16.3` | `main` (single canonical presentation) | `dae07b4` | 2026-09-16 |
 | `2026-09-16.2` | `main` (single canonical presentation) | `1114759` | 2026-09-16 |
@@ -136,10 +137,22 @@ project is adopted.
 | `2026-09-15.1` | `v2026.09.11-foundation-p6-3c-banner-sidebar-cta` | `f5c94da` | 2026-09-15 |
 | `2026-09-11.1` | `v2026.09.11-foundation-p6-3c-banner-sidebar-cta` | `f5c94da` | 2026-09-11 |
 
+> `2026-09-19.1` corrects the **topology** these manuals teach. No procedure changed. The previous
+> revisions described the live Foundation site as a private **sibling repository**
+> (`provelopment-foundation-site`). That repository was **archived** when the sites were
+> consolidated, and it is **historical only** — it is not the current implementation. The current
+> truth is: `provelopment-foundation` is the **public reusable product**;
+> `foundation.provelopment.com` is a **site profile** inside the private downstream
+> **`provelopment-web`** application, which serves several first-party sites; and the public
+> template remains **independently usable** — adopting it never requires a downstream
+> application. The retired selectable-presentation (preset) feature is confirmed obsolete.
+> `adoption.md` → *When the upstream product and the live site are the same codebase* now teaches
+> the current model.
+>
 > `2026-09-17.2` is validated by the **Foundation split (FS1)**: the public repository became the
-> **generic template product** and the live Foundation site moved to the private
-> `provelopment/provelopment-foundation-site` repository. It adds the **public-template /
-> private-reference-site** distinction and its repository map, the rule that the **public template
+> **generic template product** and the live Foundation site was moved out of it into a private
+> downstream repository. It adds the **public-product / private-implementation** distinction and
+> its repository map, the rule that the **public template
 > has no production deployment**, the provider-project **re-connect + production-provenance**
 > procedure, the **clean-clone acceptance gate** (which caught a CI-only hidden-directory
 > dependency), and the **template vs adopter test responsibility** split. See `adoption.md` →

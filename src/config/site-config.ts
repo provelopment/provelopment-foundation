@@ -92,6 +92,25 @@ export interface ConnectConfig {
   readonly methods: readonly ConnectMethod[];
 }
 
+/**
+ * The OPTIONAL secondary / footer navigation group.
+ *
+ * A distinct navigation concern from the primary `navigation`, from
+ * `connect.methods` (connection methods), from `socialLinks` (profile
+ * destinations) and from `legal` (policy documents). It lets a site surface
+ * contextual footer destinations — Home, How It Works, About, Help, the source
+ * repository — without misrepresenting them as contact methods.
+ *
+ * It never affects the primary navigation, never creates a route, never drives
+ * sitemap discovery, and its heading is never a link.
+ */
+export interface FooterNavGroup {
+  /** The group heading. Optional, plain text, never a link. */
+  readonly heading?: string;
+  /** The group's links, rendered in configuration order. */
+  readonly items: readonly NavigationItem[];
+}
+
 export interface ContactConfig {
   readonly email?: string;
   readonly phone?: string;
@@ -283,6 +302,12 @@ export interface SiteConfig {
   readonly contact: ContactConfig;
   readonly socialLinks: readonly SocialLink[];
   readonly navigation: readonly NavigationItem[];
+  /**
+   * Optional SECONDARY / footer navigation group — a distinct navigation
+   * concern from the primary `navigation`, from `connect.methods`, from
+   * `socialLinks` and from `legal`. Absent → no footer group is rendered.
+   */
+  readonly footerNavigation?: FooterNavGroup;
   /** Phase M — configuration-driven connection modes for the Connect page. */
   readonly connect?: ConnectConfig;
   /**

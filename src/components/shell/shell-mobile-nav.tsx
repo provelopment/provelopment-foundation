@@ -120,7 +120,12 @@ export function ShellMobileNav({
           aria-controls={`${id}-panel`}
           onClick={toggle}
           aria-label={openControl.text === "" ? triggerLabel : undefined}
-          className="ui-shell-mobile-nav-trigger inline-flex items-center gap-1.5 md:hidden"
+          // VIS1C — a >= 44x44 CSS-pixel HIT AREA on the mobile trigger. The control
+          // is the drawer's only entry point on a phone, so a 32px target (the
+          // icon's own height) is too small to hit reliably. `min-h-11 min-w-11`
+          // grows the INTERACTIVE box, not the artwork: the icon keeps its `h-8 w-8`
+          // visual scale and is centred inside the larger target.
+          className="ui-shell-mobile-nav-trigger inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 md:hidden"
         >
           <DisclosureIcon asset={openControl.icon} className="ui-mobile-nav-icon h-8 w-8 shrink-0" />
           {openControl.text === "" ? null : <span>{openControl.text}</span>}

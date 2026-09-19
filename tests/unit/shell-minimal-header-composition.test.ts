@@ -321,11 +321,11 @@ describe("SiteHeader — D3 genericity: Minimal-header never emits the adaptive-
   it("the Minimal-header assembly has no rail disclosure, no adaptive bottom-bar label, and no close-control text in SSR", () => {
     const dictionary = getDictionary("en");
     const html = renderToStaticMarkup(SiteHeader({ locale: "en", resolved: resolveUiConfig(MINIMAL_HEADER_UI) }));
-    // P6-1 — the Show/Hide Sidebar vocabulary is SHARED (not adaptive-only):
-    // the Minimal-header drawer trigger correctly says "Show Sidebar" in the header.
+    // P6-1 — the Show/Hide navigation vocabulary is SHARED (not adaptive-only):
+    // the Minimal-header drawer trigger correctly says "Show navigation" in the header.
     expect(html).toContain(dictionary.navigation.showSidebar);
     // What MUST stay absent: the adaptive bottom-bar label + the desktop rail
-    // disclosure control (and its "Hide Sidebar" close text only exists inside
+    // disclosure control (and its "Hide navigation" close text only exists inside
     // the CLOSED-by-default drawer → no rail control and no hide label in SSR).
     expect(html).not.toContain(dictionary.navigation.moreMenu);
     expect(html).not.toContain(dictionary.navigation.hideSidebar);

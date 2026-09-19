@@ -224,7 +224,7 @@ describe("ShellEngine — Top-bar CTA neutrality (D1/D2)", () => {
 });
 
 describe("ShellEngine — D3: Top-bar never emits the adaptive-only i18n values", () => {
-  it("moreMenu and the Show/Hide Sidebar vocabulary are absent from the Top-bar assembly", () => {
+  it("moreMenu and the Show/Hide navigation vocabulary are absent from the Top-bar assembly", () => {
     const dictionary = getDictionary("en");
     const html = renderToStaticMarkup(
       ShellEngine({ resolved: resolveUiConfig(TOP_BAR_UI), header: classicHeader(), main, footer, mainId: "main", ...base }),

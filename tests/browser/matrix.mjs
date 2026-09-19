@@ -365,7 +365,7 @@ async function runAsidePresentation(rows, presentation, cdp) {
         togglePresent: !!toggle,
         toggleExpanded: toggle ? toggle.getAttribute('aria-expanded') : null,
         // P6-1 — the disclosure is a real interactive control with a visible,
-        // LOADED icon and the state-correct Show/Hide Sidebar label.
+        // LOADED icon and the state-correct Show/Hide navigation label.
         toggleTag: toggle ? toggle.tagName : null,
         toggleText: toggle ? toggle.textContent.trim() : null,
         toggleIcon: !!toggleIcon,
@@ -385,8 +385,8 @@ async function runAsidePresentation(rows, presentation, cdp) {
       check(rows, `${vpName}.aside.toggle.icon.loaded`, !!init.toggleIconLoaded);
       if (vpName === "desktop") {
         check(rows, `${vpName}.aside.expanded.initial`, init.toggleExpanded === "true" && init.panelVisible);
-        // P6-1 — ONE vocabulary: open rail → "Hide Sidebar".
-        check(rows, `${vpName}.aside.toggle.labelHide`, init.toggleText === "Hide Sidebar");
+        // P6-1 — ONE vocabulary: open rail → "Hide navigation".
+        check(rows, `${vpName}.aside.toggle.labelHide`, init.toggleText === "Hide navigation");
         // P6-1 — edge spacing + second-level inset (control vs navigation items).
         check(rows, `${vpName}.aside.spacing.railInset`, !!(init.railLeft != null && init.railLeft >= 16), `railLeft=${init.railLeft}`);
         // 2026-09 closure pass — the show/hide CONTROL is LEFT-ALIGNED with the
@@ -400,8 +400,8 @@ async function runAsidePresentation(rows, presentation, cdp) {
         check(rows, `${vpName}.aside.collapsed.initial`, init.toggleExpanded === "false" && init.dataCollapsed === "true" && init.panelVisible && !init.panelHiddenClass);
         check(rows, `${vpName}.aside.collapsed.persistentNarrow`, init.railWidth != null && init.railWidth > 0 && init.railWidth <= 64, `railWidth=${init.railWidth}`);
         check(rows, `${vpName}.aside.collapsed.notDeadEnd`, init.togglePresent);
-        // P6-1 — collapsed rail → "Show Sidebar".
-        check(rows, `${vpName}.aside.toggle.labelShow`, init.toggleText === "Show Sidebar");
+        // P6-1 — collapsed rail → "Show navigation".
+        check(rows, `${vpName}.aside.toggle.labelShow`, init.toggleText === "Show navigation");
       }
     } else {
       // immersive floating rail: static, expanded, no toggle (capability off).
@@ -479,8 +479,8 @@ const s = await cdp.evaluate(`(() => ({
       check(rows, `${vpName}.aside.collapse.toggleRemains`, collapsed.togglePresent);
       check(rows, `${vpName}.aside.collapse.expandedFalse`, collapsed.toggleExpanded === "false");
       check(rows, `${vpName}.aside.collapse.navReachable`, collapsed.navReachable);
-      // P6-1 — the SAME toggle now says "Show Sidebar" and keeps its icon.
-      check(rows, `${vpName}.aside.collapse.labelShow`, collapsed.toggleText === "Show Sidebar");
+      // P6-1 — the SAME toggle now says "Show navigation" and keeps its icon.
+      check(rows, `${vpName}.aside.collapse.labelShow`, collapsed.toggleText === "Show navigation");
       check(rows, `${vpName}.aside.collapse.icon`, !!collapsed.toggleIcon);
       await cdp.clickCenter(toggleSel);
       await sleep(250);
@@ -499,8 +499,8 @@ const s = await cdp.evaluate(`(() => ({
       check(rows, `${vpName}.aside.expand.restores`, restored.panelVisible && restored.railWidth != null && init.railWidth != null && restored.railWidth >= init.railWidth - 2, `restored=${restored.railWidth} expanded=${init.railWidth}`);
       check(rows, `${vpName}.aside.expand.expandedTrue`, restored.toggleExpanded === "true" && restored.dataCollapsed === "false");
       check(rows, `${vpName}.aside.expand.navReachable`, restored.linkReachable);
-      // P6-1 — re-expanded rail returns to "Hide Sidebar".
-      check(rows, `${vpName}.aside.expand.labelHide`, restored.toggleText === "Hide Sidebar");
+      // P6-1 — re-expanded rail returns to "Hide navigation".
+      check(rows, `${vpName}.aside.expand.labelHide`, restored.toggleText === "Hide navigation");
       // P6-3C — the CTA is reachable in the TOP region (never in the rail).
       check(rows, `${vpName}.aside.expand.ctaReachableInTop`, restored.ctaInTop);
       // P6-3A — the rail keeps its thin border in BOTH states (never a floating drawer).
@@ -516,7 +516,7 @@ const s = await cdp.evaluate(`(() => ({
   // realistic desktop width (1280/1440/1920). The rail is a fixed-width
   // column with token insets, so these assertions prove the same result at
   // each width: a comfortable horizontal inset, the control inset before the
-  // navigation items, the "Hide Sidebar" state, and zero broken images.
+  // navigation items, the "Hide navigation" state, and zero broken images.
   if (collapsible) {
     for (const w of [1280, 1440, 1920]) {
       await cdp.setViewport(w, 900);
@@ -543,7 +543,7 @@ const s = await cdp.evaluate(`(() => ({
       check(rows, `p6-1.${w}.railInset`, !!sp && sp.railLeft != null && sp.railLeft >= 16, `rail=${sp && sp.railLeft}`);
       check(rows, `p6-1.${w}.toggleInset`, !!sp && sp.toggleLeft != null && sp.railLeft != null && sp.toggleLeft >= sp.railLeft + 4 && sp.toggleLeft <= sp.railLeft + 6, `toggle=${sp && sp.toggleLeft} rail=${sp && sp.railLeft} (target ~5)`);
       check(rows, `p6-1.${w}.itemDeeper`, !!sp && sp.itemLeft != null && sp.toggleLeft != null && sp.itemLeft >= sp.toggleLeft + 4, `item=${sp && sp.itemLeft} toggle=${sp && sp.toggleLeft}`);
-      check(rows, `p6-1.${w}.labelHide`, !!sp && sp.text === "Hide Sidebar", `text=[${sp && sp.text}]`);
+      check(rows, `p6-1.${w}.labelHide`, !!sp && sp.text === "Hide navigation", `text=[${sp && sp.text}]`);
       check(rows, `p6-1.${w}.onePerRow`, !!sp && sp.onePerRow);
       check(rows, `p6-1.${w}.noBrokenImages`, !!sp && sp.noBroken);
     }
@@ -705,8 +705,8 @@ async function runAdaptiveMobile(rows, cdp) {
   check(rows, "more.trigger.icon", !!mp && !!mp.triggerIcon);
   check(rows, "more.trigger.icon.loaded", !!mp && !!mp.triggerIconLoaded);
   check(rows, "more.close.visible", !!mp && !!mp.closeVisible);
-  // P6-1 — the More drawer uses the ONE vocabulary: "Hide Sidebar".
-  check(rows, "more.close.label", !!mp && !!mp.closeLabel && mp.closeLabel === "Hide Sidebar", mp ? `label=[${mp.closeLabel}]` : "null");
+  // P6-1 — the More drawer uses the ONE vocabulary: "Hide navigation".
+  check(rows, "more.close.label", !!mp && !!mp.closeLabel && mp.closeLabel === "Hide navigation", mp ? `label=[${mp.closeLabel}]` : "null");
   check(rows, "more.close.belowNav", !!mp && !!mp.closeBelowNav);
   check(rows, "more.close.icon", !!mp && !!mp.closeIcon);
   check(rows, "more.close.icon.loaded", !!mp && !!mp.closeIconLoaded);

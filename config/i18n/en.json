@@ -13,8 +13,8 @@
     "primaryLabel": "Primary navigation",
     "footerLabel": "Footer navigation",
     "moreMenu": "More",
-    "showSidebar": "Show Sidebar",
-    "hideSidebar": "Hide Sidebar",
+    "showSidebar": "Show navigation",
+    "hideSidebar": "Hide navigation",
     "items": {
       "/": "Home"
     }

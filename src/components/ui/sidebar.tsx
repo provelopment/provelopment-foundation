@@ -34,8 +34,8 @@ import { createInitialDisclosure, disclosureReducer, type DisclosureState } from
  *
  * P6-1 — ONE sidebar vocabulary + ONE control contract on every breakpoint:
  *  - The toggle label FLIPS with state: `showLabel` when the rail is collapsed
- *    ("Show Sidebar" — the action that opens it), `hideLabel` when open
- *    ("Hide Sidebar"). The same two concepts drive the mobile drawer/overlay
+ *    ("Show navigation" — the action that opens it), `hideLabel` when open
+ *    ("Hide navigation"). The same two concepts drive the mobile drawer/overlay
  *    trigger + close control (ShellMobileNav), so desktop/tablet/mobile always
  *    say the same thing.
  *  - `open`/`close` are the ALREADY-RESOLVED control presentations
@@ -64,9 +64,9 @@ export interface SidebarProps {
   readonly collapsible?: boolean;
   /** Initial collapsed state (default: false). */
   readonly collapsed?: boolean;
-  /** P6-1 — localized label shown while collapsed ("Show Sidebar"). */
+  /** P6-1 — localized label shown while collapsed ("Show navigation"). */
   readonly showLabel?: string;
-  /** P6-1 — localized label shown while open ("Hide Sidebar"). */
+  /** P6-1 — localized label shown while open ("Hide navigation"). */
   readonly hideLabel?: string;
   /**
    * P6-1 — the RESOLVED "show" control presentation (icon + optional visible
@@ -80,8 +80,8 @@ export interface SidebarProps {
   readonly className?: string;
 }
 
-const DEFAULT_SHOW_LABEL = "Show Sidebar";
-const DEFAULT_HIDE_LABEL = "Hide Sidebar";
+const DEFAULT_SHOW_LABEL = "Show navigation";
+const DEFAULT_HIDE_LABEL = "Hide navigation";
 export function Sidebar({
   children,
   label,

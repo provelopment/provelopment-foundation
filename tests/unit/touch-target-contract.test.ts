@@ -49,10 +49,10 @@ const mobileNavHtml = (): string =>
   renderToStaticMarkup(
     ShellMobileNav({
       pattern: "drawer",
-      triggerLabel: "Show Sidebar",
+      triggerLabel: "Show navigation",
       id: "shell-mobile-nav",
       className: "md:hidden",
-      closeLabel: "Hide Sidebar",
+      closeLabel: "Hide navigation",
       children: null,
     }),
   );
@@ -84,7 +84,7 @@ describe("VIS1C — shared shell touch targets", () => {
   it("does NOT enlarge the trigger's artwork to reach the target size", () => {
     const html = mobileNavHtml();
     expect(html).toContain("ui-mobile-nav-icon h-8 w-8 shrink-0");
-    expect(html).toContain("Show Sidebar");
+    expect(html).toContain("Show navigation");
   });
 
   it("keeps the desktop composition free of the mobile-only trigger", () => {

@@ -35,8 +35,8 @@ export const dictionarySchema = z.object({
      * P6-1 — the ONE sidebar-disclosure vocabulary on every breakpoint. The
      * rail toggle (desktop/tablet), the mobile drawer/overlay trigger and its
      * close control all say the same thing: `showSidebar` when the disclosure
-     * is closed ("Show Sidebar" — the action), `hideSidebar` when open
-     * ("Hide Sidebar"). These are also the localized fallbacks for the P5-5
+     * is closed ("Show navigation" — the action), `hideSidebar` when open
+     * ("Hide navigation"). These are also the localized fallbacks for the P5-5
      * `ui.navigation.sidebar.open/close.text` configuration leaves.
      */
     showSidebar: z.string(),

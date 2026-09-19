@@ -57,18 +57,18 @@ describe("P6-3A — persistent horizontal sidebar rail", () => {
 
   it("the toggle remains present + semantically correct in both states (never a dead-end)", () => {
     const collapsed = renderToStaticMarkup(
-      Sidebar({ label: "Navigation", id: "s", collapsible: true, collapsed: true, showLabel: "Show Sidebar", hideLabel: "Hide Sidebar", open: { icon: "sidebar-open.svg", text: undefined }, close: { icon: "sidebar-close.svg", text: undefined }, children: rail }),
+      Sidebar({ label: "Navigation", id: "s", collapsible: true, collapsed: true, showLabel: "Show navigation", hideLabel: "Hide navigation", open: { icon: "sidebar-open.svg", text: undefined }, close: { icon: "sidebar-close.svg", text: undefined }, children: rail }),
     );
     const expanded = renderToStaticMarkup(
-      Sidebar({ label: "Navigation", id: "s", collapsible: true, showLabel: "Show Sidebar", hideLabel: "Hide Sidebar", open: { icon: "sidebar-open.svg", text: undefined }, close: { icon: "sidebar-close.svg", text: undefined }, children: rail }),
+      Sidebar({ label: "Navigation", id: "s", collapsible: true, showLabel: "Show navigation", hideLabel: "Hide navigation", open: { icon: "sidebar-open.svg", text: undefined }, close: { icon: "sidebar-close.svg", text: undefined }, children: rail }),
     );
     expect(collapsed).toContain('type="button"');
     expect(collapsed).toContain('aria-expanded="false"');
     expect(collapsed).toContain('aria-controls="s-panel"');
     expect(expanded).toContain('aria-expanded="true"');
-    // ONE Show/Hide Sidebar vocabulary (P6-1 preserved).
-    expect(collapsed).toContain("Show Sidebar");
-    expect(expanded).toContain("Hide Sidebar");
+    // ONE Show/Hide navigation vocabulary (P6-1 preserved).
+    expect(collapsed).toContain("Show navigation");
+    expect(expanded).toContain("Hide navigation");
   });
 });
 

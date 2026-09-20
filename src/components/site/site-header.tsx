@@ -20,6 +20,41 @@ interface SiteHeaderProps {
     readonly resolved: ResolvedUiConfig;
 }
 
+/**
+ * EN-M (English-master closure) — THE HEADER LINK HIT-AREA BOX.
+ *
+ * One definition of the ≥44px interaction-box contract the header's links share.
+ * It carries LAYOUT only: typography, colour and state treatments stay with each
+ * surface, so the box can be applied to a link whose visual design must not move.
+ */
+export const TOUCH_TARGET_BOX_CLASS = "inline-flex min-h-11 min-w-11 items-center";
+
+/**
+ * EN-M (English-master closure) — THE HEADER NAVIGATION LINK CONTRACT.
+ *
+ * The ≥44px interaction-target contract the programme already applies to the
+ * mobile navigation trigger (VIS1C), the brand/home link (VIS1C) and the footer
+ * links (VIS2S) was MISSING on the header's own navigation links: `text-sm` with
+ * no vertical box produced a 20px-tall target at every desktop width, and the
+ * same 20px in the drawer's vertical list — the smallest interactive targets in
+ * the shell.
+ *
+ * The fix grows the INTERACTIVE BOX only, exactly like the brand link next to
+ * it: `inline-flex` + `min-h-11` (+ `min-w-11`, so a short label can never be
+ * narrower than the target floor). Typography, colour, the transition and
+ * `aria-current` active treatment are unchanged, and the header's own height
+ * does not move: the row is already ≥44px tall because the brand lockup is, so
+ * the navigation links simply occupy the height the header already has.
+ *
+ * The same box is applied to the TEXT brand fallback (`TOUCH_TARGET_BOX_CLASS`)
+ * — the path an adopter without a configured logo uses — so the "go home"
+ * target meets the same floor with its typography untouched.
+ *
+ * This is a SHARED SHELL change — no profile CSS and no new configuration
+ * surface, so every adopter and every site profile inherits it.
+ */
+export const HEADER_NAV_LINK_CLASS = `${TOUCH_TARGET_BOX_CLASS} text-sm text-muted-foreground transition-colors hover:text-foreground`;
+
 export function SiteHeader({ locale, resolved }: SiteHeaderProps) {
     const dictionary = getDictionary(locale);
     const decision = resolveShellPattern(resolved);
@@ -74,7 +109,7 @@ export function SiteHeader({ locale, resolved }: SiteHeaderProps) {
             locale={locale}
             links={navLinks}
             className={`flex flex-wrap items-center gap-x-4 gap-y-2 ${topModeClass ?? ""}`}
-            linkClassName="text-sm text-muted-foreground transition-colors hover:text-foreground"
+            linkClassName={HEADER_NAV_LINK_CLASS}
         />
     );
 
@@ -92,7 +127,7 @@ export function SiteHeader({ locale, resolved }: SiteHeaderProps) {
             locale={locale}
             links={navLinks}
             className={`flex flex-col items-start gap-y-2 ${sidebarModeClass ?? ""}`}
-            linkClassName="text-sm text-muted-foreground transition-colors hover:text-foreground"
+            linkClassName={HEADER_NAV_LINK_CLASS}
             // P5-5 — the mobile sidebar disclosure orders by configured
             // region (top → middle → bottom) like the aside rail.
             sortByRegion
@@ -135,6 +170,10 @@ export function SiteHeader({ locale, resolved }: SiteHeaderProps) {
                         locale={locale}
                         links={[{ href: "/", label: siteConfig.name }]}
                         className="font-semibold tracking-tight"
+                        // EN-M — the text brand fallback is the "go home" target for an
+                        // adopter with no configured logo; it takes the same ≥44px box
+                        // (its own typography and weight are untouched).
+                        linkClassName={TOUCH_TARGET_BOX_CLASS}
                     />
                 )}
 

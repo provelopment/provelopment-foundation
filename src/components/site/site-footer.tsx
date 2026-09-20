@@ -11,6 +11,7 @@ import { connectivityIcon, socialConnectivityLinks } from "./connectivity-links"
 import { ContextConnectHeading } from "./context-connect-heading";
 import { ContextNavLinks, type ContextNavLink } from "./context-nav-links";
 import { FooterGraphic } from "./footer-graphic";
+import { FOOTER_LINK_CLASS } from "./footer-link-class";
 import { navItemKey } from "./nav-links";
 
 interface SiteFooterProps {
@@ -157,7 +158,7 @@ export async function SiteFooter({ locale, directionLinkResolver }: SiteFooterPr
                                 locale={locale}
                                 links={methodLinks}
                                 className="mt-3 space-y-2"
-                                linkClassName="hover:text-primary"
+                                linkClassName={FOOTER_LINK_CLASS}
                                 demoBadgeLabel={dictionary.connect.demoBadge}
                             />
                         ) : null}
@@ -174,7 +175,7 @@ export async function SiteFooter({ locale, directionLinkResolver }: SiteFooterPr
                                 locale={locale}
                                 links={socialLinks}
                                 className={hasConnectionMethods ? "mt-3 space-y-2" : "space-y-2"}
-                                linkClassName="hover:text-primary"
+                                linkClassName={FOOTER_LINK_CLASS}
                             />
                         ) : null}
                     </div>
@@ -199,7 +200,7 @@ export async function SiteFooter({ locale, directionLinkResolver }: SiteFooterPr
                             locale={locale}
                             links={footerNavLinks}
                             className={footerNavGroup?.heading ? "mt-3 space-y-2" : "space-y-2"}
-                            linkClassName="hover:text-primary"
+                            linkClassName={FOOTER_LINK_CLASS}
                         />
                     </nav>
                 ) : null}
@@ -213,7 +214,7 @@ export async function SiteFooter({ locale, directionLinkResolver }: SiteFooterPr
                         locale={locale}
                         links={navLinks}
                         className="mt-3 space-y-2"
-                        linkClassName="hover:text-primary"
+                        linkClassName={FOOTER_LINK_CLASS}
                     />
                 </nav>
 
@@ -228,7 +229,7 @@ export async function SiteFooter({ locale, directionLinkResolver }: SiteFooterPr
                                 <li key={doc.slug}>
                                     <Link
                                         href={`/${locale}/legal/${doc.slug}`}
-                                        className="hover:text-primary"
+                                        className={FOOTER_LINK_CLASS}
                                     >
                                         {legalLabel(dictionary.legal.labels, doc)}
                                     </Link>

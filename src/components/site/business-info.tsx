@@ -6,6 +6,7 @@ import { formatAddress, resolveBusinessForLocale } from "@/core/business";
 import { resolveTimezone } from "@/core/business-hours";
 import { timezoneDisplayLabel } from "@/core/display-labels";
 import { CurrentStatus } from "./current-status";
+import { FOOTER_LINK_CLASS } from "./footer-link-class";
 
 const WEEKDAY_ORDER: readonly Weekday[] = [
   "mon", "tue", "wed", "thu", "fri", "sat", "sun",
@@ -75,7 +76,7 @@ function LocationBlock({ location, locale, direction }: LocationBlockProps) {
           {direction.kind === "link" ? (
             <a
               href={direction.href}
-              className="hover:text-primary"
+              className={FOOTER_LINK_CLASS}
               target="_blank"
               rel="noreferrer"
             >
@@ -92,7 +93,7 @@ function LocationBlock({ location, locale, direction }: LocationBlockProps) {
 
       {location.phone ? (
         <p className="mt-2">
-          <a href={`tel:${location.phone}`} className="hover:text-primary">
+          <a href={`tel:${location.phone}`} className={FOOTER_LINK_CLASS}>
             {location.phone}
           </a>
         </p>
@@ -170,14 +171,14 @@ export function BusinessInfo({ locale, directionLinkResolver }: BusinessInfoProp
 
       {primaryEmail ? (
         <p className="mt-3">
-          <a href={`mailto:${primaryEmail}`} className="hover:text-primary">
+          <a href={`mailto:${primaryEmail}`} className={FOOTER_LINK_CLASS}>
             {primaryEmail}
           </a>
         </p>
       ) : null}
       {primaryPhone ? (
         <p className="mt-3">
-          <a href={`tel:${primaryPhone}`} className="hover:text-primary">
+          <a href={`tel:${primaryPhone}`} className={FOOTER_LINK_CLASS}>
             {primaryPhone}
           </a>
         </p>

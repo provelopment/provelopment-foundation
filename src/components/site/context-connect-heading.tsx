@@ -8,6 +8,7 @@ import {
   parseRegionalPath,
   resolveNavHref,
 } from "@/core/regional-pages";
+import { FOOTER_TARGET_CLASS } from "./footer-link-class";
 
 interface ContextConnectHeadingProps {
   readonly locale: string;
@@ -36,7 +37,9 @@ export function ContextConnectHeading({ locale, label }: ContextConnectHeadingPr
 
   const headingClass =
     "text-sm font-semibold uppercase tracking-wide text-muted-foreground";
-  const linkClass = `${headingClass} hover:text-primary transition-colors`;
+  // VIS2S — the heading is also the Connect link, so it carries the shared footer
+  // target floor while keeping the heading's own typography.
+  const linkClass = `${FOOTER_TARGET_CLASS} ${headingClass} hover:text-primary transition-colors`;
 
   return (
     <h2 className={headingClass}>

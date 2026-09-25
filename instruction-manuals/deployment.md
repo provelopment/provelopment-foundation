@@ -1,7 +1,7 @@
 # Deployment — taking a validated site live
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-19.1`
+> **Manual revision:** `2026-09-25.1`
 > **Procedure validated against:** Foundation template release `v2026.09.17-foundation-generic-template` (`b9f7a18`) + the current public/private topology (the public reusable product `provelopment-foundation`, and the live Foundation site implemented as a site profile in the private downstream `provelopment-web`)
 > **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
 > **Master authority:** maintained in the Provelopment governance repository (private; not part of this product)
@@ -43,9 +43,11 @@ worked examples) lives in the project's own deployment guide. This manual is the
   provider that builds from Git does **not** create a project by itself: the project, its
   repository connection, its production branch and its domains are set up once, in the provider
   account. Verify this before planning a deployment rather than assuming a push will deploy.
-  A coding-agent environment typically holds **no provider credentials** — check
-  (`vercel whoami`, or the equivalent) and, if unauthenticated, treat the whole step as an
-  owner action (`troubleshooting.md` entry 8). A site whose project has not been created is
+  A coding-agent environment has **no authorised provider access**: treat provider
+  authentication, project creation/configuration, deployment records and DNS as **owner/provider
+  actions** — prepare the exact action and hand it over, and never probe a provider tool to find
+  out whether access happens to be available (`agent-operating-rules.md` → *Access boundary*,
+  `troubleshooting.md` entry 8). A site whose project has not been created is
   simply **not live**; nothing is broken by that, but it must be reported as pending, never as
   deployed.
 
@@ -108,8 +110,10 @@ sitemap uses the live host, and the favicon loads.
 
 ## Rollback
 
-1. **Traffic-level (fastest):** promote the previous known-good deployment to
-   production in the provider dashboard.
+1. **Traffic-level (fastest) — owner/provider action:** promote the previous known-good
+   deployment to production in the provider dashboard. A coding agent **does not** perform
+   this: it reports the situation and requests the promotion, then verifies the result
+   publicly (canonical host, routes, metadata). Step 2 is the agent-performable path.
 2. **Source-level:** revert the offending commit on a fix branch, validate, merge,
    redeploy.
 3. Never rewrite shared history or force-push to fix a bad deploy.

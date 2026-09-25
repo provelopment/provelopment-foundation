@@ -1,7 +1,7 @@
 # Provelopment Foundation Instruction Manuals
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-19.1`
+> **Manual revision:** `2026-09-25.1`
 > **Procedure validated against:** Foundation template release `v2026.09.17-foundation-generic-template` (`b9f7a18`) + the current public/private topology (the public reusable product `provelopment-foundation`, and the live Foundation site implemented as a site profile in the private downstream `provelopment-web`)
 > **Master authority:** maintained in the Provelopment governance repository (private; not part of this product)
 > **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
@@ -128,6 +128,7 @@ project is adopted.
 
 | Manual revision | Procedure validated against | Commit | Date |
 | --- | --- | --- | --- |
+| `2026-09-25.1` | Foundation template release `v2026.09.17-foundation-generic-template` + the current public/private topology (public product + private downstream application) | `b9f7a18` (template) | 2026-09-25 |
 | `2026-09-19.1` | Foundation template release `v2026.09.17-foundation-generic-template` + the current public/private topology (public product + private downstream application) | `b9f7a18` (template) | 2026-09-19 |
 | `2026-09-17.2` | Foundation template release `v2026.09.17-foundation-generic-template` + the FS1 repository split | `b9f7a18` (template) · `fb721b3` (historical baseline) | 2026-09-17 |
 | `2026-09-17.1` | `main` (single canonical presentation) | `ccc29a5` | 2026-09-17 |
@@ -137,6 +138,17 @@ project is adopted.
 | `2026-09-15.1` | `v2026.09.11-foundation-p6-3c-banner-sidebar-cta` | `f5c94da` | 2026-09-15 |
 | `2026-09-11.1` | `v2026.09.11-foundation-p6-3c-banner-sidebar-cta` | `f5c94da` | 2026-09-11 |
 
+> `2026-09-25.1` adds the **access boundary** and its **evidence classes** to
+> `agent-operating-rules.md` (*Access boundary — authorised evidence*), and aligns `deployment.md`
+> (preconditions + rollback) and `troubleshooting.md` entry 8 with it. Provider-account work —
+> creating or configuring a provider project, DNS changes, traffic-level promotion/rollback, and
+> reading provider records — is **owner/operator** work; a coding agent works from local/Git
+> evidence, GitHub-visible checks and **public production behaviour**, and reports it as
+> *"production behaviour verified publicly"* — never as a "provider deployment record". A check
+> named after a platform may be reported **only** as a GitHub-visible check result. **No
+> deployment procedure changed** — only who performs it and how it is reported. Absence of
+> provider access is intentional, not a blocker.
+>
 > `2026-09-19.1` corrects the **topology** these manuals teach. No procedure changed. The previous
 > revisions described the live Foundation site as a private **sibling repository**
 > (`provelopment-foundation-site`). That repository was **archived** when the sites were
@@ -212,7 +224,7 @@ project is adopted.
 | [`content-management.md`](content-management.md) | Writing/editing pages, offerings, portfolio, testimonials, FAQs, legal pages or dictionaries. |
 | [`validation.md`](validation.md) | Before claiming any task complete; understanding what each gate proves. |
 | [`deployment.md`](deployment.md) | Taking a validated repository live and verifying production. |
-| [`agent-operating-rules.md`](agent-operating-rules.md) | Operating inside an adopter project: authority, boundaries, escalation, handoff. |
+| [`agent-operating-rules.md`](agent-operating-rules.md) | Operating inside an adopter project: authority, boundaries, **the access boundary and evidence classes**, escalation, handoff. |
 | [`troubleshooting.md`](troubleshooting.md) | A known recurring failure with a known safe resolution. |
 
 Full configuration schema reference lives in the Foundation's `CUSTOMIZING.md`;

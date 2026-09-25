@@ -1,7 +1,7 @@
 # Agent Operating Rules — working inside a Foundation adopter
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-19.1`
+> **Manual revision:** `2026-09-25.1`
 > **Procedure validated against:** Foundation template release `v2026.09.17-foundation-generic-template` (`b9f7a18`) + the current public/private topology (the public reusable product `provelopment-foundation`, and the live Foundation site implemented as a site profile in the private downstream `provelopment-web`)
 > **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
 > **Master authority:** maintained in the Provelopment governance repository (private; not part of this product)
@@ -33,6 +33,49 @@ conflict** in the project's knowledge record — do not silently choose.
 > The governing agent should also restrict the tool environment as far as it can —
 > that is the practical limit. If you need information from outside the project,
 > obtain it from the project's own documentation or stop and ask.
+
+## Access boundary — authorised evidence
+
+Work from what the project and its **public** behaviour can prove. Unless the owner
+explicitly grants more in a later instruction, the authorised sources are:
+
+- the local project/workspace and **local Git**;
+- **GitHub**, through the authorised Git/GitHub tooling (repository, branches, PRs,
+  commits, checks, Actions runs);
+- **unauthenticated public HTTP** access to the project's own public websites, when
+  live behaviour must be verified.
+
+You are **not** authorised to access, or attempt to access: provider APIs, provider
+tools or connectors, the provider dashboard, provider deployment records, provider
+logs, provider environment variables, provider project settings, DNS-provider or
+domain-registrar accounts, cloud consoles, or any other external infrastructure or
+account system. Do not probe whether such access happens to be available, do not treat
+an `Unauthorized` reply from a provider tool as verification, and do not ask for
+credentials or access.
+
+**Report evidence by class — and never upgrade a class.**
+
+| Class | Evidence | Report it as |
+| --- | --- | --- |
+| 1 | reviewed commit, merge commit, branch/`main` state, clean tree | Git/local evidence |
+| 2 | PR state, commit/status checks, Actions results, externally supplied status checks **visible through GitHub** | GitHub evidence |
+| 3 | publicly reachable URLs, HTTP status/redirect behaviour, rendered content, public metadata/canonical/sitemap, public browser/runtime behaviour | **production behaviour verified publicly** |
+
+- A check named after a platform (`Vercel`, `Vercel Preview`, or similar) may be reported
+  **only as a GitHub-visible check result**. Never follow it into the platform, and never
+  query the platform separately.
+- Say **"production behaviour verified publicly"** when the public site serves the merged
+  behaviour. Never claim **"provider deployment record verified"** unless the owner has
+  explicitly granted provider access in a later instruction.
+- **Provider-account work is owner/operator work.** Creating or configuring a provider
+  project, DNS changes, deployment promotion/rollback at the traffic level, and any
+  reading of provider records are performed by the account owner (or a human operator
+  holding provider credentials) — not by a coding agent. Prepare the exact action and
+  hand it over (`deployment.md`, `troubleshooting.md` entry 8).
+- Absence of provider access is **intentional, not a blocker**: finish the task with
+  classes 1–3, and state plainly what could not be proven and why.
+- **Never expand this boundary yourself.** If a task appears to require provider access,
+  stop and ask the owner.
 
 ## Preserve business-owned material
 
@@ -102,6 +145,8 @@ When you stop, report:
 - what changed (paths + commits);
 - each gate and its actual result;
 - anything not run, and why;
+- the **evidence class** behind each item (Git/local · GitHub · public behaviour) and, where
+  relevant, that no provider-account evidence was used or is claimed;
 - the current Foundation baseline and manual revision;
 - preserved vs reconciled material;
 - open issues and known deficiencies (classified);

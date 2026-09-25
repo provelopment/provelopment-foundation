@@ -1,7 +1,7 @@
 # Troubleshooting — known, recurring, resolved
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-09-19.1`
+> **Manual revision:** `2026-09-25.1`
 > **Procedure validated against:** Foundation template release `v2026.09.17-foundation-generic-template` (`b9f7a18`) + the current public/private topology (the public reusable product `provelopment-foundation`, and the live Foundation site implemented as a site profile in the private downstream `provelopment-web`)
 > **Adopter baseline:** per adopter — recorded in that project's `platform/SOURCE.md`
 > **Master authority:** maintained in the Provelopment governance repository (private; not part of this product)
@@ -190,15 +190,15 @@ There is no build failure, because **there is no deployment to fail**.
 **Cause.** The provider **project itself was never created**, or exists but is not connected to
 this repository. A Git-integrated provider does not provision a project because a repository
 exists: project creation, repository connection, production branch and domain binding are set up
-once in the provider account. In a coding-agent environment there are normally **no provider
-credentials** (`vercel whoami` → *No existing credentials found*; no `VERCEL_TOKEN`; no
-`~/.vercel` auth store), so none of those steps can be performed from the repository side.
+once in the provider account — **owner/provider-account work**, which a coding agent does not
+perform and does not probe (`agent-operating-rules.md` → *Access boundary*).
 
 **Safe resolution.**
-1. Confirm the diagnosis before touching anything: check the provider CLI auth state, the
-   repository's commit **statuses/checks** (a connected provider reports its own deployment
-   status; none present means it is not connected), and resolve the hostname to see what it
-   actually points at.
+1. Confirm the diagnosis before touching anything, using only authorised evidence: the
+   repository's commit **statuses/checks** through GitHub (a connected provider reports its own
+   deployment status there; none present means it is not connected) and the hostname's DNS
+   resolution, to see what it actually points at. Do **not** check provider authentication or
+   query the provider account — provider CLI/account state is not an agent-accessible source.
 2. **Do not** invent infrastructure, change DNS, or create provider resources on the owner's
    behalf. Prepare the exact owner action instead: project name, repository, framework, root
    directory, production branch, environment variables (usually none), the canonical domain and
@@ -215,8 +215,9 @@ credentials** (`vercel whoami` → *No existing credentials found*; no `VERCEL_T
    record's deployment section must state the **verified live state**, not the intended one).
 
 **Prevention.** Treat "is a provider project connected to this repository?" as a **precondition
-of the bootstrap**, alongside the first green gate. Verify it with evidence (provider auth
-state, repository deployment statuses) rather than assuming a push will deploy, and confirm the
+of the bootstrap**, alongside the first green gate. Verify it with evidence a coding agent is
+authorised to read (the repository's deployment **statuses/checks through GitHub**, and the
+hostname's DNS resolution) rather than assuming a push will deploy, and confirm the
 provider project's existence **again after the bootstrap** — a project can be created while a
 task is in flight.
 

@@ -56,3 +56,22 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ── temporary project work — NEVER tracked (owner policy, GIT-TEMP-G1) ─────────────────────────────
+# Never track temporary project work at any directory depth.
+#
+# A directory named `.temp` is where the OWNER hands material to and from a workspace: recovery sets,
+# patches, inventories, scratch copies, handoffs. It is never source, authored content, configuration,
+# build output or deployment state, and it must never enter version control — at the repository root or
+# beneath ANY nested directory.
+#
+# `**/.temp/` and the shorter `.temp/` are equivalent in Git (a pattern with no separator other than
+# the trailing one matches a directory of that name at ANY depth); the explicit `**/` form states the
+# depth requirement rather than relying on that subtlety. An ANCHORED `/.temp/` is deliberately NOT
+# used: it covers one directory level only, which is exactly how a nested `.temp` directory ends up
+# untracked-but-stageable.
+#
+# An ignore rule cannot prevent a forced `git add -f`, so the exclusion is backed by
+# `scripts/check-temp-tracking.mjs` — a read-only Git-INDEX guard run from CI's required `validate`
+# path, which fails the run whenever any tracked path contains a `.temp` directory component.
+**/.temp/

@@ -696,10 +696,18 @@ describe("the nested identified Spoke Hub form", () => {
       /Spoke Hub #1 \("one"\) > Spoke #1 \("global"\): root "config" must live beneath the dedicated "spokes\/" namespace/,
     );
 
+    // Both lexical rules are asserted with authoring data that means the SAME thing on every platform: a
+    // leading slash is absolute everywhere, and a backslash is never a POSIX separator — so neither
+    // assertion depends on how the HOST spells a joined path.
     const absolute = rawNestedInstallation({
-      spokeHubs: [{ id: "one", spokes: [{ id: "global", root: path.join("spokes", "one") }] }],
+      spokeHubs: [{ id: "one", spokes: [{ id: "global", root: "/spokes/one" }] }],
     });
-    expect(refusalIssues(absolute).join("\n")).toMatch(/must use POSIX|must be root-relative, not absolute/);
+    expect(refusalIssues(absolute).join("\n")).toMatch(/must be root-relative, not absolute/);
+
+    const backslash = rawNestedInstallation({
+      spokeHubs: [{ id: "one", spokes: [{ id: "global", root: "spokes\\one" }] }],
+    });
+    expect(refusalIssues(backslash).join("\n")).toMatch(/must use POSIX/);
 
     const missingRoot = rawNestedInstallation({
       spokeHubs: [{ id: "one", spokes: [{ id: "global", root: spokeDir("absent") }] }],

@@ -20,8 +20,14 @@
  * function is valid in a build tool, in a test, and in the (later) creation tool that supplies
  * cryptographically secure bytes.
  *
- * DELIBERATELY UNWIRED. FOUNDATION-ID-M1 adds the contract only: nothing in the running platform
- * imports this module yet, and `tests/architecture/reserved-site-identifiers.test.ts` asserts that.
+ * DELIBERATELY UNWIRED IN M1. FOUNDATION-ID-M1 introduced the identity contract WITHOUT integrating
+ * it into the runtime that was already released, so nothing that was already running changed. Later
+ * milestones ARE expected to import and use it, and that adoption is a USE of the contract rather
+ * than a change to its boundary. What the permanent architecture tests protect is that BOUNDARY,
+ * not the module's continued absence from the runtime:
+ * `tests/architecture/reserved-site-identifiers.test.ts` checks that this module imports nothing at
+ * all and that the contracts reach nothing outside `src/core/`, so the dependency can only ever run
+ * `src/**` → here.
  *
  * THE FORMAT, AND WHY THE FIRST CHARACTER IS `0`-`7`
  * --------------------------------------------------

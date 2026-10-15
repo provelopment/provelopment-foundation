@@ -217,11 +217,20 @@ export function siteIdIssue(value: unknown): string | null {
  * candidate, and reserving a word is a breaking change for any configuration already using it, so
  * the vocabulary only grows by an explicit decision.
  *
- * Framework-owned paths (`_next`, the retired `/~spoke` namespace), public resource filenames
- * (`robots.txt`, `sitemap.xml`, `favicon.ico`) and reserved page-route names (`home`, `connect`,
- * `contact`, `opengraph-image`) are SEPARATE concerns and are deliberately not Site-ID reservations:
- * none of them is expressible as a Site ID in the first place, or is a route-name question rather
- * than an identity question.
+ * Three neighbouring categories are NOT in this vocabulary, for two different reasons:
+ *
+ *   · Framework-owned paths (`_next`, the retired `/~spoke` namespace) and public resource filenames
+ *     (`robots.txt`, `sitemap.xml`, `favicon.ico`) cannot be expressed as a Site ID at all: the
+ *     former begin with a character the grammar forbids, the latter carry a dot. No reservation is
+ *     needed to keep them out, so none is taken.
+ *   · The page-route names (`home`, `connect`, `contact`, `opengraph-image`) ARE syntactically valid
+ *     Site IDs — ordinary lowercase words, so `siteIdIssue` accepts every one of them. They are
+ *     nevertheless NOT among the thirteen globally reserved identifiers, because what they collide
+ *     with is a PAGE ROUTE rather than a Site: page-route collision and resolution rules are a
+ *     SEPARATE concern owned by the routing and page authorities (`HOME_CONTENT_SLUG` in
+ *     `@/core/page-content` is the home slug the page route skips), and a page is addressed below
+ *     the site segment. Reserving them here would import a routing concern into the identity
+ *     vocabulary.
  */
 export type ReservedSiteIdGroup = "platform" | "administration" | "routing";
 

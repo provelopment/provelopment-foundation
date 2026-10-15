@@ -265,6 +265,24 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
+      # ── THE `.temp` TRACKING GUARD (GIT-TEMP-G1) ────────────────────────────
+      # The owner's policy is that no content under a directory named `.temp`, at any depth, is ever
+      # tracked. A `.gitignore` rule cannot enforce that on its own — a forced `git add -f` bypasses
+      # every ignore rule — so the INDEX itself is checked here, in the ONE job that ALWAYS runs and
+      # whose failure IS the required status. That is what makes "validation cannot succeed while
+      # `.temp` material is tracked" a guarantee rather than a hope, and it needs no toolchain, no
+      # install and no secret: one checkout and one dependency-free Node command.
+      #
+      # The guard reads the Git index and the `.gitignore` as TEXT and nothing else: it never
+      # enumerates, opens or modifies anything inside a `.temp` directory.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The guard reads the INDEX, so it needs the checkout — never the project's history.
+          persist-credentials: false
+
+      - name: .temp tracking guard — no tracked path may contain a .temp directory
+        run: node scripts/check-temp-tracking.mjs
+
       - name: Evaluate the routed result
         env:
           SCOPE: ${{ needs.classify.outputs.scope }}

@@ -150,3 +150,82 @@ export interface Spoke {
 export interface SpokeHub {
   readonly spokes: readonly Spoke[];
 }
+
+/**
+ * IDENTIFIED SPOKE HUBS (FOUNDATION-ID-M3-P1) — the vocabulary of a MULTI-HUB Installation
+ * ===============================================================================
+ *
+ * The hierarchy this vocabulary names is
+ *
+ *   Installation → Spoke Hub → Spoke → Site Hub → Site → Locale
+ *
+ * and the three permanent rules it exists to express are:
+ *
+ *   · an Installation may eventually contain SEVERAL independently identified Spoke Hubs;
+ *   · a Spoke Hub owns its own Spoke membership, so a Spoke ID is unique WITHIN its owning Spoke Hub and
+ *     may REPEAT in another — which is why a Spoke can only ever be named by a COMPOSITE reference;
+ *   · every hostname claim stays unique across the WHOLE Installation, because a request carries one host
+ *     and must select exactly one Spoke.
+ *
+ * WHAT IS ADDITIVE HERE, AND WHAT IS NOT. These names add an identity to the container that already
+ * exists — they do NOT redefine `SpokeHub`, `Spoke`, `Hub`/`SiteHub` or the Site identity. `SpokeHub`
+ * keeps its exact contract (`{ readonly spokes }`), so every existing consumer compiles unchanged, and
+ * `IdentifiedSpokeHub` is an identified `SpokeHub` — assignable to it, accepted by every existing pure
+ * function (`./coherence`, `./resolve`, `./site-ownership`), with no behavioural difference.
+ *
+ * CURRENT implementation: an Installation composes exactly ONE Spoke Hub, which carries the reserved
+ * `IMPLICIT_SPOKE_HUB_ID`. An AUTHORED collection of identified Hubs is recognised and validated by the
+ * configuration seam but is deliberately NOT runnable (FOUNDATION-ID-M3-P1 §5): the runtime identity and
+ * isolation work that lifts that gate is later, and until it lands the nested authoring form fails closed.
+ * These types are the contract that work will be built on, not a switch that turns it on.
+ *
+ * A Spoke Hub IS NOT Business, Tenant or commercial ownership: it is an organisational coordinator of
+ * Spokes. A Site's permanent intrinsic identity remains `(BusinessId, SiteId)`, independent of where it is
+ * hosted — `@/core/business`, not this module.
+ *
+ * Framework-neutral: pure types only. No filesystem, no configuration, no request.
+ */
+
+/**
+ * A Spoke Hub's stable identifier, unique within its Installation, and never a path, a hostname, a URL
+ * segment or something a resource directory may be inferred from.
+ */
+export type SpokeHubId = string;
+
+/** WHICH Spoke Hub this is — its identity, never a path and never a hostname. */
+export interface SpokeHubIdentity {
+  readonly id: SpokeHubId;
+}
+
+/**
+ * A SPOKE HUB WITH AN IDENTITY: the outer coordinator, named.
+ *
+ * It is exactly a `SpokeHub` plus its identity — the same `{ spokes }` collection the runtime composes
+ * today, and the same per-Spoke contract. Nothing else is added: no hostname (a Spoke Hub is never
+ * addressed), no root, no Site Hub of its own (Site Hubs stay internal to individual Spokes) and no
+ * membership registry.
+ */
+export interface IdentifiedSpokeHub extends SpokeHub {
+  readonly identity: SpokeHubIdentity;
+}
+
+/**
+ * A COMPOSITE reference to ONE Spoke: its OWNING Spoke Hub, plus the local id inside that Hub.
+ *
+ * A local `SpokeId` is not an identity on its own — the same id may be declared in two Spoke Hubs — so a
+ * Spoke can only be named unambiguously by both halves together (`./spoke-hub-collection`, `spokeByRef`).
+ */
+export interface IdentifiedSpokeRef {
+  readonly spokeHubId: SpokeHubId;
+  readonly spokeId: SpokeId;
+}
+
+/**
+ * An Installation's identified Spoke Hub collection, in AUTHORED order (never sorted, and never derived
+ * from a directory listing).
+ *
+ * It is a plain readonly list for the same reason `SpokeHub.spokes` is: the container carries no state of
+ * its own, and the coherence rules (`./spoke-hub-collection`) describe the collection rather than the
+ * list. The current runtime composes exactly ONE, implicitly identified Spoke Hub.
+ */
+export type InstallationSpokeHubCollection = readonly IdentifiedSpokeHub[];

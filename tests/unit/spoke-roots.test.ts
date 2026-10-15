@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { DEPLOYMENT_CONFIG_FILE_NAME } from "@/config/deployment-root";
+import { installationSpokeHubCollectionSchema } from "@/config/spoke-declarations.mjs";
 import {
   INSTALLATION_SPOKE_COLLECTION_FILE_NAME,
   SPOKE_ROOTS_DIRECTORY_NAME,
@@ -534,6 +535,273 @@ describe("S3C1 is UNWIRED — today's build and runtime are untouched", () => {
     for (const file of ["next.config.ts", "vitest.config.mts"]) {
       const source = readFileSync(path.join(process.cwd(), ...file.split("/")), "utf8");
       expect(source, file).not.toMatch(/spokes/i);
+    }
+  });
+});
+
+/**
+ * THE NESTED `spokeHubs` FORM (FOUNDATION-ID-M3-P1)
+ * ================================================
+ *
+ * A second authoring form exists — an Installation's IDENTIFIED SPOKE HUB collection — and Phase 1 supports
+ * its RECOGNITION and its COMPLETE VALIDATION, and then REFUSES it: multi-Spoke-Hub runtime support is not
+ * enabled yet.
+ *
+ * The proofs below are therefore in two halves, and both matter:
+ *
+ *   RECOGNITION AND VALIDATION — the form is parsed, its leaves are typed strictly, and every authoring
+ *   defect is reported with the Hub and the Spoke it belongs to;
+ *   REFUSAL — it never becomes declarations: not for a collection with ONE Hub, not through the flat
+ *   schema, and not through the structure recogniser, which resolves nothing and runs nothing.
+ */
+
+/** The nested form's authoritative refusal, or `""` when (wrongly) accepted. */
+function refusalOf(root: string): string {
+  try {
+    resolveInstallationSpokeRoots(root);
+    return "";
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
+/** The issue lines of a refusal, without its header. */
+function refusalIssues(root: string): string[] {
+  return refusalOf(root).split("\n").slice(1);
+}
+
+/** A nested Installation: every declared Spoke root is authored under the dedicated `spokes/` namespace. */
+function nestedInstallation(
+  hubs: readonly {
+    readonly id: string;
+    readonly spokes: readonly { readonly id: string; readonly root: string }[];
+  }[],
+): string {
+  const root = syntheticTree("foundation-spoke-hubs-");
+  for (const hub of hubs) {
+    for (const spoke of hub.spokes) authoredSpokeRoot(at(root, spoke.root));
+  }
+  writeManifest(root, { spokeHubs: hubs });
+  return root;
+}
+
+/** A nested Installation whose manifest is written BY HAND, for the structural cases. */
+function rawNestedInstallation(manifest: unknown): string {
+  const root = syntheticTree("foundation-spoke-hubs-raw-");
+  writeManifest(root, manifest);
+  return root;
+}
+
+describe("the nested identified Spoke Hub form", () => {
+  it("is RECOGNISED and COMPLETELY VALIDATED — and refused, even with exactly ONE Hub", () => {
+    const root = nestedInstallation([{ id: "one", spokes: [{ id: "global", root: spokeDir("one") }] }]);
+
+    const message = refusalOf(root);
+    expect(message).toMatch(/Invalid Installation Spoke collection/);
+    expect(message).toMatch(/"spokeHubs" declares an IDENTIFIED SPOKE HUB COLLECTION/);
+    expect(message).toMatch(/multi-Spoke-Hub runtime support is NOT YET ENABLED/);
+
+    // COMPLETELY VALIDATED means exactly that: this manifest has ONE defect — the activation refusal — and
+    // nothing else is reported, because nothing else is wrong with it.
+    expect(refusalIssues(root)).toHaveLength(1);
+    expect(refusalIssues(root)[0]).toMatch(/spokeHubs: FOUNDATION-ID-M3-P1/);
+  });
+
+  it("refuses BOTH forms at once — mutual exclusion, never a precedence rule", () => {
+    const root = rawNestedInstallation({
+      spokes: [{ id: "flat", root: spokeDir("one") }],
+      spokeHubs: [{ id: "one", spokes: [{ id: "global", root: spokeDir("one") }] }],
+    });
+
+    const issues = refusalIssues(root).join("\n");
+    expect(issues).toMatch(/spokeHubs: FOUNDATION-ID-M3-P1/);
+    expect(issues).toMatch(/spokes: Invalid input: "spokes" and "spokeHubs" are MUTUALLY EXCLUSIVE/);
+  });
+
+  it("refuses duplicate Hub ids, an EMPTY Hub, and a duplicate Spoke id inside ONE Hub", () => {
+    const duplicateHub = nestedInstallation([
+      { id: "one", spokes: [{ id: "a", root: spokeDir("one") }] },
+      { id: "one", spokes: [{ id: "b", root: spokeDir("two") }] },
+    ]);
+    expect(refusalIssues(duplicateHub).join("\n")).toMatch(
+      /Spoke Hub #2 repeats id "one", already declared by Spoke Hub #1/,
+    );
+
+    const emptyHub = rawNestedInstallation({ spokeHubs: [{ id: "one", spokes: [] }] });
+    expect(refusalIssues(emptyHub).join("\n")).toMatch(
+      /Spoke Hub #1 \("one"\): an explicit Spoke collection needs at least one Spoke/,
+    );
+
+    const duplicateSpoke = nestedInstallation([
+      {
+        id: "one",
+        spokes: [
+          { id: "global", root: spokeDir("one") },
+          { id: "global", root: spokeDir("two") },
+        ],
+      },
+    ]);
+    expect(refusalIssues(duplicateSpoke).join("\n")).toMatch(
+      /Spoke #2 repeats id "global", already declared by Spoke #1/,
+    );
+  });
+
+  it("ACCEPTS the same local Spoke id in TWO Hubs — and still refuses the Installation", () => {
+    const root = nestedInstallation([
+      { id: "one", spokes: [{ id: "global", root: spokeDir("one") }] },
+      { id: "two", spokes: [{ id: "global", root: spokeDir("two") }] },
+    ]);
+
+    // Not a defect: a Hub owns its own membership. The ONLY reason this Installation cannot run is Phase
+    // 1's activation gate — which is precisely what makes the refusal a GATE and not a validation failure.
+    expect(refusalIssues(root)).toHaveLength(1);
+    expect(refusalIssues(root)[0]).toMatch(/multi-Spoke-Hub runtime support is NOT YET ENABLED/);
+  });
+
+  it("types every leaf strictly, and refuses unknown ones", () => {
+    const unknownEntryLeaf = rawNestedInstallation({
+      spokeHubs: [{ id: "one", spokes: [{ id: "global", root: spokeDir("one"), label: "Global" }] }],
+    });
+    expect(refusalIssues(unknownEntryLeaf).join("\n")).toMatch(
+      /spokeHubs\.0\.spokes\.0: Unrecognized key: "label"/,
+    );
+
+    const unknownManifestLeaf = rawNestedInstallation({
+      spokeHubs: [{ id: "one", spokes: [{ id: "global", root: spokeDir("one") }] }],
+      spokeHubId: "one",
+    });
+    expect(refusalIssues(unknownManifestLeaf).join("\n")).toMatch(/Unrecognized key: "spokeHubId"/);
+
+    const unknownHubLeaf = rawNestedInstallation({
+      spokeHubs: [{ id: "one", spokes: [{ id: "global", root: spokeDir("one") }], hostname: "x.test" }],
+    });
+    expect(refusalIssues(unknownHubLeaf).join("\n")).toMatch(/spokeHubs\.0: Unrecognized key: "hostname"/);
+
+    const mistyped = rawNestedInstallation({ spokeHubs: [{ id: 1, spokes: "one" }] });
+    const mistypedIssues = refusalIssues(mistyped).join("\n");
+    expect(mistypedIssues).toMatch(/spokeHubs\.0\.id: Invalid input: expected string/);
+    expect(mistypedIssues).toMatch(/spokeHubs\.0\.spokes: Invalid input: expected array/);
+
+    // Declaring the form with an unusable collection still fails as THIS form: the flat diagnostics can
+    // never appear for a manifest authored nested.
+    const declaredButEmpty = rawNestedInstallation({ spokeHubs: null });
+    expect(refusalIssues(declaredButEmpty).join("\n")).toMatch(/spokeHubs: Invalid input: expected array/);
+  });
+
+  it("keeps every ROOT rule, and refuses ONE physical root shared by two Hubs", () => {
+    const outsideNamespace = rawNestedInstallation({
+      spokeHubs: [{ id: "one", spokes: [{ id: "global", root: "config" }] }],
+    });
+    expect(refusalIssues(outsideNamespace).join("\n")).toMatch(
+      /Spoke Hub #1 \("one"\) > Spoke #1 \("global"\): root "config" must live beneath the dedicated "spokes\/" namespace/,
+    );
+
+    // Both lexical rules are asserted with authoring data that means the SAME thing on every platform: a
+    // leading slash is absolute everywhere, and a backslash is never a POSIX separator — so neither
+    // assertion depends on how the HOST spells a joined path.
+    const absolute = rawNestedInstallation({
+      spokeHubs: [{ id: "one", spokes: [{ id: "global", root: "/spokes/one" }] }],
+    });
+    expect(refusalIssues(absolute).join("\n")).toMatch(/must be root-relative, not absolute/);
+
+    const backslash = rawNestedInstallation({
+      spokeHubs: [{ id: "one", spokes: [{ id: "global", root: "spokes\\one" }] }],
+    });
+    expect(refusalIssues(backslash).join("\n")).toMatch(/must use POSIX/);
+
+    const missingRoot = rawNestedInstallation({
+      spokeHubs: [{ id: "one", spokes: [{ id: "global", root: spokeDir("absent") }] }],
+    });
+    expect(refusalIssues(missingRoot).join("\n")).toMatch(/root "spokes\/absent" does not exist/);
+
+    // A root WITHOUT the root-level contract is not a Spoke root, in either form.
+    const noConfig = syntheticTree("foundation-spoke-hubs-noconfig-");
+    mkdirSync(at(noConfig, spokeDir("one")), { recursive: true });
+    writeManifest(noConfig, {
+      spokeHubs: [{ id: "one", spokes: [{ id: "global", root: spokeDir("one") }] }],
+    });
+    expect(refusalIssues(noConfig).join("\n")).toMatch(/carries no "site\.config\.json"/);
+
+    // REUSING one physical Spoke root across two Hub declarations is refused exactly as reusing it twice
+    // inside one Hub is, and the message names the Spoke that claimed it — through its HUB, because in this
+    // form a `Spoke #1` alone belongs to no Hub in particular.
+    const sharedRoot = nestedInstallation([
+      { id: "one", spokes: [{ id: "global", root: spokeDir("shared") }] },
+      { id: "two", spokes: [{ id: "global", root: spokeDir("shared") }] },
+    ]);
+    const sharedIssues = refusalIssues(sharedRoot).join("\n");
+    expect(sharedIssues).toMatch(
+      /Spoke Hub #2 \("two"\) > Spoke #1 \("global"\): root "spokes\/shared" resolves to the same directory as Spoke Hub #1 \("one"\) > Spoke #1/,
+    );
+    expect(sharedIssues).toMatch(/two Spokes cannot share one authored root/);
+  });
+
+  it("validates a HUB-SCOPED switcher against its OWN Hub's members", () => {
+    /** The same two Hubs, with `one`'s switcher offering `member` — a Spoke of the OTHER Hub. */
+    const crossed = nestedInstallation([
+      { id: "one", spokes: [{ id: "global", root: spokeDir("one") }] },
+      { id: "two", spokes: [{ id: "member", root: spokeDir("two") }] },
+    ]);
+    writeManifest(crossed, {
+      spokeHubs: [
+        {
+          id: "one",
+          spokes: [{ id: "global", root: spokeDir("one") }],
+          spokeSwitcher: {
+            options: [{ spokeId: "member", label: "Member", href: "https://member.example.test" }],
+          },
+        },
+        { id: "two", spokes: [{ id: "member", root: spokeDir("two") }] },
+      ],
+    });
+    const crossedIssues = refusalIssues(crossed).join("\n");
+    expect(crossedIssues).toMatch(
+      /Spoke Hub #1 \("one"\) > spokeSwitcher\.options\[0\]: spokeId "member" is not one of the Spokes this Spoke Hub declares/,
+    );
+    expect(crossedIssues).toMatch(/A switcher is HUB-SCOPED/);
+
+    // A switcher that offers its OWN member is valid authoring — and the Installation is STILL refused, for
+    // the ONE remaining reason: the activation gate.
+    const own = nestedInstallation([{ id: "one", spokes: [{ id: "global", root: spokeDir("one") }] }]);
+    writeManifest(own, {
+      spokeHubs: [
+        {
+          id: "one",
+          spokes: [{ id: "global", root: spokeDir("one") }],
+          spokeSwitcher: {
+            options: [{ spokeId: "global", label: "Global", href: "https://global.example.test" }],
+          },
+        },
+      ],
+    });
+    expect(refusalIssues(own)).toHaveLength(1);
+    expect(refusalIssues(own)[0]).toMatch(/multi-Spoke-Hub runtime support is NOT YET ENABLED/);
+  });
+
+  it("exposes the nested form ONLY as a recogniser: structure yes, declarations never", () => {
+    const manifest = {
+      spokeHubs: [{ id: "one", spokes: [{ id: "global", root: spokeDir("one") }] }],
+    };
+
+    // The STRUCTURE is recognised and typed — the leaves a nested manifest may author, and no others.
+    const structural = installationSpokeHubCollectionSchema.safeParse(manifest);
+    expect(structural.success).toBe(true);
+    if (structural.success) {
+      expect(structural.data.hubs).toEqual([
+        {
+          id: "one",
+          spokes: [{ id: "global", root: spokeDir("one"), hostAliases: [] }],
+          spokeSwitcher: null,
+        },
+      ]);
+    }
+
+    // …and the parser EVERY consumer uses refuses that same manifest, so the recogniser is not a way in.
+    const refused = installationSpokeCollectionSchema.safeParse(manifest);
+    expect(refused.success).toBe(false);
+    if (!refused.success) {
+      expect(refused.error.issues).toHaveLength(1);
+      expect(refused.error.issues[0].message).toMatch(/NOT YET ENABLED/);
     }
   });
 });

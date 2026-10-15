@@ -328,6 +328,29 @@ describe("CI enforcement", () => {
   it("softens nothing: no `continue-on-error` may make the guard's failure a success", () => {
     expect(readFileSync(WORKFLOW, "utf8")).not.toContain("continue-on-error");
   });
+
+  it("keeps every step name a VALID YAML scalar — an inner quote fails the run with NO jobs at all", () => {
+    // WHY THIS EXISTS. A workflow that does not PARSE produces a failed run with an empty job list: no
+    // step ever logs anything, because no job was created. Every other gate in this repository reads the
+    // workflow as TEXT, so an unparseable file satisfies all of them — and `'.temp' tracking guard …`
+    // is exactly that trap: YAML reads the scalar as ".temp", then chokes on the trailing words.
+    // A single-quoted scalar may therefore end only at its closing quote, with nothing after it (an
+    // embedded quote must be doubled as `''`).
+    const names = [...readFileSync(WORKFLOW, "utf8").matchAll(/^\s*- name: (.*)$/gm)].map((match) =>
+      match[1].trim(),
+    );
+    expect(names.length).toBeGreaterThan(0);
+
+    for (const value of names) {
+      if (!value.startsWith("'")) continue;
+
+      let index = 1;
+      while (index < value.length && value[index] !== "'") index += 1;
+      while (value[index] === "'" && value[index + 1] === "'") index += 2;
+      expect(value[index], `unterminated single-quoted step name: ${value}`).toBe("'");
+      expect(value.slice(index + 1).trim(), `text after the closing quote: ${value}`).toBe("");
+    }
+  });
 });
 
 

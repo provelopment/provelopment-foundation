@@ -280,7 +280,7 @@ jobs:
           # The guard reads the INDEX, so it needs the checkout — never the project's history.
           persist-credentials: false
 
-      - name: '.temp' tracking guard — no tracked path may contain a .temp directory
+      - name: .temp tracking guard — no tracked path may contain a .temp directory
         run: node scripts/check-temp-tracking.mjs
 
       - name: Evaluate the routed result

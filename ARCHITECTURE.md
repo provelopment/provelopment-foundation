@@ -542,7 +542,7 @@ Constraints and rules:
 
 See `DEPLOYMENT.md` for the operational runbook.
 
-## Installation, Spoke Hub, Spoke, Hub, Site
+## Installation, Spoke Hub, Spoke, Site Hub, Site
 
 The deployment vocabulary, from the outside in. The levels are never shortened, because they are different
 concepts:
@@ -556,55 +556,79 @@ Spoke Hub                       the installation's coordinator of its Spokes (no
         ↓
 1..* Spokes                     independently addressed public origins sharing this installation's lifecycle
         ↓
-1..* Hubs                       internal groupings of Sites inside ONE Spoke (no hostname)
+1..* Site Hubs                  internal groupings of Sites inside ONE Spoke (no hostname)
         ↓
-1..* Sites                      a global/country/regional context inside a Hub (ww, de, ca, fr …)
+1..* Sites                      a global/country/regional context inside a Site Hub (ww, de, ca, fr …)
         ↓
 1..* Page Hubs                  the language-neutral identity and route of one page
         ↓
 1..* localized Page representations   one language's authored representation of that page
 ```
 
-- A **Spoke** is an independently addressed domain (`acme.com`), never a Site and never a Hub. A **Hub** groups
-  Sites inside one Spoke; a **Spoke Hub** groups Spokes inside one installation. Neither Hub nor Spoke Hub is a
-  hostname, and the two are not interchangeable.
-- **A Hub is not a lifecycle boundary and not an upgrade cohort.** Nothing is upgraded, rolled back or promoted
-  per Hub, and a Hub never spans Spokes.
+- A **Spoke** is an independently addressed domain (`acme.com`), never a Site and never a Hub. A **Site Hub** groups
+  Sites inside one Spoke; a **Spoke Hub** coordinates Spokes inside one installation. Neither a Site Hub nor a
+  Spoke Hub is a hostname, and the two are not interchangeable.
+- **The two organisational layers, and their names** (FOUNDATION-ID-M2). A **Spoke Hub** is the OUTER layer — the
+  coordinator of an installation's Spokes (`SpokeHub`). A **Site Hub** is the INNER layer — the grouping of Sites
+  inside ONE Spoke (`Hub`, exported from `@/core/spoke` also as `SiteHub`, with `SiteHubId` and
+  `SiteHubIdentity`). Those explicit names are compile-time ALIASES of the same entity: vocabulary, not a second
+  layer, and the older names remain supported unchanged.
+- **A Site Hub is not a lifecycle boundary and not an upgrade cohort.** Nothing is upgraded, rolled back or promoted
+  per Site Hub, and a Site Hub never spans Spokes.
 - A **Site** is a context inside a Spoke (a country, or the global one) — not a domain. Several Sites may live on
   one domain, and one Site may be served in several languages.
 
-### The organizational Hub boundary, and the Hub-scoped Spoke switcher (R1)
+### What exists today, and what is approved but NOT implemented
+
+Both layers are STRUCTURAL. How many of each an installation composes is a separate question, and today's answer
+is narrower than the approved target:
+
+| | CURRENT implementation | APPROVED TARGET (not implemented) |
+| --- | --- | --- |
+| **Spoke Hub** | exactly ONE per installation, implicit and with no id of its own | SEVERAL independently identified Spoke Hubs per installation |
+| **Spoke** | one or more, declared by the manifest; Spoke ids unique installation-wide | Spoke ids local to, and scoped by, their owning Spoke Hub |
+| **Site Hub** | one implicit Site Hub per Spoke, or the several its `sites[].hub` leaves name | Site Hubs stay scoped to individual Spokes |
+| **Site** | the EXISTING authored Site context (`sites[]`), resolved exactly as it always was | `(BusinessId, SiteId)` — the permanent composite identity — in managed mode |
+| **Locale** | per Site | unchanged: independent locales within each Site |
+
+Nothing in the right-hand column exists in the code today. This vocabulary adds names, not capability: no
+configuration leaf, route, hostname rule, membership algorithm or resolved Site population changes with it.
+
+### The organizational Spoke Hub boundary, and the Spoke-Hub-scoped Spoke switcher (R1)
 
 The levels above are STRUCTURAL. One ORGANIZATIONAL rule sits on top of them, and it is binding:
 
-- **ONE Installation represents ONE Hub** for organizational/navigation purposes, and every Spoke that
-  Installation declares is a **member** of that Hub. **The declaration is the whole membership boundary** —
-  there is no `hubId`, no organization registry and no second membership record anywhere in the platform.
-- A **Hub-scoped Spoke switcher** (`spokeSwitcher`, the fifth manifest leaf) may therefore offer **only**
+- **In the CURRENT implementation, ONE Installation composes ONE Spoke Hub** for organizational/navigation
+  purposes, and every Spoke that Installation declares is a **member** of it. (The approved target's SEVERAL
+  independently identified Spoke Hubs per Installation are not implemented — see above.) **The declaration is
+  the whole membership boundary** — there is no `hubId`, no organization registry and no second membership
+  record anywhere in the platform.
+- A **Spoke-Hub-scoped Spoke switcher** (`spokeSwitcher`, the fifth manifest leaf) may therefore offer **only**
   declared members, and every option's destination must route back to the member it names — its canonical
   origin, one of its additional hostname claims, or an inspection hostname the policy nominates for it. The
   ROUTING CHECK is the enforcement mechanism: an unrelated organization's hostname is refused at build time
   because it is not a routing claim of any member.
 - A **domain suffix does not determine membership**: `support.acme.com`, `acme.de`, `acme-australia.com` and
   `www.acme.com` may be members together when they are **declared** in the same Installation; an unrelated
-  `www.abc.com` is not switchable in that Hub no matter how its URL is authored.
-- **Template/provisioning lineage is NOT Hub membership.** A centrally managed template (for example a
+  `www.abc.com` is not switchable in that Spoke Hub no matter how its URL is authored.
+- **Template/provisioning lineage is NOT Spoke Hub membership.** A centrally managed template (for example a
   white-label reseller template for several countries) may later provision and update INDEPENDENT
   Installations. That is a template/update relationship: using such a template does **not** place a reseller's
-  website in the template owner's Hub switcher, and an autonomous reseller or customer remains its **own**
-  Hub/Installation. Only being declared as a Spoke in the same manifest creates membership.
+  website in the template owner's Spoke Hub switcher, and an autonomous reseller or customer remains its **own**
+  Spoke Hub / Installation. Only being declared as a Spoke in the same manifest creates membership.
 
 **The dimensions are not each other**, and the switcher collapses none of them:
 
 | Dimension | What it is | Control that moves within it |
 | --- | --- | --- |
-| **Hub** | the organizational/navigation association boundary — ONE per Installation | none: it is the SCOPE the switcher moves within |
-| **Spoke** | a complete website/domain context, a member of exactly one Hub | the Hub-scoped Spoke switcher (`spokeSwitcher`) |
+| **Spoke Hub** | the OUTER organizational/navigation boundary — ONE per Installation today | none: it is the SCOPE the switcher moves within |
+| **Spoke** | a complete website/domain context, a member of exactly one Spoke Hub | the Spoke-Hub-scoped Spoke switcher (`spokeSwitcher`) |
+| **Site Hub** | the INNER grouping of Sites inside ONE Spoke (no public address) | none: it groups Sites, it is never addressed and never switches |
 | **Site** | a country/global context INSIDE one Spoke | the Site selector |
 | **Location** | a physical/business location INSIDE one Site | the Location selector |
 | **Language** | an independent locale dimension | the Language selector |
 
-So the Spoke switcher moves **Spoke → Spoke within the SAME Hub**. It is not Site switching, not Location
+So the Spoke switcher moves **Spoke → Spoke within the SAME Spoke Hub**. It is not Site switching, not Location
 switching, not Language switching, and not arbitrary external navigation.
 
 ## The installation is the boundary
@@ -621,7 +645,7 @@ Choose the boundary by the smallest unit that may ever need to be owned, transfe
 back or operated separately. **If two websites may need independent Foundation versions or owners, they belong
 in separate installations** — do not couple them merely because one organisation happens to run both today.
 Grouping similar websites (by risk, feature use or upgrade cadence) is done with *separate installations*, never
-with Hubs.
+with Spoke Hubs or Site Hubs.
 
 ## Update, Upgrade and rollback
 

@@ -5,17 +5,31 @@
  * FOUR containers, and they are NOT each other:
  *
  *   Spoke Hub   coordinates the installation's Spokes        (1..* Spokes)
- *   Spoke       ONE independently addressable domain          (1..* Hubs)
- *   Hub         an internal grouping of Sites in one Spoke    (1..* Sites)
+ *   Spoke       ONE independently addressable domain          (1..* Site Hubs)
+ *   Site Hub    an internal grouping of Sites in one Spoke    (1..* Sites; the type is `Hub`)
  *   Site        the EXISTING Foundation `sites[]` context     (unchanged; owned by `@/core/site`)
  *
  * WHY THE FOUR LEVELS ARE NOT COLLAPSED
  * -------------------------------------
- * A Site is Foundation's own long-standing context (`ww`, `de`, `ca`, …). A Hub groups Sites and is
- * NOT publicly addressable. A Spoke is the DOMAIN boundary — the context a request hostname resolves
- * to — and owns its Hubs. The Spoke Hub coordinates the Spokes. Collapsing any two of these would
- * make a hostname, a website grouping and a country context the same word, which is precisely the
- * ambiguity this vocabulary exists to remove.
+ * A Site is Foundation's own long-standing context (`ww`, `de`, `ca`, …). A Site Hub groups Sites and
+ * is NOT publicly addressable. A Spoke is the DOMAIN boundary — the context a request hostname
+ * resolves to — and owns its Site Hubs. The Spoke Hub coordinates the Spokes. Collapsing any two of
+ * these would make a hostname, a website grouping and a country context the same word, which is
+ * precisely the ambiguity this vocabulary exists to remove.
+ *
+ * TWO ORGANISATIONAL LAYERS, TWO NAMES (FOUNDATION-ID-M2)
+ * -----------------------------------------------------
+ * The OUTER and the INNER organisational layer are separate concepts and now carry separate names:
+ *
+ *   Spoke Hub   the OUTER coordinator of an installation's Spokes   (`SpokeHub`)
+ *   Site Hub    the INNER grouping of Sites inside ONE Spoke        (`Hub`, aliased below)
+ *
+ * CURRENT implementation: an installation composes exactly ONE Spoke Hub, and each of its Spokes
+ * holds one IMPLICIT Site Hub — or the several its authored `sites[].hub` leaves name. APPROVED
+ * TARGET (NOT implemented here, and deliberately not pretended here): SEVERAL independently
+ * identified Spoke Hubs per installation, with Spoke ids scoped to their owning Spoke Hub, while Site
+ * Hubs stay scoped to individual Spokes. Nothing in this module gains a Spoke-Hub id, a second Site
+ * Hub layer or a membership rule of its own — the explicit names below are vocabulary, not behaviour.
  *
  * A SPOKE IS THE DOMAIN, SO IT CARRIES THE HOSTNAMES
  * --------------------------------------------------
@@ -67,6 +81,33 @@ export interface Hub {
   readonly identity: HubIdentity;
   readonly sites: readonly ResolvedSite[];
 }
+
+/**
+ * EXPLICIT SITE HUB VOCABULARY (FOUNDATION-ID-M2)
+ * ----------------------------------------------
+ *
+ * `Hub` is the INNER organisational layer: the internal grouping of Sites inside ONE Spoke. It is not
+ * publicly addressable, and it is NOT the outer Spoke Hub that coordinates an installation's Spokes —
+ * the two layers are different concepts and must never be read as each other.
+ *
+ * These three names are the SAME domain entity as `Hub`, `HubId` and `HubIdentity`, NOT a second type
+ * model and NOT a second organisational layer. They are COMPILE-TIME vocabulary only: the existing
+ * names stay the sole authority, every existing operation is untouched, and the old names remain
+ * supported with no deprecation and no behavioural difference. They exist so that the newer
+ * documentation and the configuration seams — which already say `SiteHubAssignment` and
+ * `siteHubAssignments` — can name the layer the domain always meant.
+ *
+ * A Site Hub is NOT Business ownership. Grouping Sites under one Site Hub says nothing about which
+ * Business owns them: carrying `(BusinessId, SiteId)` through membership and lookup is LATER work,
+ * and nothing here changes what a membership assignment means today.
+ */
+export type SiteHub = Hub;
+
+/** A Site Hub's stable identifier, unique within its Spoke — the SAME identifier as `HubId`. */
+export type SiteHubId = HubId;
+
+/** WHICH Site Hub this is — the SAME identity as `HubIdentity`, never a path and never a hostname. */
+export type SiteHubIdentity = HubIdentity;
 
 /**
  * WHICH Spoke this is: its identity, its canonical hostname, and every exact hostname it answers for.

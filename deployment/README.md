@@ -37,15 +37,26 @@ generated build output rather than deployment source: `pnpm assets:sync` writes 
 Foundation Installation
 ├── Spoke Hub                     ← the one request boundary: the public Host header is its only input
 │   ├── foundation Spoke          → https://foundation-template.provelopment.com
-│   │   └── Site ww               (Global)
+│   │   ├── Site Hub (implicit)   ← this Spoke's inner grouping of Sites
+│   │   │   └── Site ww           (Global)
 │   └── germany Spoke             → https://foundation-template-germany.provelopment.com
-│       └── Site de               (Germany, with the Locations Berlin and Frankfurt)
+│       ├── Site Hub (implicit)   ← this Spoke's inner grouping of Sites
+│       │   └── Site de           (Germany, with the Locations Berlin and Frankfurt)
 ```
 
 Each Spoke is a complete, isolated website: its own configuration, dictionaries, content tree, page
 tree, sitemap, `robots.txt`, OpenGraph images and asset namespaces. A Spoke owns exactly one Site here,
 so neither Spoke offers a Site control: the public `Host` decides which Spoke answers, and the Site is
 therefore a property of the hostname rather than a visitor choice.
+
+**Two organisational layers, and only the OUTER one is addressed** (FOUNDATION-ID-M2). The **Spoke Hub** is the
+OUTER layer — the coordinator of the Installation's Spokes, whose only input is the public `Host` header. A
+**Site Hub** is the INNER layer — the grouping of ONE Spoke's Sites — with no public address, no URL segment
+and no control of its own. This Installation authors no `sites[].hub`, so each of its Spokes has exactly ONE
+**implicit** Site Hub, which is why the tree marks it `(implicit)` instead of naming it. The APPROVED TARGET —
+SEVERAL independently identified Spoke Hubs per Installation, with Spoke ids scoped to their owning Spoke Hub,
+while Site Hubs stay scoped to individual Spokes — is **not implemented**: read that as intent, never as
+current behaviour.
 
 **Language is not ownership.** `/ww/de` is the *German-language* representation of the Global Site
 `ww`, owned by the **Foundation** Spoke — ordinary German pages authored inside that Spoke. `/de/de` is
@@ -97,7 +108,7 @@ above. Nothing is fetched from Vercel at request time, no Vercel setting is read
 deliberately **no `*.vercel.app` rule**: an unrelated project's Vercel URL, a team URL, or a name that merely
 *contains* ours answers 404 like any other unknown host.
 
-## One Installation is one Hub: the Hub-scoped Spoke switcher (R1)
+## One Installation composes one Spoke Hub: the Spoke-Hub-scoped Spoke switcher (R1)
 
 Two OPTIONAL leaves let an Installation state routing facts **beside** the topology above. Neither changes
 what a Spoke's canonical metadata says: a Spoke's canonical origin is always its own `site.url`.
@@ -124,17 +135,20 @@ sitemap are built from, and a request to an alias renders the SAME Spoke. Recogn
 no wildcard, no suffix match, and an alias is refused if it restates any Spoke's canonical hostname, is
 claimed by another Spoke, or collides with an inspection hostname the `inspectionSpoke` policy owns.
 
-**`spokeSwitcher` — THE HUB-SCOPED SPOKE SWITCHER** (navigation between the Spokes of ONE Hub, never the
-within-Spoke Site selector). **ONE INSTALLATION REPRESENTS ONE HUB** for organizational/navigation purposes,
-and **every Spoke this manifest declares is a MEMBER of that Hub**; that declaration IS the membership
-boundary. The list is authored data: its ORDER is exactly the order written, it is never sorted and never
-derived from the manifest.
+**`spokeSwitcher` — THE SPOKE-HUB-SCOPED SPOKE SWITCHER** (navigation between the Spokes of ONE **Spoke Hub**,
+never the within-Spoke **Site** selector — the two are different organisational layers, FOUNDATION-ID-M2).
+**THE CURRENT IMPLEMENTATION COMPOSES ONE SPOKE HUB PER INSTALLATION** for organizational/navigation purposes,
+and **every Spoke this manifest declares is a MEMBER of that Spoke Hub**; that declaration IS the membership
+boundary. The approved target — SEVERAL independently identified Spoke Hubs per Installation, with Spoke ids
+scoped to their owning Spoke Hub while Site Hubs stay scoped to individual Spokes — is **not implemented**. The
+list is authored data: its ORDER is exactly the order written, it is never sorted and never derived from the
+manifest.
 
 Every option must NAME a declared member and carry an absolute HTTPS origin that this Installation itself
 would route to that member — through its canonical hostname, one of its additional claims, or an inspection
 hostname the policy nominates for it. Refused at build time: an option pointing at another member's host, at
 a host nothing claims, **or at an unrelated organization's site** (which belongs to a different
-Hub/Installation). There is no `hubId`, no organization registry and no hostname-suffix rule: **the routing
+Spoke Hub / Installation). There is no `hubId`, no organization registry and no hostname-suffix rule: **the routing
 check is the enforcement mechanism**. A domain suffix does not imply membership.
 
 The control renders in the header's persistent control row on every page of every member, marks the member
@@ -145,18 +159,19 @@ must resolve for every locale each Spoke serves.
 
 | Dimension | What it is | Control |
 | --- | --- | --- |
-| **Hub** | the organizational/navigation association boundary — ONE per Installation | none (it is the scope the switcher moves within) |
-| **Spoke** | a complete website/domain context, a member of exactly one Hub | the Hub-scoped Spoke switcher |
+| **Spoke Hub** | the OUTER organizational/navigation boundary — ONE per Installation today | none (it is the scope the switcher moves within) |
+| **Spoke** | a complete website/domain context, a member of exactly one Spoke Hub | the Spoke-Hub-scoped Spoke switcher |
+| **Site Hub** | the INNER grouping of a single Spoke's Sites (no public address) | none (it groups Sites; it is never addressed and has no control) |
 | **Site** | a country/global context INSIDE one Spoke | the Site selector |
 | **Location** | a physical/business location INSIDE one Site | the Location selector |
 | **Language** | an independent locale dimension | the Language selector |
 
-**TEMPLATE/PROVISIONING LINEAGE IS NOT HUB MEMBERSHIP.** A centrally managed template may later provision and
+**TEMPLATE/PROVISIONING LINEAGE IS NOT SPOKE HUB MEMBERSHIP.** A centrally managed template may later provision and
 update independent Installations (for example white-label reseller templates for Australia, Canada, Indonesia,
 Germany, the UK and the USA). That relationship is **template/update lineage**, not membership: using a
-Provelopment-managed template does NOT put a reseller's website into the Provelopment Hub switcher, and an
-autonomous reseller or customer remains its **own** Hub/Installation. Membership is created by ONE thing only —
-being declared as a Spoke in the same manifest.
+Provelopment-managed template does NOT put a reseller's website into the Provelopment Spoke Hub switcher, and an
+autonomous reseller or customer remains its **own** Spoke Hub / Installation. Membership is created by ONE thing
+only — being declared as a Spoke in the same manifest.
 
 **`siteNotice` — the opt-in site-wide notice.** A Spoke may present ONE generic notice on every page
 (shell chrome, never page content):
@@ -195,7 +210,7 @@ This Installation has **one** live Foundation release, so both operations promot
 of its Spokes — as one candidate, and a failed candidate leaves the live revision untouched. The lifecycle
 records the kind explicitly and refuses a mislabelled operation (an `update` naming a different release, an
 `upgrade` naming the release already live), so a reader can tell an Update from an Upgrade in the history. The
-vocabulary (Installation, Spoke Hub, Spoke, Hub, Site) and the reasoning are in
+vocabulary (Installation, Spoke Hub, Spoke, Site Hub, Site) and the reasoning are in
 [`ARCHITECTURE.md`](../ARCHITECTURE.md); the full compendium — structures, strategies, ownership transfer and
 blast radius — is the programme documentation (`.documentation/`).
 

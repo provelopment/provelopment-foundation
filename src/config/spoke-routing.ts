@@ -58,12 +58,20 @@ export interface SpokeSwitcherOption {
 }
 
 /**
- * The Installation's authored HUB-SCOPED SPOKE SWITCHER (R1).
+ * The Installation's authored SPOKE-HUB-SCOPED SPOKE SWITCHER (R1).
  *
- * ONE INSTALLATION IS ONE HUB for organizational/navigation purposes, and every Spoke the manifest declares
- * is a MEMBER of it. These options are that Hub's members — never an arbitrary link list, never another
- * organization's site, and never a template/provisioning relationship (a site generated or updated from a
- * centrally managed template remains its OWN Hub/Installation unless it is declared as a member).
+ * THE SWITCHER MOVES BETWEEN THE SPOKES OF ONE SPOKE HUB. The CURRENT implementation composes exactly ONE
+ * Spoke Hub per Installation — the OUTER coordinator of its Spokes — and every Spoke the manifest declares
+ * is a MEMBER of it. The APPROVED TARGET (SEVERAL independently identified Spoke Hubs per Installation, with
+ * Spoke ids scoped to their owning Spoke Hub) is NOT implemented here and is not pretended here. These
+ * options are that ONE Spoke Hub's members — never an arbitrary link list, never another organization's
+ * site, and never a template/provisioning relationship (a site generated or updated from a centrally managed
+ * template remains its OWN Spoke Hub / Installation unless it is declared as a member).
+ *
+ * DO NOT CONFUSE THE TWO ORGANISATIONAL LAYERS (FOUNDATION-ID-M2). The SPOKE HUB is the OUTER coordinator of
+ * Spokes — this switcher's scope. A SITE HUB is the INNER grouping of Sites within ONE Spoke
+ * (`@/core/spoke`'s `Hub`, exported too as `SiteHub`): it has no public address, no URL segment and no
+ * switcher of its own, so it never switches Spokes.
  *
  * Options are in AUTHORED order — navigation between members is a dimension of its own, so nothing here is
  * sorted, inferred from the manifest or read from the filesystem. The build has already proved every option
@@ -396,7 +404,8 @@ export function routingEntryFor(
  * WHICH SPOKE ANSWERS A REQUEST HOST, or `null`.
  *
  * The decision is the accepted domain one — exact normalized equality over the claims the build derived —
- * reached through `resolveSpokeFromHost` over a Hub-shaped projection of THIS description, so the request
+ * reached through `resolveSpokeFromHost` over a Spoke-Hub-shaped projection (`SpokeHub`) of THIS description,
+ * so the request
  * boundary and the configuration layer cannot disagree about what "this Spoke claims this host" means.
  * There is no wildcard, no suffix rule, no implicit subdomain and no default Spoke.
  *

@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { installationSpokes, resolveDeploymentForBuild } from "@/config/deployment-build.mjs";
+import { runtimeSegmentForIdentifiedSpokeRef } from "@/config/spoke-runtime-segment.mjs";
 import { resolveInstallationSpokeRoots } from "@/config/spoke-roots";
 
 /**
@@ -384,15 +385,21 @@ function declareHubs(root: string, hubs: readonly unknown[]): void {
   write(path.join(root, "spokes.json"), JSON.stringify({ spokeHubs: hubs }, null, 2));
 }
 
-/** One nested manifest per way it can be unacceptable — plus one that is entirely well authored. */
+/**
+ * A member of an IDENTIFIED collection, with an AUTHORED canonical origin.
+ *
+ * An identified Installation dispatches by hostname ALWAYS (§6), so a member of one must carry a usable
+ * `site.url` — which is why these fixtures write one, while a declaration-level fixture that never reaches
+ * the routing authority (`authoredSpoke`) does not need to.
+ */
+function authoredHubSpoke(root: string, locator: string, url: string): string {
+  const directory = path.join(root, ...locator.split("/"));
+  write(path.join(directory, "site.config.json"), JSON.stringify({ site: { name: locator, url } }));
+  return directory;
+}
+
+/** One nested manifest per way it can be unacceptable — every one of them still refused, unchanged. */
 const NESTED_REFUSED: readonly { readonly name: string; readonly fixture: (root: string) => void }[] = [
-  {
-    name: "a well-authored nested form (ONE Hub — the gate is not softened for it)",
-    fixture: (root) => {
-      authoredSpoke(root, "spokes/one");
-      declareHubs(root, [{ id: "one", spokes: [{ id: "global", root: "spokes/one" }] }]);
-    },
-  },
   {
     name: "the nested form with an unknown Hub leaf",
     fixture: (root) => {
@@ -441,7 +448,42 @@ const NESTED_REFUSED: readonly { readonly name: string; readonly fixture: (root:
   },
 ];
 
-describe("build selection and S3C1 refuse the nested Spoke-Hub form in the SAME words", () => {
+describe("build selection and S3C1 resolve the nested Spoke-Hub form, and refuse the SAME defects in the SAME words", () => {
+  // THE ENABLED FORM (FOUNDATION-ID-M3-P3): a COHERENT nested collection is no longer refused — both seams
+  // RESOLVE it, and they must agree about what they resolved: the same mode, the same Hubs and the same
+  // COMPOSITE segment for every member. Nothing is flattened on either side: the Spokes stay inside their Hub.
+  it("resolves a well-authored nested form (ONE Hub) on BOTH sides, and agrees about the composite identity", () => {
+    const { root } = on("foundation-parity-hubs-ok-", (installation) => {
+      authoredHubSpoke(installation, "spokes/one", "https://one.test");
+      declareHubs(installation, [{ id: "one", spokes: [{ id: "global", root: "spokes/one" }] }]);
+    });
+
+    const build = installationSpokes(root);
+    const authority = resolveInstallationSpokeRoots(root);
+
+    expect(build.mode).toBe("hubs");
+    expect(authority.mode).toBe("hubs");
+    expect(build.hubIds).toEqual(["one"]);
+    expect(authority.hubs.map((hub) => hub.id)).toEqual(["one"]);
+
+    // THE COMPOSITE IDENTITY, both sides, character for character: the segment a namespace, a routing entry
+    // and a runtime context are all derived from.
+    const segment = runtimeSegmentForIdentifiedSpokeRef({ spokeHubId: "one", spokeId: "global" });
+    expect(build.spokes).toEqual([
+      {
+        id: "global",
+        relativeRoot: "spokes/one",
+        root: path.join(root, "spokes", "one"),
+        segment,
+        spokeHubId: "one",
+      },
+    ]);
+    expect(authority.descriptors).toEqual([
+      { id: "global", root: path.join(root, "spokes", "one"), spokeHubId: "one" },
+    ]);
+    expect(segment).toBe("hub+one+global");
+  });
+
   for (const testCase of NESTED_REFUSED) {
     it(`refuses ${testCase.name}`, () => {
       const { build, authority } = on("foundation-parity-hubs-", testCase.fixture);
@@ -449,21 +491,79 @@ describe("build selection and S3C1 refuse the nested Spoke-Hub form in the SAME 
       expect(build, "the build selection seam must refuse").not.toBeNull();
       expect(authority, "the S3C1 authority must refuse").not.toBeNull();
       expect(build).toBe(authority);
-      // ALWAYS the activation diagnostic, whatever else is also wrong: the reason this Installation cannot
-      // run is never buried under its authoring defects.
-      expect(build).toMatch(/multi-Spoke-Hub runtime support is NOT YET ENABLED/);
     });
   }
 
-  it("cannot be RESOLVED by the build at all, so no unsupported Installation can run", () => {
-    const { root } = on("foundation-parity-hubs-build-", (installation) => {
+  it("keeps the SAME defect diagnostics it had while the form was gated", () => {
+    // THE DEFECTS ARE NOT SOFTENED BY ENABLEMENT (FOUNDATION-ID-M3-P3 §9): every one of them is still
+    // reported, in the same words both sides report, so an author sees what is wrong before anything runs.
+    const structure = on("foundation-parity-hubs-structure-", (installation) => {
       authoredSpoke(installation, "spokes/one");
+      write(
+        path.join(installation, "spokes.json"),
+        JSON.stringify({
+          spokeHubs: [{ id: "one", spokes: [{ id: "global", root: "spokes/one", unknown: true }] }],
+        }),
+      );
+    });
+    expect(structure.build).toMatch(/Unrecognized key/);
+    expect(structure.authority).toBe(structure.build);
+
+    const noMembers = on("foundation-parity-hubs-empty-", (installation) => {
+      declareHubs(installation, [{ id: "one", spokes: [] }]);
+    });
+    expect(noMembers.build).toMatch(/at least one Spoke/);
+
+    const outside = on("foundation-parity-hubs-outside-", (installation) => {
+      write(path.join(installation, "config", "site.config.json"), "{}");
+      declareHubs(installation, [{ id: "one", spokes: [{ id: "global", root: "config" }] }]);
+    });
+    expect(outside.build).toMatch(/spokes\//);
+    expect(outside.authority).toBe(outside.build);
+
+    const sharedRoot = on("foundation-parity-hubs-shared-", (installation) => {
+      authoredSpoke(installation, "spokes/one");
+      declareHubs(installation, [
+        { id: "one", spokes: [{ id: "global", root: "spokes/one" }] },
+        { id: "two", spokes: [{ id: "docs", root: "spokes/one" }] },
+      ]);
+    });
+    expect(sharedRoot.build).toMatch(/two Spokes cannot share one authored root/);
+
+    const bothForms = on("foundation-parity-hubs-both-", (installation) => {
+      authoredSpoke(installation, "spokes/one");
+      write(
+        path.join(installation, "spokes.json"),
+        JSON.stringify({
+          spokes: [{ id: "flat", root: "spokes/one" }],
+          spokeHubs: [{ id: "one", spokes: [{ id: "global", root: "spokes/one" }] }],
+        }),
+      );
+    });
+    expect(bothForms.build).toMatch(/MUTUALLY EXCLUSIVE/);
+    expect(bothForms.authority).toBe(bothForms.build);
+  });
+
+  it("is RESOLVED by the build into a dispatchable deployment, never a single activated Spoke", () => {
+    const { root } = on("foundation-parity-hubs-build-", (installation) => {
+      authoredHubSpoke(installation, "spokes/one", "https://one.test");
       declareHubs(installation, [{ id: "one", spokes: [{ id: "global", root: "spokes/one" }] }]);
     });
 
-    // The ONE question the build asks, and the whole-deployment resolution that follows it, both fail:
-    // there is no mode, no single Spoke and no flattened collection to fall back to.
-    expect(() => installationSpokes(root)).toThrow(/NOT YET ENABLED/);
-    expect(() => resolveDeploymentForBuild({}, root)).toThrow(/NOT YET ENABLED/);
+    // The ONE question the build asks, and the whole-deployment resolution that follows it: an identified
+    // collection is a DISPATCHING deployment — no single resource root, no inlined configuration, and the
+    // routing description carries the composite identity (§5/§6).
+    const authoring = installationSpokes(root);
+    expect(authoring.mode).toBe("hubs");
+
+    const deployment = resolveDeploymentForBuild({}, root);
+    expect(deployment.mode).toBe("hubs");
+    expect(deployment.resourceRoot).toBeNull();
+    expect(deployment.config).toBe("");
+    expect(deployment.spoke).toBeNull();
+    expect(deployment.hostRouting.mode).toBe("identified");
+    expect(deployment.hostRouting.spokes.map((spoke) => spoke.segment)).toEqual([
+      runtimeSegmentForIdentifiedSpokeRef({ spokeHubId: "one", spokeId: "global" }),
+    ]);
   });
 });

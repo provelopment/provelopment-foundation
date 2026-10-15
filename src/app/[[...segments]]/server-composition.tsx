@@ -78,7 +78,7 @@ import { dictionaryAccessForRuntimeContext } from "@/config/runtime-dictionaries
 import type { SiteConfig } from "@/config/site-config";
 import { effectiveSitePageConfig } from "@/config/site-page-config";
 import { siteDescriptionForLocale } from "@/config/site-metadata";
-import { spokeSwitcherForBuild } from "@/config/spoke-routing";
+import { spokeSwitcherForRenderingSpoke } from "@/config/spoke-routing";
 import { buildLanguageAlternates } from "@/core/locale";
 import { resolveSiteNotice } from "@/core/notice";
 import { HOME_CONTENT_SLUG } from "@/core/page-content";
@@ -823,11 +823,13 @@ export async function layoutForContext(
     "data-ui-cta-state": resolvedUi.cta.state,
   };
 
-  // R1 — THE CROSS-SPOKE SWITCHER, resolved ONCE (Web-1 owner requirement 1). The OPTIONS come from the
-  // build's own routing description — the Installation's authored `spokeSwitcher`, every destination already
-  // proved routable to the Spoke it names at build time — and the MARKED Spoke is THIS context's identity,
-  // which the request boundary decided from the hostname. Nothing here infers an order, a label or a Spoke.
-  const authoredSpokeSwitcher = spokeSwitcherForBuild();
+  // R1 — THE SWITCHER THE RENDERING SPOKE RECEIVES, resolved ONCE (Web-1 owner requirement 1; the
+  // Hub-scoped reader is FOUNDATION-ID-M3-P3 §8). The OPTIONS come from the build's own routing description —
+  // the Flat Installation's authored `spokeSwitcher`, or, in an Installation authored with IDENTIFIED Spoke
+  // Hubs, the OWNING Hub's own list, every destination already proved routable to the Spoke it names at
+  // build time. The MARKED Spoke is THIS context's identity, which the request boundary decided from the
+  // hostname. Nothing here infers an order, a label or a Spoke.
+  const authoredSpokeSwitcher = spokeSwitcherForRenderingSpoke(composition.context);
   const spokeSwitch =
     authoredSpokeSwitcher === null
       ? undefined

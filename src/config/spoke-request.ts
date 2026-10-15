@@ -70,7 +70,10 @@ export function runtimeContextForRequestHost(
   const routing = hostRoutingForBuild();
   const index = installationRuntimeIndexForBuild();
 
-  if (routing.mode === "multi") {
+  // DISPATCH — the host decides. `identified` is included deliberately (§6): an Installation authored with
+  // identified Spoke Hubs uses EXACT hostname dispatch even when it declares one Hub and one Spoke, so the
+  // permissive branch below belongs to the FLAT/legacy single-Spoke case alone.
+  if (routing.mode !== "single") {
     const selection = spokeSelectionForHost(routing, host);
     if (selection === null) return null;
     // THE RUNTIME KEY IS THE SELECTED ENTRY'S SEGMENT (FOUNDATION-ID-M3-P2): for an identified Installation
@@ -81,8 +84,9 @@ export function runtimeContextForRequestHost(
     return runtimeContextForSpoke(index, entry.runtimeSegment);
   }
 
-  // SINGLE — the Installation declares exactly ONE Spoke, so it answers every host. Length is checked
-  // rather than assumed: a mode that says "single" while the index disagrees is a defect, not a choice.
+  // SINGLE — a LEGACY/FLAT Installation declaring exactly ONE Spoke, so it answers every host. Length is
+  // checked rather than assumed: a mode that says "single" while the index disagrees is a defect, not a
+  // choice.
   if (index.spokes.length !== 1) return null;
   return runtimeContextForSpoke(index, index.spokes[0].id);
 }

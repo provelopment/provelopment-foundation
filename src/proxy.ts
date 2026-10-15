@@ -60,12 +60,15 @@ function refuse(): NextResponse {
   });
 }
 
-/** The Spoke answering the CURRENT host, or `null` (multi: exact claims; single: the sole entry). */
+/** The Spoke answering the CURRENT host, or `null` (dispatch: exact claims; single: the sole entry). */
 function selectedEntry(
   routing: ReturnType<typeof hostRoutingForBuild>,
   host: string | null,
 ): SpokeHostRoutingEntry | null {
-  if (routing.mode === "multi") {
+  // DISPATCH — the host decides. `identified` is dispatch too, deliberately (§6): an Installation authored
+  // with identified Spoke Hubs never takes the permissive one-Spoke path below, even when it declares one
+  // Hub and one Spoke, so an unknown host is refused there rather than answered by that Spoke.
+  if (routing.mode !== "single") {
     const selection = spokeSelectionForHost(routing, host);
     if (selection === null) return null;
     // THE SELECTION'S OWN ENTRY, not a search by local id: where Spoke Hubs are identified, two Hubs may
@@ -74,7 +77,7 @@ function selectedEntry(
     return routingEntryForSelection(routing, selection);
   }
 
-  // ONE-Spoke compatibility: the build published exactly one entry, so there is nothing to choose.
+  // ONE-Spoke compatibility: a LEGACY/FLAT build published exactly one entry, so there is nothing to choose.
   return routing.spokes.length === 1 ? routing.spokes[0] : null;
 }
 

@@ -42,8 +42,19 @@ import { runtimeSegmentForIdentifiedSpokeRef } from "./spoke-runtime-segment.mjs
  */
 const DEPLOYMENT_HOST_ROUTING_ENV = "FOUNDATION_DEPLOYMENT_HOST_ROUTING";
 
-/** How many Spokes this build serves: the ONE-Spoke compatibility runtime, or hostname dispatch. */
-export type HostRoutingMode = "single" | "multi";
+/**
+ * How this build serves its Spokes, and WHICH RULE decides: the ONE-Spoke compatibility runtime, hostname
+ * dispatch for a flat Installation of several Spokes, or hostname dispatch for an Installation AUTHORED with
+ * identified Spoke Hubs.
+ *
+ *   single      the ONLY permissive mode: a legacy/flat Installation declaring exactly ONE Spoke, which
+ *               answers EVERY host (the accepted development/preview behaviour, §6)
+ *   multi       a flat Installation declaring SEVERAL Spokes: exact hostname dispatch
+ *   identified  an Installation authored with `spokeHubs`: exact hostname dispatch ALWAYS — including when
+ *               the whole Installation contains one Hub and one Spoke, because that authoring form never
+ *               takes the permissive path
+ */
+export type HostRoutingMode = "single" | "multi" | "identified";
 
 /** ONE Spoke's request-routing identity: who it is, its internal segment, and the hosts it claims. */
 export interface SpokeHostRoutingEntry {
@@ -383,7 +394,17 @@ function hubSwitchersOf(raw: unknown): readonly SpokeHubSwitcherConfig[] | undef
       );
     }
 
-    const config = switcherOf(candidate.options);
+    // THE HUB'S OWN OPTIONS LIST — the SAME helper the flat switcher is validated by, so a malformed entry
+    // is refused with the same vocabulary in both forms. The artifact states the OPTIONS themselves
+    // (`spokeHubSwitchers[i].options` is the ordered list), which is the shape the producer emits and the
+    // shape `spokeHubSwitcherForSpokeHub` returns.
+    if (!Array.isArray(candidate.options)) {
+      throw new Error(
+        `FOUNDATION-ID-M3-P2: the build's per-Hub switchers[${index}] ("${candidate.spokeHubId}") carries ` +
+          "no options — an authored Hub switcher always carries its ordered members.",
+      );
+    }
+    const config = switcherOf({ options: candidate.options });
     if (config === null) {
       throw new Error(
         `FOUNDATION-ID-M3-P2: the build's per-Hub switchers[${index}] ("${candidate.spokeHubId}") carries ` +
@@ -433,7 +454,21 @@ export function hostRoutingForBuild(): InstallationHostRouting {
     );
   }
 
-  const mode: HostRoutingMode = parsed.mode === "multi" ? "multi" : "single";
+  // THE MODE IS READ — NEVER INFERRED — AND AN UNKNOWN VALUE IS REFUSED. A description whose mode nobody
+  // recognises would otherwise be silently downgraded to `single`, which is precisely the PERMISSIVE
+  // one-Spoke path an identified Installation must never take (§6).
+  let mode: HostRoutingMode;
+  if (parsed.mode === "identified") mode = "identified";
+  else if (parsed.mode === "multi") mode = "multi";
+  else if (parsed.mode === "single") mode = "single";
+  else {
+    throw new Error(
+      "FOUNDATION-ID-M3-P3: the build's hostname routing description states the mode " +
+        `${JSON.stringify(parsed.mode)}, which is not one of "single", "multi" or "identified". The mode ` +
+        "decides whether a single-Spoke Installation answers every host, so an unrecognised value is " +
+        "refused rather than downgraded.",
+    );
+  }
   const rawSpokes = Array.isArray(parsed.spokes) ? parsed.spokes : [];
 
   const spokes: SpokeHostRoutingEntry[] = rawSpokes.map((entry) => {
@@ -503,6 +538,33 @@ export function hostRoutingForBuild(): InstallationHostRouting {
 
   const spokeHubSwitchers = hubSwitchersOf(parsed.spokeHubSwitchers);
 
+  // THE MODE AND THE ENTRIES MUST AGREE (FOUNDATION-ID-M3-P3, §6). `identified` is the ONLY mode in which a
+  // Spoke names an owning Hub, and it is the ONLY mode that may never take the permissive one-Spoke path: a
+  // description carrying composite entries under `single`/`multi` — or flat entries under `identified` — is
+  // malformed, and it is refused HERE, where the artifact is read, so a malformed artifact can NEVER
+  // activate the legacy permissive path for an identified Spoke. Both directions are refused: a
+  // half-identified description has no single rule for naming a Spoke, and an `identified` description with
+  // a flat entry would make that entry addressable by a local id alone.
+  const identifiedEntries = spokes.filter((spoke) => spoke.spokeHubId !== undefined).length;
+  if (mode === "identified" && identifiedEntries !== spokes.length) {
+    throw new Error(
+      "FOUNDATION-ID-M3-P3: the build's hostname routing description states mode \"identified\", but " +
+        `${spokes.length - identifiedEntries} of its ${spokes.length} entr` +
+        `${spokes.length - identifiedEntries === 1 ? "y names" : "ies name"} no owning Spoke Hub. An ` +
+        "identified description addresses every Spoke by BOTH halves of its identity; a flat entry inside " +
+        "one could be selected by a local id alone.",
+    );
+  }
+  if (mode !== "identified" && identifiedEntries > 0) {
+    throw new Error(
+      "FOUNDATION-ID-M3-P3: the build's hostname routing description says mode " +
+        `"${mode}", which dispatches to the SOLE entry on any host, but ${identifiedEntries} of its ` +
+        `entries name${identifiedEntries === 1 ? "s" : ""} an owning Spoke Hub. A description that mixes ` +
+        "the identified form into a permissive mode would let a local id — or any host at all — reach " +
+        "another Hub's Spoke, so it is refused rather than resolved.",
+    );
+  }
+
   cached = Object.freeze({
     mode,
     spokes: Object.freeze(spokes),
@@ -513,16 +575,26 @@ export function hostRoutingForBuild(): InstallationHostRouting {
     ...(spokeHubSwitchers === undefined ? {} : { spokeHubSwitchers }),
   });
 
-  // MULTI — hostname dispatch: a Spoke that claims NO host can never be selected, so an Installation that
-  // declares several Spokes must have an authored canonical origin for every one of them. Refusing HERE (with
-  // the Spoke named) keeps "which Spoke answers this host?" answerable for every declared Spoke, instead of
-  // silently leaving one unreachable. A ONE-Spoke Installation is unaffected: it never consults a hostname.
-  if (mode === "multi") {
+  // DISPATCH NEEDS AN ORIGIN FOR EVERY SPOKE: a Spoke that claims NO host can never be selected, so an
+  // Installation that dispatches by hostname — several flat Spokes, or an IDENTIFIED collection of any size
+  // (which always dispatches, §6) — must have an authored canonical origin for every one of them. Refusing
+  // HERE, with the Spoke named, keeps "which Spoke answers this host?" answerable for every declared Spoke
+  // instead of silently leaving one unreachable. A ONE-SPOKE FLAT Installation is unaffected: it never
+  // consults a hostname.
+  if (mode !== "single") {
     for (const spoke of spokes) {
       if (spoke.hostnameClaims.length === 0) {
+        const where =
+          spoke.spokeHubId === undefined
+            ? `Spoke "${spoke.id}"`
+            : `Spoke Hub "${spoke.spokeHubId}" > Spoke "${spoke.id}"`;
+        const because =
+          spoke.spokeHubId === undefined
+            ? "in a multi-Spoke Installation"
+            : "in an Installation authored with identified Spoke Hubs";
         throw new Error(
-          `FOUNDATION-MULTISITE-M16: Spoke "${spoke.id}" declares no canonical origin, so no hostname ` +
-            "could ever select it in a multi-Spoke Installation. Author its `site.url` (the origin its " +
+          `FOUNDATION-MULTISITE-M16: ${where} declares no canonical origin, so no hostname ` +
+            `could ever select it ${because}. Author its \`site.url\` (the origin its ` +
             "hostname claim derives from); there is no default Spoke to fall back to.",
         );
       }
@@ -562,6 +634,40 @@ export function spokeHubSwitcherForSpokeHub(
 /** The CURRENT build's switcher for ONE Spoke Hub, or `null` — the accessor a caller with a Hub id uses. */
 export function spokeHubSwitcherForBuild(spokeHubId: string): SpokeSwitcherConfig | null {
   return spokeHubSwitcherForSpokeHub(hostRoutingForBuild(), spokeHubId);
+}
+
+/**
+ * THE SWITCHER THE RENDERING SPOKE RECEIVES (FOUNDATION-ID-M3-P3 §8), or `null` when it receives none.
+ *
+ * ONE reader, TWO authoring forms, and the difference is EXACTLY the membership boundary:
+ *
+ *   flat/legacy   the Installation's ONE authored switcher, which is what every page has rendered since R1
+ *   identified    the switcher of the Spoke's OWNING Spoke Hub — never the Installation's (there is none in
+ *                 this form), and never a merge of every Hub's, which would offer Spokes the rendering Hub
+ *                 does not own
+ *
+ * `ref` is the rendering context, so a caller passes what it already holds (`{ spokeHubId }`) rather than a
+ * Hub id it looked up somewhere. In an identified Installation the Hub is NOT optional: a context that
+ * carries none cannot be rendered with another Hub's navigation, and a wrong list is worse than no list — so
+ * that case fails LOUDLY instead of quietly composing a switcher from the wrong membership.
+ */
+export function spokeSwitcherForRenderingSpoke(
+  ref?: { readonly spokeHubId?: string } | null,
+): SpokeSwitcherConfig | null {
+  const routing = hostRoutingForBuild();
+  if (routing.spokeHubSwitchers === undefined) return routing.spokeSwitcher;
+
+  const spokeHubId = ref?.spokeHubId;
+  if (spokeHubId === undefined || spokeHubId === "") {
+    throw new Error(
+      "FOUNDATION-ID-M3-P3: this Installation identifies its Spoke Hubs, so a rendering Spoke receives the " +
+        "switcher of its OWNING Spoke Hub — but the context handed to the chrome names no Hub. The Hub is " +
+        "part of the Spoke's identity here, so there is no Installation-wide list to fall back to and none " +
+        "is composed.",
+    );
+  }
+
+  return spokeHubSwitcherForSpokeHub(routing, spokeHubId);
 }
 
 /** The entry with this identity OR this runtime segment, or `null` — the internal route's ONE lookup. */

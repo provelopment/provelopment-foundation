@@ -5,6 +5,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { DEPLOYMENT_CONFIG_FILE_NAME } from "@/config/deployment-root";
 import { installationSpokeHubCollectionSchema } from "@/config/spoke-declarations.mjs";
+import { runtimeSegmentForIdentifiedSpokeRef } from "@/config/spoke-runtime-segment.mjs";
 import {
   INSTALLATION_SPOKE_COLLECTION_FILE_NAME,
   SPOKE_ROOTS_DIRECTORY_NAME,
@@ -543,19 +544,21 @@ describe("S3C1 is UNWIRED — today's build and runtime are untouched", () => {
  * THE NESTED `spokeHubs` FORM (FOUNDATION-ID-M3-P1)
  * ================================================
  *
- * A second authoring form exists — an Installation's IDENTIFIED SPOKE HUB collection — and Phase 1 supports
- * its RECOGNITION and its COMPLETE VALIDATION, and then REFUSES it: multi-Spoke-Hub runtime support is not
- * enabled yet.
+ * A second authoring form exists — an Installation's IDENTIFIED SPOKE HUB COLLECTION — and since Phase 3
+ * (FOUNDATION-ID-M3-P3) it is RESOLVED, not merely recognised: a coherent collection becomes `hubs`, each
+ * Hub carrying its identity, its own member descriptors (every one of which names its owning Hub) and its own
+ * Hub-scoped switcher.
  *
  * The proofs below are therefore in two halves, and both matter:
  *
- *   RECOGNITION AND VALIDATION — the form is parsed, its leaves are typed strictly, and every authoring
- *   defect is reported with the Hub and the Spoke it belongs to;
- *   REFUSAL — it never becomes declarations: not for a collection with ONE Hub, not through the flat
- *   schema, and not through the structure recogniser, which resolves nothing and runs nothing.
+ *   RECOGNITION, VALIDATION AND RESOLUTION — the form is parsed, its leaves are typed strictly, every
+ *   authoring defect is still reported with the Hub and the Spoke it belongs to, and a coherent collection is
+ *   returned with its membership intact;
+ *   NO FLATTENING — it never becomes an unqualified `declarations` list, the flat schema still refuses it,
+ *   and no Hub and no Spoke is chosen on either side.
  */
 
-/** The nested form's authoritative refusal, or `""` when (wrongly) accepted. */
+/** The nested form's authoritative refusal, or `""` when accepted. */
 function refusalOf(root: string): string {
   try {
     resolveInstallationSpokeRoots(root);
@@ -593,18 +596,23 @@ function rawNestedInstallation(manifest: unknown): string {
 }
 
 describe("the nested identified Spoke Hub form", () => {
-  it("is RECOGNISED and COMPLETELY VALIDATED — and refused, even with exactly ONE Hub", () => {
+  it("is RECOGNISED, COMPLETELY VALIDATED and RESOLVED — even with exactly ONE Hub", () => {
     const root = nestedInstallation([{ id: "one", spokes: [{ id: "global", root: spokeDir("one") }] }]);
+    const resolved = resolveInstallationSpokeRoots(root);
 
-    const message = refusalOf(root);
-    expect(message).toMatch(/Invalid Installation Spoke collection/);
-    expect(message).toMatch(/"spokeHubs" declares an IDENTIFIED SPOKE HUB COLLECTION/);
-    expect(message).toMatch(/multi-Spoke-Hub runtime support is NOT YET ENABLED/);
-
-    // COMPLETELY VALIDATED means exactly that: this manifest has ONE defect — the activation refusal — and
-    // nothing else is reported, because nothing else is wrong with it.
-    expect(refusalIssues(root)).toHaveLength(1);
-    expect(refusalIssues(root)[0]).toMatch(/spokeHubs: FOUNDATION-ID-M3-P1/);
+    expect(resolved.mode).toBe("hubs");
+    // THE MEMBERSHIP IS CARRIED OUT, NOT FLATTENED: the Hub is present, and each of its members names it.
+    expect(resolved.hubs).toEqual([
+      {
+        id: "one",
+        descriptors: [{ id: "global", root: at(root, spokeDir("one")), spokeHubId: "one" }],
+        spokeSwitcher: null,
+      },
+    ]);
+    // …and the convenience list is the same descriptors, still carrying their Hub.
+    expect(resolved.descriptors).toEqual(resolved.hubs[0].descriptors);
+    // A collection with ONE Hub is still an IDENTIFIED collection: there is no policy and no choice here.
+    expect(resolved.inspectionSpoke).toBeNull();
   });
 
   it("refuses BOTH forms at once — mutual exclusion, never a precedence rule", () => {
@@ -614,8 +622,12 @@ describe("the nested identified Spoke Hub form", () => {
     });
 
     const issues = refusalIssues(root).join("\n");
-    expect(issues).toMatch(/spokeHubs: FOUNDATION-ID-M3-P1/);
-    expect(issues).toMatch(/spokes: Invalid input: "spokes" and "spokeHubs" are MUTUALLY EXCLUSIVE/);
+    expect(issues).toMatch(
+      /spokes: Invalid input: "spokes" and "spokeHubs" are MUTUALLY EXCLUSIVE/,
+    );
+    // THE RULE IS A REFUSAL, NOT A NOTE: the manifest is not resolved at all, so the second collection it
+    // authors can never be silently ignored.
+    expect(refusalOf(root)).toMatch(/Invalid Installation Spoke collection/);
   });
 
   it("refuses duplicate Hub ids, an EMPTY Hub, and a duplicate Spoke id inside ONE Hub", () => {
@@ -646,16 +658,31 @@ describe("the nested identified Spoke Hub form", () => {
     );
   });
 
-  it("ACCEPTS the same local Spoke id in TWO Hubs — and still refuses the Installation", () => {
+  it("ACCEPTS the same local Spoke id in TWO Hubs — each member addressed by BOTH halves of its identity", () => {
     const root = nestedInstallation([
       { id: "one", spokes: [{ id: "global", root: spokeDir("one") }] },
       { id: "two", spokes: [{ id: "global", root: spokeDir("two") }] },
     ]);
 
-    // Not a defect: a Hub owns its own membership. The ONLY reason this Installation cannot run is Phase
-    // 1's activation gate — which is precisely what makes the refusal a GATE and not a validation failure.
-    expect(refusalIssues(root)).toHaveLength(1);
-    expect(refusalIssues(root)[0]).toMatch(/multi-Spoke-Hub runtime support is NOT YET ENABLED/);
+    // NOT A DEFECT: a Hub owns its own membership, and the two members are two Spokes. The COMPOSITE identity
+    // is what keeps them apart — the same local id, two different runtime segments — which is exactly why no
+    // consumer of this answer may address a member by its local id alone.
+    const resolved = resolveInstallationSpokeRoots(root);
+    expect(resolved.mode).toBe("hubs");
+    expect(resolved.hubs.map((hub) => hub.id)).toEqual(["one", "two"]);
+    expect(resolved.descriptors).toEqual([
+      { id: "global", root: at(root, spokeDir("one")), spokeHubId: "one" },
+      { id: "global", root: at(root, spokeDir("two")), spokeHubId: "two" },
+    ]);
+
+    const segments = resolved.descriptors.map((descriptor) =>
+      runtimeSegmentForIdentifiedSpokeRef({
+        spokeHubId: descriptor.spokeHubId ?? "",
+        spokeId: descriptor.id,
+      }),
+    );
+    expect(segments).toEqual(["hub+one+global", "hub+two+global"]);
+    expect(new Set(segments).size).toBe(2);
   });
 
   it("types every leaf strictly, and refuses unknown ones", () => {
@@ -760,8 +787,8 @@ describe("the nested identified Spoke Hub form", () => {
     );
     expect(crossedIssues).toMatch(/A switcher is HUB-SCOPED/);
 
-    // A switcher that offers its OWN member is valid authoring — and the Installation is STILL refused, for
-    // the ONE remaining reason: the activation gate.
+    // A switcher that offers its OWN member is valid authoring — and it arrives with the answer, scoped to
+    // the Hub that authors it, so the rendering Spoke can never be offered another Hub's navigation.
     const own = nestedInstallation([{ id: "one", spokes: [{ id: "global", root: spokeDir("one") }] }]);
     writeManifest(own, {
       spokeHubs: [
@@ -774,11 +801,12 @@ describe("the nested identified Spoke Hub form", () => {
         },
       ],
     });
-    expect(refusalIssues(own)).toHaveLength(1);
-    expect(refusalIssues(own)[0]).toMatch(/multi-Spoke-Hub runtime support is NOT YET ENABLED/);
+    expect(resolveInstallationSpokeRoots(own).hubs[0].spokeSwitcher).toEqual({
+      options: [{ spokeId: "global", label: "Global", href: "https://global.example.test" }],
+    });
   });
 
-  it("exposes the nested form ONLY as a recogniser: structure yes, declarations never", () => {
+  it("exposes the nested form as an IDENTIFIED COLLECTION — never as a flat declaration list", () => {
     const manifest = {
       spokeHubs: [{ id: "one", spokes: [{ id: "global", root: spokeDir("one") }] }],
     };
@@ -796,13 +824,23 @@ describe("the nested identified Spoke Hub form", () => {
       ]);
     }
 
-    // …and the parser EVERY consumer uses refuses that same manifest, so the recogniser is not a way in.
+    // THE FLAT schema still refuses a manifest authored nested: it is the FLAT form's schema, and it says so
+    // — a caller that asks it about the other form is pointed at the authority that resolves that one.
     const refused = installationSpokeCollectionSchema.safeParse(manifest);
     expect(refused.success).toBe(false);
     if (!refused.success) {
       expect(refused.error.issues).toHaveLength(1);
-      expect(refused.error.issues[0].message).toMatch(/NOT YET ENABLED/);
+      expect(refused.error.issues[0].message).toMatch(/the NESTED form/);
+      expect(refused.error.issues[0].message).toMatch(/installationSpokeHubCollectionSchema/);
     }
+
+    // …and the RESOLVED answer carries Hubs, not declarations: nothing about this form becomes an
+    // unqualified Spoke list, so a consumer cannot lose which Hub owns a member.
+    const root = nestedInstallation([{ id: "one", spokes: [{ id: "global", root: spokeDir("one") }] }]);
+    const resolved = resolveInstallationSpokeRoots(root) as unknown as Record<string, unknown>;
+    expect(resolved.mode).toBe("hubs");
+    expect(resolved.declarations).toBeUndefined();
+    expect(Array.isArray(resolved.hubs)).toBe(true);
   });
 
   it("requires a COMPOSITE inspection nomination, and NAMES a Hub written as a flat Spoke", () => {
@@ -815,16 +853,37 @@ describe("the nested identified Spoke Hub form", () => {
       /inspectionSpoke: Invalid input: in the nested form the inspection nomination is the COMPOSITE reference/,
     );
 
-    // A COMPOSITE nomination is structurally valid — and the Installation is still refused, for the ONE
-    // remaining reason: the activation gate.
+    // A COMPOSITE nomination is RESOLVED, together with the aliases it selects members for: the policy is
+    // INSTALLATION-scoped, and it names a member by BOTH halves of its identity.
     const nominated = nestedInstallation([{ id: "one", spokes: [{ id: "docs", root: spokeDir("one") }] }]);
     writeManifest(nominated, {
       spokeHubs: [{ id: "one", spokes: [{ id: "docs", root: spokeDir("one") }] }],
       inspectionSpoke: { spokeHubId: "one", spokeId: "docs" },
       inspectionHosts: ["inspect.example.test"],
     });
-    expect(refusalIssues(nominated)).toHaveLength(1);
-    expect(refusalIssues(nominated)[0]).toMatch(/multi-Spoke-Hub runtime support is NOT YET ENABLED/);
+    const resolved = resolveInstallationSpokeRoots(nominated);
+    expect(resolved.inspectionSpoke).toEqual({ spokeHubId: "one", spokeId: "docs" });
+    expect(resolved.hubs).toHaveLength(1);
+
+    // AN UNRESOLVABLE NOMINATION IS STILL REFUSED, and the diagnostic names what the Installation declares —
+    // so a policy that could never select anything never becomes a request-time surprise.
+    const unknownHub = nestedInstallation([{ id: "one", spokes: [{ id: "docs", root: spokeDir("one") }] }]);
+    writeManifest(unknownHub, {
+      spokeHubs: [{ id: "one", spokes: [{ id: "docs", root: spokeDir("one") }] }],
+      inspectionSpoke: { spokeHubId: "two", spokeId: "docs" },
+    });
+    expect(refusalIssues(unknownHub).join("\n")).toMatch(
+      /inspectionSpoke: spokeHubId "two" is not one of the declared Spoke Hubs \("one" \("docs"\)\)/,
+    );
+
+    const unknownMember = nestedInstallation([{ id: "one", spokes: [{ id: "docs", root: spokeDir("one") }] }]);
+    writeManifest(unknownMember, {
+      spokeHubs: [{ id: "one", spokes: [{ id: "docs", root: spokeDir("one") }] }],
+      inspectionSpoke: { spokeHubId: "one", spokeId: "news" },
+    });
+    expect(refusalIssues(unknownMember).join("\n")).toMatch(
+      /inspectionSpoke: Spoke Hub "one" declares no Spoke "news" — it declares "docs"/,
+    );
 
     const malformedNomination = rawNestedInstallation({
       spokeHubs: [{ id: "one", spokes: [{ id: "docs", root: spokeDir("one") }] }],

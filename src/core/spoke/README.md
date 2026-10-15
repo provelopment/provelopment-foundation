@@ -82,12 +82,16 @@ host and must select exactly ONE Spoke in exactly ONE Hub.
 hub-id rules (`spoke-hub-id.mjs`) and the per-`SpokeHub` rules (`coherence.ts`) — and adds only the two
 rules that exist across Hubs. Nothing here re-derives a Site, a Site Hub or a default.
 
-**Phase 1 does not activate the runtime.** An AUTHORED collection of identified Hubs is recognised and
-fully validated by the configuration seam (`src/config/spoke-declarations.mjs`, the nested `spokeHubs`
-form) and then REFUSED: it is never flattened into the flat Spoke collection, no Hub or Spoke is chosen
-for it, and nothing consumes it to build. The composite RUNTIME SEGMENT is recorded, not implemented
-(`spoke-hub-collection.ts`): one atomic, injective, legacy-safe, case-portable and STABLE segment, with
-`runtimeSegmentForSpokeId` keeping its contract exactly.
+**The nested form is ENABLED and it is the runtime's OTHER authoring form (FOUNDATION-ID-M3-P3).** An
+AUTHORED collection of identified Hubs is recognised and completely validated by the configuration seam
+(`src/config/spoke-declarations.mjs`, the nested `spokeHubs` form), and it is then RESOLVED, not refused:
+the seam answers `hubs`, every member carries its owning Hub, the build derives each member's COMPOSITE
+runtime segment (`runtimeSegmentForSpokeId` → `runtimeSegmentForIdentifiedSpokeRef`), and the request
+boundary addresses a member by `(SpokeHubId, SpokeId)` — never by a local id, which may name a Spoke in
+either Hub. A nested Installation DISPATCHES BY EXACT HOSTNAME, always: even one Hub with one Spoke never
+takes the LEGACY/FLAT one-Spoke compatibility rule (the "answer any host" behaviour), and an unknown host is
+refused rather than served by that Spoke. The flat `spokes[]` form and the absence of a manifest are
+unchanged, byte for byte, in behaviour and in diagnostics.
 
 ## What is deliberately NOT here
 

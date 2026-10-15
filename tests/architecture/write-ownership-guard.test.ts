@@ -199,6 +199,11 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
     "and the Spoke root it declares) it creates and removes by exact ownership. Every other case in that " +
     "suite is computed in memory from routing/runtime values built as data, so the canonical deployment " +
     "and the committed authoring are only ever READ (M3-P2)",
+  "tests/unit/spoke-multi-hub-runtime.test.ts":
+    "ONE disposable TWO-HUB nested Installation under OS temp — the multi-Hub end-to-end proofs' own " +
+    "throwaway tree (its members' configurations, dictionaries, pages and artwork, plus the variants that " +
+    "must be refused) it creates and removes by exact ownership. The canonical deployment and the committed " +
+    "authoring are only ever READ (M3-P3 §10)",
   "tests/unit/installation-runtime-context.test.ts":
     "synthetic Installation trees under OS temp — the two-Spoke runtime-context proofs' own throwaway " +
     "Installations (alpha/beta plus legacy and one-Spoke variants: manifests, configurations, dictionaries, " +

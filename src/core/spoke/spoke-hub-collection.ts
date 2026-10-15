@@ -27,10 +27,10 @@
  * Spoke called `global`), while hostname ownership stays unique across the Installation — exactly as it is
  * today, where the Installation is the boundary that answers requests.
  *
- * PHASE 2 RECORD — THE COMPOSITE RUNTIME SEGMENT (recorded here, NOT implemented)
- * ------------------------------------------------------------------------------
- * When several identified Spoke Hubs become operable, the runtime must address a Spoke by its COMPOSITE
- * identity, and the accepted constraints are:
+ * THE COMPOSITE RUNTIME SEGMENT (implemented by FOUNDATION-ID-M3-P3, recorded here as the contract it keeps)
+ * ----------------------------------------------------------------------------------------------------------
+ * When several identified Spoke Hubs are operable — which they now are — the runtime addresses a Spoke by its
+ * COMPOSITE identity, and the constraints are:
  *
  *   · ONE atomic URL/filesystem segment — never an inserted slash, so a segment can never be mistaken for
  *     a directory level or a traversal;
@@ -42,9 +42,10 @@
  *     the current ids;
  *   · unchanged for all legacy/flat manifests.
  *
- * Phase 1 changes NO runtime segment, asset URL, mirror, catalog, proxy header or routing decision:
- * `runtimeSegmentForSpokeId` keeps its contract exactly, and nothing in this module is consumed by the
- * build or the request boundary.
+ * The authority itself lives in `../config/spoke-runtime-segment.mjs`
+ * (`runtimeSegmentForIdentifiedSpokeRef`): a nested Installation's members, namespaces, routing entries and
+ * runtime contexts are all derived from it, while `runtimeSegmentForSpokeId` keeps its contract exactly, so
+ * every flat/legacy segment is byte-identical to what it always was.
  *
  * Framework-neutral: pure data and pure functions. No filesystem, no configuration, no request.
  */

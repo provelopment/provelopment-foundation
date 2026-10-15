@@ -63,16 +63,13 @@
  * path is never the identity, so the two differ freely (`spokes/foundation-web` may hold the Spoke
  * `foundation`) — while the LOCATOR must still live in the dedicated `spokes/` namespace.
  */
-import type { SpokeId } from "@/core/spoke";
+import type { SpokeHubId, SpokeId } from "@/core/spoke";
 
 import { installationSpokeCollectionSchema, resolveSpokeDeclarations } from "./spoke-declarations.mjs";
 
 export { SPOKE_ROOTS_DIRECTORY_NAME } from "./spoke-declarations.mjs";
 export { INSTALLATION_SPOKE_COLLECTION_FILE_NAME } from "./spoke-declarations.mjs";
-export {
-  INSTALLATION_SPOKE_HUB_COLLECTION_LEAF,
-  SPOKE_HUB_RUNTIME_NOT_ENABLED,
-} from "./spoke-declarations.mjs";
+export { INSTALLATION_SPOKE_HUB_COLLECTION_LEAF } from "./spoke-declarations.mjs";
 export { installationSpokeCollectionSchema };
 
 /**
@@ -87,18 +84,19 @@ export interface InstallationSpokeCollectionFile {
 }
 
 /**
- * THE NESTED AUTHORING FORM, typed — RECOGNISED, VALIDATED AND REFUSED (FOUNDATION-ID-M3-P1).
+ * THE NESTED AUTHORING FORM, typed — an Installation's IDENTIFIED SPOKE HUB COLLECTION
+ * (FOUNDATION-ID-M3-P1, enabled by M3-P3).
  *
  * It is the shape an author writes when they want their Spokes grouped into IDENTIFIED Spoke Hubs:
  *
  *     { "spokeHubs": [ { "id": "…", "spokes": [ { "id": "…", "root": "spokes/…" } ] } ] }
  *
- * It is typed here for the same reason the flat shape is — a caller can name what an author may write —
- * and it is NOT a runnable shape in this phase. The declaration seam recognises it, validates it
- * completely (identity, membership and roots, with the same authorities the flat form uses) and then
- * refuses it with `SPOKE_HUB_RUNTIME_NOT_ENABLED`, because multi-Spoke-Hub runtime support is not enabled
- * yet: nothing flattens it, no Hub or Spoke is chosen from it, and no consumer of this module can obtain
- * declarations from one. The permanent compatibility format is the flat `spokes[]` shape above.
+ * It is typed here for the same reason the flat shape is — a caller can name what an author may write — and
+ * since Phase 3 the seam RESOLVES it: every Hub is validated (its own identity, its members, their roots and
+ * containment, its own Hub-scoped switcher) and the Installation's inspection nomination is resolved against
+ * declared membership, so a member is always addressed by BOTH halves of its identity. Nothing is flattened
+ * and nothing is chosen: `resolveInstallationSpokeRoots` answers `hubs`, and an identified Installation
+ * dispatches by EXACT hostname — never by the one-Spoke compatibility rule, even when it declares one Hub.
  */
 export interface InstallationSpokeHubCollectionFile {
   readonly spokeHubs: readonly {
@@ -137,10 +135,38 @@ export interface SpokeRootDescriptor {
   readonly id: SpokeId;
   /** The resolved absolute directory, proven to be inside the Installation root. */
   readonly root: string;
+  /**
+   * The OWNING Spoke Hub, present ONLY when the Installation identifies its Hubs (FOUNDATION-ID-M3-P3).
+   *
+   * A local id is scoped to its Hub, so two Hubs may each declare a Spoke called `docs`: a descriptor that
+   * carries its Hub can be addressed unambiguously by `(spokeHubId, id)`, and a descriptor that carries none
+   * belongs to the flat/legacy form's single implicit Hub — which is exactly what its shape says today.
+   */
+  readonly spokeHubId?: SpokeHubId;
 }
 
-/** How an Installation declares its Spokes: `legacy` (none declared) or `explicit` (a manifest). */
-export type SpokeCollectionMode = "legacy" | "explicit";
+/** ONE option a Hub-scoped switcher offers: the member it names, the label a visitor reads, its origin. */
+export interface SpokeHubRootSwitcherOption {
+  readonly spokeId: SpokeId;
+  readonly label: string;
+  readonly href: string;
+}
+
+/**
+ * ONE IDENTIFIED Spoke Hub, as the S3C1 authority describes it: its identity, its own resolved Spoke
+ * descriptors (in authored order) and its own Hub-scoped switcher (FOUNDATION-ID-M3-P3).
+ *
+ * Membership is carried as DESCRIPTORS rather than as a flat id list, so the Hub that owns a Spoke and the
+ * Spoke itself can never be separated by a consumer.
+ */
+export interface IdentifiedSpokeHubRoots {
+  readonly id: SpokeHubId;
+  readonly descriptors: readonly SpokeRootDescriptor[];
+  readonly spokeSwitcher: { readonly options: readonly SpokeHubRootSwitcherOption[] } | null;
+}
+
+/** How an Installation declares its Spokes: `legacy` (none declared), `explicit` (flat) or `hubs` (nested). */
+export type SpokeCollectionMode = "legacy" | "explicit" | "hubs";
 
 /** The Installation's declared Spoke roots — 1..* descriptors, in authored manifest order. */
 export interface InstallationSpokeRoots {
@@ -149,8 +175,25 @@ export interface InstallationSpokeRoots {
   readonly installationRoot: string;
   /** `<installationRoot>/spokes.json` when explicit; `null` in legacy mode. */
   readonly manifestFile: string | null;
-  /** In authored manifest order; legacy mode yields exactly one, carrying `IMPLICIT_SPOKE_ID`. */
+  /**
+   * In authored manifest order, FLATTENED across Hubs when the Installation identifies them.
+   *
+   * Legacy mode yields exactly one, carrying `IMPLICIT_SPOKE_ID`. In `hubs` mode each descriptor carries its
+   * owning Hub, and this list is a CONVENIENCE over `hubs` (never a replacement for it): a consumer that only
+   * needs "every declared Spoke root" can read it, while a consumer that must know WHICH Hub owns a Spoke
+   * reads `hubs` — or reads the descriptor's own `spokeHubId`.
+   */
   readonly descriptors: readonly SpokeRootDescriptor[];
+  /**
+   * The Installation's IDENTIFIED Spoke Hubs, in authored order, in `hubs` mode only — `[]` for a flat or
+   * legacy Installation, whose single Spoke Hub is implicit and unnamed.
+   */
+  readonly hubs: readonly IdentifiedSpokeHubRoots[];
+  /**
+   * The inspection nomination, in the COMPOSITE spelling when the Installation identifies its Hubs, or in
+   * the flat Spoke-id spelling when it does not — `null` when the collection declares no policy.
+   */
+  readonly inspectionSpoke: { readonly spokeHubId?: SpokeHubId; readonly spokeId: SpokeId } | null;
 }
 
 /**
@@ -162,6 +205,36 @@ export interface InstallationSpokeRoots {
 export function resolveInstallationSpokeRoots(installationRoot: string): InstallationSpokeRoots {
   const resolved = resolveSpokeDeclarations(installationRoot);
 
+  if (resolved.mode === "hubs") {
+    const hubs: IdentifiedSpokeHubRoots[] = resolved.hubs.map((hub) => ({
+      id: hub.id as SpokeHubId,
+      descriptors: hub.spokes.map((spoke) => ({
+        id: spoke.id as SpokeId,
+        root: spoke.root,
+        spokeHubId: hub.id as SpokeHubId,
+      })),
+      spokeSwitcher:
+        hub.spokeSwitcher === null
+          ? null
+          : {
+              options: hub.spokeSwitcher.options.map((option) => ({
+                spokeId: option.spokeId as SpokeId,
+                label: option.label,
+                href: option.href,
+              })),
+            },
+    }));
+
+    return {
+      mode: "hubs",
+      installationRoot: resolved.installationRoot,
+      manifestFile: resolved.manifestFile,
+      descriptors: hubs.flatMap((hub) => hub.descriptors),
+      hubs,
+      inspectionSpoke: resolved.inspectionSpoke,
+    };
+  }
+
   return {
     mode: resolved.mode,
     installationRoot: resolved.installationRoot,
@@ -170,5 +243,8 @@ export function resolveInstallationSpokeRoots(installationRoot: string): Install
       id: declaration.id as SpokeId,
       root: declaration.root,
     })),
+    hubs: [],
+    inspectionSpoke:
+      resolved.inspectionSpoke === null ? null : { spokeId: resolved.inspectionSpoke as SpokeId },
   };
 }

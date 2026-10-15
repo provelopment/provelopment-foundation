@@ -35,7 +35,7 @@ generated build output rather than deployment source: `pnpm assets:sync` writes 
 
 ```text
 Foundation Installation
-├── Spoke Hub                     ← the one request boundary: the public Host header is its only input
+├── Spoke Hub                     ← coordinates these Spokes; owns NO hostname and is never addressed
 │   ├── foundation Spoke          → https://foundation-template.provelopment.com
 │   │   ├── Site Hub (implicit)   ← this Spoke's inner grouping of Sites
 │   │   │   └── Site ww           (Global)
@@ -49,14 +49,16 @@ tree, sitemap, `robots.txt`, OpenGraph images and asset namespaces. A Spoke owns
 so neither Spoke offers a Site control: the public `Host` decides which Spoke answers, and the Site is
 therefore a property of the hostname rather than a visitor choice.
 
-**Two organisational layers, and only the OUTER one is addressed** (FOUNDATION-ID-M2). The **Spoke Hub** is the
-OUTER layer — the coordinator of the Installation's Spokes, whose only input is the public `Host` header. A
-**Site Hub** is the INNER layer — the grouping of ONE Spoke's Sites — with no public address, no URL segment
-and no control of its own. This Installation authors no `sites[].hub`, so each of its Spokes has exactly ONE
-**implicit** Site Hub, which is why the tree marks it `(implicit)` instead of naming it. The APPROVED TARGET —
-SEVERAL independently identified Spoke Hubs per Installation, with Spoke ids scoped to their owning Spoke Hub,
-while Site Hubs stay scoped to individual Spokes — is **not implemented**: read that as intent, never as
-current behaviour.
+**Two organisational layers, and NEITHER the Spoke Hub nor a Site Hub is publicly addressable**
+(FOUNDATION-ID-M2). The **Spoke Hub** is the OUTER layer: it coordinates its Spokes and **owns no public
+hostname** — it is never addressed. The **request boundary** consumes the request's hostname, and that hostname
+selects exactly ONE **Spoke** through that Spoke's declared, EXACT hostname claims (shown above); a hostname no
+Spoke claims is refused by the existing routing contract. A **Site Hub** is the INNER layer — the grouping of ONE
+Spoke's Sites — with no public address, no URL segment and no control of its own. This Installation authors no
+`sites[].hub`, so each of its Spokes has exactly ONE **implicit** Site Hub, which is why the tree marks it
+`(implicit)` instead of naming it. The APPROVED TARGET — SEVERAL independently identified Spoke Hubs per
+Installation, with Spoke ids scoped to their owning Spoke Hub, while Site Hubs stay scoped to individual Spokes —
+is **not implemented**: read that as intent, never as current behaviour.
 
 **Language is not ownership.** `/ww/de` is the *German-language* representation of the Global Site
 `ww`, owned by the **Foundation** Spoke — ordinary German pages authored inside that Spoke. `/de/de` is
@@ -155,7 +157,7 @@ The control renders in the header's persistent control row on every page of ever
 the request resolved to, and selecting that member is a no-op; its accessible name (`spokeSwitcher.label`)
 must resolve for every locale each Spoke serves.
 
-**THE FIVE DIMENSIONS ARE NOT EACH OTHER:**
+**THE SIX DISTINCT CONCEPTS ARE NOT EACH OTHER:**
 
 | Dimension | What it is | Control |
 | --- | --- | --- |

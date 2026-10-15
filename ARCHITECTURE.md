@@ -578,21 +578,40 @@ Spoke Hub                       the installation's coordinator of its Spokes (no
 - A **Site** is a context inside a Spoke (a country, or the global one) — not a domain. Several Sites may live on
   one domain, and one Site may be served in several languages.
 
-### What exists today, and what is approved but NOT implemented
+### What exists today, and what is approved but NOT yet implemented
 
-Both layers are STRUCTURAL. How many of each an installation composes is a separate question, and today's answer
-is narrower than the approved target:
+Both layers are STRUCTURAL. How many of each an installation composes is a separate question, and the answer
+today is narrower than the approved target. These two lists are not each other:
 
-| | CURRENT implementation | APPROVED TARGET (not implemented) |
+**Already implemented, and unchanged by this milestone:**
+
+- ONE implicit Spoke Hub per installation — the outer coordinator of its Spokes, with no id of its own.
+- One or more Spokes, declared by the manifest and independently addressed: the request hostname selects exactly
+  one Spoke through that Spoke's declared, EXACT hostname claims, and an unclaimed hostname is refused.
+- Site Hub grouping: one implicit Site Hub per Spoke, or the several the authored `sites[].hub` leaves name
+  (all-or-none) — a Site Hub never being publicly addressed.
+- Each Site's own locale support.
+- The pure `(BusinessId, SiteId)` domain CONTRACTS merged in FOUNDATION-ID-M1 — the types, the grammar and the
+  composite identity — which exist but are NOT yet connected to managed-mode Site resolution.
+
+**Approved, and NOT implemented:**
+
+- SEVERAL independently identified Spoke Hubs per installation.
+- Spoke ids scoped to their owning Spoke Hub.
+- Managed-mode composite Site ownership and resolution: `(BusinessId, SiteId)` carried through membership and
+  lookup.
+- The identity-safe addressing, content, dictionary and asset isolation that managed mode implies.
+
+| Layer | Today | Approved, not implemented |
 | --- | --- | --- |
 | **Spoke Hub** | exactly ONE per installation, implicit and with no id of its own | SEVERAL independently identified Spoke Hubs per installation |
 | **Spoke** | one or more, declared by the manifest; Spoke ids unique installation-wide | Spoke ids local to, and scoped by, their owning Spoke Hub |
-| **Site Hub** | one implicit Site Hub per Spoke, or the several its `sites[].hub` leaves name | Site Hubs stay scoped to individual Spokes |
-| **Site** | the EXISTING authored Site context (`sites[]`), resolved exactly as it always was | `(BusinessId, SiteId)` — the permanent composite identity — in managed mode |
-| **Locale** | per Site | unchanged: independent locales within each Site |
+| **Site Hub** | one implicit Site Hub per Spoke, or the several its `sites[].hub` leaves name; scoped to its Spoke either way | none — Site Hubs stay scoped to individual Spokes |
+| **Site** | the EXISTING authored Site context (`sites[]`), resolved exactly as it always was; the `(BusinessId, SiteId)` contracts exist but are not connected | managed-mode composite Site ownership and resolution |
+| **Locale** | per Site — already independent | none — locales stay independent within each Site |
 
-Nothing in the right-hand column exists in the code today. This vocabulary adds names, not capability: no
-configuration leaf, route, hostname rule, membership algorithm or resolved Site population changes with it.
+FOUNDATION-ID-M2 adds NAMES, not capability: it changes no runtime behaviour at all, and no configuration leaf,
+route, hostname rule, membership algorithm or resolved Site population changes with it.
 
 ### The organizational Spoke Hub boundary, and the Spoke-Hub-scoped Spoke switcher (R1)
 

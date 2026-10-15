@@ -1,6 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { hostRoutingForBuild, spokeSelectionForHost, type SpokeHostRoutingEntry } from "@/config/spoke-routing";
+import {
+  hostRoutingForBuild,
+  routingEntryForSelection,
+  spokeSelectionForHost,
+  type SpokeHostRoutingEntry,
+} from "@/config/spoke-routing";
 import { SPOKE_SELECTION_HEADER, isInternalSpokePath } from "@/config/spoke-selection";
 
 /**
@@ -63,7 +68,10 @@ function selectedEntry(
   if (routing.mode === "multi") {
     const selection = spokeSelectionForHost(routing, host);
     if (selection === null) return null;
-    return routing.spokes.find((spoke) => spoke.id === selection.spokeId) ?? null;
+    // THE SELECTION'S OWN ENTRY, not a search by local id: where Spoke Hubs are identified, two Hubs may
+    // each declare that id, and the entry is what carries the composite segment this request must resolve
+    // (FOUNDATION-ID-M3-P2). A selection with no entry answers nothing rather than another Spoke's content.
+    return routingEntryForSelection(routing, selection);
   }
 
   // ONE-Spoke compatibility: the build published exactly one entry, so there is nothing to choose.

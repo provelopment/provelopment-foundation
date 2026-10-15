@@ -49,13 +49,15 @@
  * Framework-neutral: pure data and pure functions. No filesystem, no configuration, no request.
  */
 import { spokeHubIssues } from "./coherence";
+import { normalizeHostname, type Hostname } from "./hostname";
+import { resolveSpokeFromHost, type SpokeInspectionPolicy, type SpokeSelectionReason } from "./resolve";
 import { spokeHubCollectionIssues } from "./spoke-hub-id";
-import type { Hostname } from "./hostname";
 import type {
   IdentifiedSpokeRef,
   InstallationSpokeHubCollection,
   Spoke,
   SpokeHubId,
+  SpokeId,
 } from "./model";
 
 /**
@@ -140,4 +142,86 @@ export function spokeByRef(
   const hub = collection.find((entry) => entry.identity.id === ref.spokeHubId);
   if (hub === undefined) return null;
   return hub.spokes.find((spoke) => spoke.identity.id === ref.spokeId) ?? null;
+}
+
+/**
+ * ONE identified Spoke Hub's CLAIMS (FOUNDATION-ID-M3-P2): the smallest fact the COMPOSITE request decision
+ * needs, and nothing else.
+ *
+ * It is the `SpokeHub` shape plus the Hub's identity, so a caller holding only the routing data a build
+ * inlined (an id, a segment and normalized claims — no Site Hubs, no configuration, no filesystem) can ask
+ * the ONE decision without a second hostname-matching rule appearing anywhere. A Site Hub never appears
+ * here: Site Hubs stay inside a Spoke, and a request is decided by HOST alone.
+ */
+export interface IdentifiedHubClaims {
+  readonly spokeHubId: SpokeHubId;
+  readonly spokes: readonly Spoke[];
+}
+
+/**
+ * WHICH Spoke answers a request host in an Installation that IDENTIFIES its Spoke Hubs: the COMPOSITE
+ * selection — both halves of the identity, so a caller can never resolve a Spoke by its local id alone.
+ */
+export interface IdentifiedSpokeSelection {
+  readonly spokeHubId: SpokeHubId;
+  readonly spokeId: SpokeId;
+  readonly hostname: Hostname;
+  readonly reason: SpokeSelectionReason;
+}
+
+/**
+ * The Spoke that answers this request host across an Installation's identified Spoke Hubs, or `null`.
+ *
+ * THE DECISION ORDER IS THE ACCEPTED ONE, unchanged: an EXPLICIT claim wins, and only a hostname no Spoke
+ * claims can be answered by the Installation's inspection nomination. The matching step itself is not
+ * restated — each Hub is asked through the SAME pure `resolveSpokeFromHost`, so exactness, normalization
+ * and the claims-before-inspection order cannot drift between the flat and the composite decision.
+ *
+ * A COMPOSITE NOMINATION IS COMPOSITE, AND NOTHING ELSE. The inspection policy must name BOTH halves: a
+ * policy stating only a local `spokeId` is REFUSED here (it answers nothing), because in an Installation
+ * that identifies its Hubs that id may name a Spoke in either Hub, and first-match would be a guess. A
+ * nomination naming a Hub or a Spoke this Installation does not declare answers nothing as well — a caller
+ * cannot conjure a Spoke by asking for it.
+ *
+ * `null` is a RESULT, not an error: an unclaimed hostname may not be served another Spoke's content, and
+ * there is no first-Hub, first-Spoke or cross-Hub fallback anywhere in this function.
+ */
+export function resolveSpokeRefFromHost(
+  hubs: readonly IdentifiedHubClaims[],
+  host: string | null | undefined,
+  inspection?: SpokeInspectionPolicy | null,
+): IdentifiedSpokeSelection | null {
+  const hostname = normalizeHostname(host);
+  if (hostname === null) return null;
+
+  for (const hub of hubs) {
+    const selection = resolveSpokeFromHost({ spokes: hub.spokes }, hostname, null);
+    if (selection !== null) {
+      return {
+        spokeHubId: hub.spokeHubId,
+        spokeId: selection.spokeId,
+        hostname: selection.hostname,
+        reason: selection.reason,
+      };
+    }
+  }
+
+  if (
+    inspection !== null &&
+    inspection !== undefined &&
+    inspection.spokeHubId !== undefined &&
+    inspection.hostnames.includes(hostname)
+  ) {
+    const hub = hubs.find((candidate) => candidate.spokeHubId === inspection.spokeHubId);
+    if (hub !== undefined && hub.spokes.some((spoke) => spoke.identity.id === inspection.spokeId)) {
+      return {
+        spokeHubId: inspection.spokeHubId,
+        spokeId: inspection.spokeId,
+        hostname,
+        reason: "inspection-hostname",
+      };
+    }
+  }
+
+  return null;
 }

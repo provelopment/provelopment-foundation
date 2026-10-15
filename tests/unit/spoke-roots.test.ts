@@ -804,4 +804,43 @@ describe("the nested identified Spoke Hub form", () => {
       expect(refused.error.issues[0].message).toMatch(/NOT YET ENABLED/);
     }
   });
+
+  it("requires a COMPOSITE inspection nomination, and NAMES a Hub written as a flat Spoke", () => {
+    // §8.4 — the nested form's nomination is the COMPOSITE reference, never a bare local id.
+    const bareNomination = rawNestedInstallation({
+      spokeHubs: [{ id: "one", spokes: [{ id: "docs", root: spokeDir("one") }] }],
+      inspectionSpoke: "docs",
+    });
+    expect(refusalIssues(bareNomination).join("\n")).toMatch(
+      /inspectionSpoke: Invalid input: in the nested form the inspection nomination is the COMPOSITE reference/,
+    );
+
+    // A COMPOSITE nomination is structurally valid — and the Installation is still refused, for the ONE
+    // remaining reason: the activation gate.
+    const nominated = nestedInstallation([{ id: "one", spokes: [{ id: "docs", root: spokeDir("one") }] }]);
+    writeManifest(nominated, {
+      spokeHubs: [{ id: "one", spokes: [{ id: "docs", root: spokeDir("one") }] }],
+      inspectionSpoke: { spokeHubId: "one", spokeId: "docs" },
+      inspectionHosts: ["inspect.example.test"],
+    });
+    expect(refusalIssues(nominated)).toHaveLength(1);
+    expect(refusalIssues(nominated)[0]).toMatch(/multi-Spoke-Hub runtime support is NOT YET ENABLED/);
+
+    const malformedNomination = rawNestedInstallation({
+      spokeHubs: [{ id: "one", spokes: [{ id: "docs", root: spokeDir("one") }] }],
+      inspectionSpoke: { spokeHubId: "one", spokeId: "   " },
+    });
+    expect(refusalIssues(malformedNomination).join("\n")).toMatch(
+      /inspectionSpoke\.spokeId: Invalid input: expected a non-blank identity/,
+    );
+
+    // §8.2 — a Hub authored in the FLAT SPOKE shape is NAMED, rather than reported as an anonymous unknown
+    // leaf: mixing the two forms inside one object is the mistake this diagnostic exists for.
+    const hubAsFlatSpoke = rawNestedInstallation({
+      spokeHubs: [{ id: "one", root: spokeDir("one"), spokes: [{ id: "docs", root: spokeDir("one") }] }],
+    });
+    expect(refusalIssues(hubAsFlatSpoke).join("\n")).toMatch(
+      /spokeHubs\.0\.root: Invalid input: a Spoke Hub carries no root of its own/,
+    );
+  });
 });

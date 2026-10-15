@@ -48,9 +48,13 @@
  * legacy/active runtime keeps using `deploymentPaths()` unchanged.
  */
 import { DEPLOYMENT_RESOURCE_PATHS } from "./deployment-root";
-import { runtimeSegmentForSpokeId, spokeRuntimeAssetUrlBase } from "./spoke-runtime-segment.mjs";
+import {
+  runtimeSegmentForIdentifiedSpokeRef,
+  runtimeSegmentForSpokeId,
+  spokeRuntimeAssetUrlBase,
+} from "./spoke-runtime-segment.mjs";
 import type { SpokeRootDescriptor } from "./spoke-roots";
-import type { SpokeId } from "@/core/spoke";
+import type { IdentifiedSpokeRef, SpokeHubId, SpokeId } from "@/core/spoke";
 
 /**
  * The authored resource trees ONE Spoke owns. AUTHORED ownership only — an entry names where material is
@@ -127,19 +131,40 @@ export interface SpokeResourceIndex {
   readonly assetBasePath: string;
   /** The authored resource trees of the SAME Spoke. */
   readonly resources: SpokeResourcePaths;
+  /**
+   * The OWNING Spoke Hub, and the COMPOSITE identity — present ONLY when the Installation IDENTIFIES its
+   * Hubs (FOUNDATION-ID-M3-P2).
+   *
+   * They are absent for a flat/legacy Spoke, whose one Spoke Hub is implicit and unnamed, so this record
+   * carries exactly the keys it always carried. When they ARE present, `runtimeSegment` is the COMPOSITE
+   * segment (`runtimeSegmentForIdentifiedSpokeRef`), which is what makes two Hubs' Spokes called `docs`
+   * occupy two namespaces — and what makes a bare local id insufficient to name either.
+   */
+  readonly spokeHubId?: SpokeHubId;
+  readonly spokeRef?: IdentifiedSpokeRef;
 }
 
 /**
  * The resource record of ONE resolved Spoke. Root is an INPUT (S3C1 resolved it); the identity is the
  * only other input, and it is what the runtime segment is derived from.
+ *
+ * `ref` is OPTIONAL and states the COMPOSITE identity when — and only when — the Installation identifies
+ * its Spoke Hubs: the flat/legacy call is unchanged, argument for argument, and returns a record with the
+ * same keys and the same segment as before.
  */
-export function spokeResourceIndexFor(descriptor: SpokeRootDescriptor): SpokeResourceIndex {
-  const runtimeSegment = runtimeSegmentForSpokeId(descriptor.id);
+export function spokeResourceIndexFor(
+  descriptor: SpokeRootDescriptor,
+  ref?: IdentifiedSpokeRef,
+): SpokeResourceIndex {
+  const runtimeSegment =
+    ref === undefined ? runtimeSegmentForSpokeId(descriptor.id) : runtimeSegmentForIdentifiedSpokeRef(ref);
 
-  return {
+  const index: SpokeResourceIndex = {
     spokeId: descriptor.id,
     runtimeSegment,
     assetBasePath: spokeRuntimeAssetUrlBase(runtimeSegment),
     resources: spokeResourcePaths(descriptor),
   };
+
+  return ref === undefined ? index : { ...index, spokeHubId: ref.spokeHubId, spokeRef: ref };
 }

@@ -23,11 +23,16 @@ import {
   hostnameFromOrigin,
   normalizeHostname,
   resolveSpokeFromHost,
+  resolveSpokeRefFromHost,
   type Hostname,
+  type IdentifiedSpokeRef,
+  type Spoke,
   type SpokeHub,
   type SpokeInspectionPolicy,
   type SpokeSelection,
 } from "@/core/spoke";
+
+import { runtimeSegmentForIdentifiedSpokeRef } from "./spoke-runtime-segment.mjs";
 
 /**
  * The build-time environment name this module READS, spelled here exactly as the build publishes it
@@ -48,6 +53,17 @@ export interface SpokeHostRoutingEntry {
   readonly canonicalOrigin: string;
   /** The EXACT normalized hostnames it answers for (never a wildcard, never a suffix rule). */
   readonly hostnameClaims: readonly Hostname[];
+  /**
+   * The OWNING Spoke Hub, present ONLY when the Installation IDENTIFIES its Hubs (FOUNDATION-ID-M3-P2).
+   *
+   * When it is present, `runtimeSegment` is the COMPOSITE segment of `(spokeHubId, id)` and this entry is
+   * addressed by BOTH halves: the same local id may be declared in another Hub, so a lookup by `id` alone
+   * would name whichever Hub came first. A flat/legacy installation publishes neither key, so its entries
+   * are exactly what they always were.
+   */
+  readonly spokeHubId?: string;
+  /** The COMPOSITE identity, present exactly when `spokeHubId` is. */
+  readonly spokeRef?: IdentifiedSpokeRef;
 }
 
 /** ONE option of the CROSS-SPOKE SWITCHER: the Spoke it offers, the label a visitor reads and its origin. */
@@ -82,6 +98,19 @@ export interface SpokeSwitcherConfig {
   readonly options: readonly SpokeSwitcherOption[];
 }
 
+/**
+ * ONE identified Spoke Hub's OWN switcher (`FOUNDATION-ID-M3-P2`).
+ *
+ * In the nested authoring form the switcher belongs to the HUB that owns the Spokes it offers, so it is
+ * carried per Hub rather than once per Installation: a Hub's switcher may only offer its own members, and
+ * the Spoke rendering the page receives its OWNING Hub's list — never an Installation-wide merge, which
+ * would offer Spokes the rendering Hub does not own.
+ */
+export interface SpokeHubSwitcherConfig {
+  readonly spokeHubId: string;
+  readonly options: readonly SpokeSwitcherOption[];
+}
+
 /** The build's immutable hostname routing description. */
 export interface InstallationHostRouting {
   readonly mode: HostRoutingMode;
@@ -99,6 +128,12 @@ export interface InstallationHostRouting {
   readonly inspection: SpokeInspectionPolicy | null;
   /** The authored cross-Spoke switcher, or `null` when this Installation declares none. */
   readonly spokeSwitcher: SpokeSwitcherConfig | null;
+  /**
+   * The PER-HUB switchers of an Installation that IDENTIFIES its Hubs, in authored order (`M3-P2`), or
+   * `undefined` for a flat/legacy Installation — whose single, Installation-wide `spokeSwitcher` above is
+   * exactly what it always was.
+   */
+  readonly spokeHubSwitchers?: readonly SpokeHubSwitcherConfig[];
 }
 
 /**
@@ -147,6 +182,7 @@ function inspectionOf(raw: unknown): SpokeInspectionPolicy | null {
 
   const entry = raw as {
     spokeId?: unknown;
+    spokeHubId?: unknown;
     hostnames?: unknown;
     platformHostnames?: unknown;
     authoredHostnames?: unknown;
@@ -174,6 +210,24 @@ function inspectionOf(raw: unknown): SpokeInspectionPolicy | null {
           "the build, so a disagreement here means it was not.",
       );
     }
+  }
+
+  // A COMPOSITE NOMINATION (FOUNDATION-ID-M3-P2). When the Installation identifies its Spoke Hubs, the
+  // nomination states the OWNING Hub as well: a bare local id may name a Spoke in either Hub, so the policy
+  // carries both halves. A value that is not a usable identity is REFUSED rather than ignored — an ignored
+  // one would silently un-nominate, which looks identical to a working policy.
+  if (entry.spokeHubId !== undefined) {
+    if (typeof entry.spokeHubId !== "string" || entry.spokeHubId.trim() === "") {
+      throw new Error(
+        "FOUNDATION-ID-M3-P2: the build's inspection policy states an owning Spoke Hub that is not a " +
+          "usable identity, so the Spoke it nominates could not be resolved without guessing between Hubs.",
+      );
+    }
+    return Object.freeze({
+      spokeId: entry.spokeId,
+      spokeHubId: entry.spokeHubId,
+      hostnames: Object.freeze(hostnames),
+    });
   }
 
   return Object.freeze({ spokeId: entry.spokeId, hostnames: Object.freeze(hostnames) });
@@ -292,6 +346,57 @@ function switcherOf(raw: unknown): SpokeSwitcherConfig | null {
 }
 
 /**
+ * The build's PER-HUB switchers (`FOUNDATION-ID-M3-P2`), in authored order — or `undefined` when the
+ * description publishes none.
+ *
+ * `undefined` (not an empty list) is what a flat/legacy build produces, so its description keeps exactly
+ * the keys it always had and `spokeSwitcherForBuild()` keeps answering as before. In the nested form each
+ * Hub carries its OWN switcher, and this reader refuses a Hub stated twice — that would offer one Hub two
+ * different navigation lists, and "which one renders?" would be settled by list order.
+ */
+function hubSwitchersOf(raw: unknown): readonly SpokeHubSwitcherConfig[] | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!Array.isArray(raw)) {
+    throw new Error(
+      "FOUNDATION-ID-M3-P2: the build's per-Hub switchers are something other than a list.",
+    );
+  }
+
+  const hubs: SpokeHubSwitcherConfig[] = [];
+  for (const [index, entry] of raw.entries()) {
+    const candidate = entry as { spokeHubId?: unknown; options?: unknown };
+    if (
+      entry === null ||
+      typeof entry !== "object" ||
+      typeof candidate.spokeHubId !== "string" ||
+      candidate.spokeHubId.trim() === ""
+    ) {
+      throw new Error(
+        `FOUNDATION-ID-M3-P2: the build's per-Hub switchers[${index}] names no Spoke Hub, so its options ` +
+          "could not be scoped to a Hub.",
+      );
+    }
+    if (hubs.some((hub) => hub.spokeHubId === candidate.spokeHubId)) {
+      throw new Error(
+        `FOUNDATION-ID-M3-P2: the build's per-Hub switchers state Spoke Hub "${candidate.spokeHubId}" more ` +
+          "than once. A Hub has ONE switcher, so two lists would leave which one renders to list order.",
+      );
+    }
+
+    const config = switcherOf(candidate.options);
+    if (config === null) {
+      throw new Error(
+        `FOUNDATION-ID-M3-P2: the build's per-Hub switchers[${index}] ("${candidate.spokeHubId}") carries ` +
+          "no options — an authored Hub switcher always carries its ordered members.",
+      );
+    }
+    hubs.push(Object.freeze({ spokeHubId: candidate.spokeHubId, options: config.options }));
+  }
+
+  return Object.freeze(hubs);
+}
+
+/**
  * The current build's hostname routing.
  *
  * An empty value means a build that inlined NO routing description — a legacy unit-test import, or a
@@ -312,7 +417,13 @@ export function hostRoutingForBuild(): InstallationHostRouting {
     return cached;
   }
 
-  let parsed: { mode?: unknown; spokes?: unknown; inspection?: unknown; spokeSwitcher?: unknown };
+  let parsed: {
+    mode?: unknown;
+    spokes?: unknown;
+    inspection?: unknown;
+    spokeSwitcher?: unknown;
+    spokeHubSwitchers?: unknown;
+  };
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
@@ -331,6 +442,7 @@ export function hostRoutingForBuild(): InstallationHostRouting {
       segment?: unknown;
       canonicalOrigin?: unknown;
       hostAliases?: unknown;
+      spokeHubId?: unknown;
     };
     if (
       typeof spoke.id !== "string" ||
@@ -342,23 +454,63 @@ export function hostRoutingForBuild(): InstallationHostRouting {
           "needs an id, a runtime segment and a canonical origin.",
       );
     }
+
+    const hostnameClaims = claimsFor(
+      spoke.canonicalOrigin,
+      aliasesOf(spoke.hostAliases, `Spoke "${spoke.id}"`),
+      `Spoke "${spoke.id}"`,
+    );
+
+    if (spoke.spokeHubId === undefined) {
+      return Object.freeze({
+        id: spoke.id,
+        runtimeSegment: spoke.segment,
+        canonicalOrigin: spoke.canonicalOrigin,
+        hostnameClaims,
+      });
+    }
+
+    // A COMPOSITE ENTRY (FOUNDATION-ID-M3-P2): the description states the owning Hub, and the segment MUST
+    // be that composite identity's own segment. A segment is an identity rather than a label, so a
+    // disagreement would let this entry address ANOTHER Spoke's namespace (its artwork, its context) — it
+    // is refused here, where the artifact is read, rather than trusted.
+    if (typeof spoke.spokeHubId !== "string" || spoke.spokeHubId.trim() === "") {
+      throw new Error(
+        "FOUNDATION-ID-M3-P2: the build's hostname routing description gives a Spoke an owning Spoke Hub " +
+          "that is not a usable identity, so the entry could not be addressed unambiguously.",
+      );
+    }
+    const spokeRef: IdentifiedSpokeRef = Object.freeze({ spokeHubId: spoke.spokeHubId, spokeId: spoke.id });
+    const expected = runtimeSegmentForIdentifiedSpokeRef(spokeRef);
+    if (spoke.segment !== expected) {
+      throw new Error(
+        `FOUNDATION-ID-M3-P2: the routing description gives Spoke Hub "${spoke.spokeHubId}" / Spoke ` +
+          `"${spoke.id}" the segment "${spoke.segment}", which is not the segment of that COMPOSITE ` +
+          `identity ("${expected}"). A runtime segment addresses one Spoke's namespace and context, so it ` +
+          "must be derived from both halves of the identity.",
+      );
+    }
+
     return Object.freeze({
       id: spoke.id,
       runtimeSegment: spoke.segment,
       canonicalOrigin: spoke.canonicalOrigin,
-      hostnameClaims: claimsFor(
-        spoke.canonicalOrigin,
-        aliasesOf(spoke.hostAliases, `Spoke "${spoke.id}"`),
-        `Spoke "${spoke.id}"`,
-      ),
+      hostnameClaims,
+      spokeHubId: spoke.spokeHubId,
+      spokeRef,
     });
   });
+
+  const spokeHubSwitchers = hubSwitchersOf(parsed.spokeHubSwitchers);
 
   cached = Object.freeze({
     mode,
     spokes: Object.freeze(spokes),
     inspection: inspectionOf(parsed.inspection),
     spokeSwitcher: switcherOf(parsed.spokeSwitcher),
+    // Present ONLY when the build published per-Hub switchers, so a flat/legacy description keeps exactly
+    // the keys it always carried (FOUNDATION-ID-M3-P2).
+    ...(spokeHubSwitchers === undefined ? {} : { spokeHubSwitchers }),
   });
 
   // MULTI — hostname dispatch: a Spoke that claims NO host can never be selected, so an Installation that
@@ -392,31 +544,123 @@ export function spokeSwitcherForBuild(): SpokeSwitcherConfig | null {
   return hostRoutingForBuild().spokeSwitcher;
 }
 
+/**
+ * THE SWITCHER OF ONE SPOKE HUB (`FOUNDATION-ID-M3-P2`), or `null` when that Hub authors none.
+ *
+ * The chrome's per-Hub reader: the Spoke rendering a page receives the list of its OWNING Hub — the members
+ * that Hub declares — so a Hub can never offer a Spoke of another Hub, and an Installation-wide merge does
+ * not exist. A flat/legacy build carries no per-Hub switchers at all, so this answers `null` there.
+ */
+export function spokeHubSwitcherForSpokeHub(
+  routing: InstallationHostRouting,
+  spokeHubId: string,
+): SpokeSwitcherConfig | null {
+  const hub = routing.spokeHubSwitchers?.find((candidate) => candidate.spokeHubId === spokeHubId);
+  return hub === undefined ? null : { options: hub.options };
+}
+
+/** The CURRENT build's switcher for ONE Spoke Hub, or `null` — the accessor a caller with a Hub id uses. */
+export function spokeHubSwitcherForBuild(spokeHubId: string): SpokeSwitcherConfig | null {
+  return spokeHubSwitcherForSpokeHub(hostRoutingForBuild(), spokeHubId);
+}
+
 /** The entry with this identity OR this runtime segment, or `null` — the internal route's ONE lookup. */
 export function routingEntryFor(
   routing: InstallationHostRouting,
   key: string,
 ): SpokeHostRoutingEntry | null {
-  return routing.spokes.find((spoke) => spoke.id === key || spoke.runtimeSegment === key) ?? null;
+  return (
+    routing.spokes.find(
+      (spoke) =>
+        spoke.runtimeSegment === key ||
+        // A BARE LOCAL ID matches only an entry with no owning Hub (M3-P2): where Hubs are identified, the
+        // same id may be declared twice, and matching it here would select whichever came first.
+        (spoke.spokeHubId === undefined && spoke.id === key),
+    ) ?? null
+  );
+}
+
+/**
+ * THE ENTRY a SELECTION names — the ONE lookup the request boundary uses to find what it just chose.
+ *
+ * A composite selection is matched on BOTH halves; a flat one is matched on its id AND on the entry having
+ * no Hub at all. Either way the answer is the entry the selection actually named, so a request can never be
+ * handed another Hub's Spoke that happens to share a local id.
+ */
+export function routingEntryForSelection(
+  routing: InstallationHostRouting,
+  selection: SpokeSelection,
+): SpokeHostRoutingEntry | null {
+  return (
+    routing.spokes.find((spoke) =>
+      selection.spokeHubId === undefined
+        ? spoke.spokeHubId === undefined && spoke.id === selection.spokeId
+        : spoke.spokeHubId === selection.spokeHubId && spoke.id === selection.spokeId,
+    ) ?? null
+  );
 }
 
 /**
  * WHICH SPOKE ANSWERS A REQUEST HOST, or `null`.
  *
  * The decision is the accepted domain one — exact normalized equality over the claims the build derived —
- * reached through `resolveSpokeFromHost` over a Spoke-Hub-shaped projection (`SpokeHub`) of THIS description,
- * so the request
- * boundary and the configuration layer cannot disagree about what "this Spoke claims this host" means.
- * There is no wildcard, no suffix rule, no implicit subdomain and no default Spoke.
+ * reached through the domain's OWN resolver (`resolveSpokeFromHost`, or the COMPOSITE
+ * `resolveSpokeRefFromHost` when this Installation identifies its Hubs), so the request boundary and the
+ * configuration layer cannot disagree about what "this Spoke claims this host" means. There is no wildcard,
+ * no suffix rule, no implicit subdomain and no default Spoke.
  *
  * The build's OWN inspection policy is passed straight through (M20 §26): an authored claim is tested
  * first, so it always wins, and a hostname recognised only as an inspection hostname resolves to the Spoke
  * the Installation explicitly nominated. A build with no policy behaves exactly as before.
+ *
+ * AN INSTALLATION IS EITHER FLAT OR IDENTIFIED, NEVER BOTH. A description that mixes the two forms is a
+ * malformed artifact — it would have no single rule for naming a Spoke — so it is refused rather than
+ * resolved by whichever entry happened to come first.
  */
 export function spokeSelectionForHost(
   routing: InstallationHostRouting,
   host: string | null | undefined,
 ): SpokeSelection | null {
+  const composite = routing.spokes.filter((spoke) => spoke.spokeHubId !== undefined);
+
+  if (composite.length > 0) {
+    if (composite.length !== routing.spokes.length) {
+      throw new Error(
+        "FOUNDATION-ID-M3-P2: the build's routing description MIXES Spokes that name an owning Spoke Hub " +
+          "with Spokes that do not. An Installation is authored either flat or as identified Spoke Hubs, " +
+          "so a description holding both could not name a Spoke unambiguously.",
+      );
+    }
+
+    const hubs: { spokeHubId: string; spokes: Spoke[] }[] = [];
+    for (const spoke of routing.spokes) {
+      const spokeHubId = spoke.spokeHubId;
+      if (spokeHubId === undefined) continue;
+      let hub = hubs.find((candidate) => candidate.spokeHubId === spokeHubId);
+      if (hub === undefined) {
+        hub = { spokeHubId, spokes: [] };
+        hubs.push(hub);
+      }
+      hub.spokes.push({
+        identity: {
+          id: spoke.id,
+          canonicalHostname: spoke.hostnameClaims[0],
+          hostnameClaims: spoke.hostnameClaims,
+        },
+        hubs: [],
+      });
+    }
+
+    const selection = resolveSpokeRefFromHost(hubs, host, routing.inspection);
+    if (selection === null) return null;
+    return {
+      spokeId: selection.spokeId,
+      spokeHubId: selection.spokeHubId,
+      hostname: selection.hostname,
+      reason: selection.reason,
+    };
+  }
+
   const hub: SpokeHub = {
     spokes: routing.spokes.map((spoke) => ({
       identity: {

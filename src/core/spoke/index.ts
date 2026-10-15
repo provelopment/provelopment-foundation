@@ -55,8 +55,10 @@ export { IMPLICIT_SPOKE_HUB_ID, spokeHubCollectionIssues } from "./spoke-hub-id"
 export {
   identifiedSpokeHubCollectionIssues,
   isCoherentIdentifiedSpokeHubCollection,
+  resolveSpokeRefFromHost,
   spokeByRef,
 } from "./spoke-hub-collection";
+export type { IdentifiedHubClaims, IdentifiedSpokeSelection } from "./spoke-hub-collection";
 
 export { isCoherentSpokeHub, spokeHubIssues } from "./coherence";
 

@@ -42,7 +42,7 @@
  */
 import path from "node:path";
 
-import { IMPLICIT_SPOKE_ID, type Hostname, type SpokeId } from "@/core/spoke";
+import { IMPLICIT_SPOKE_ID, type Hostname, type IdentifiedSpokeRef, type SpokeHubId, type SpokeId } from "@/core/spoke";
 
 import { deploymentPaths, type RuntimeAssetNamespace } from "./deployment-root";
 import { readSpokeSiteConfig } from "./spoke-config";
@@ -82,6 +82,13 @@ export interface InstallationRuntimeSpoke {
   readonly config: SiteConfig;
   /** Its authored resource trees. */
   readonly resources: SpokeResourcePaths;
+  /**
+   * The OWNING Spoke Hub and the COMPOSITE identity — present ONLY for an Installation that IDENTIFIES its
+   * Hubs (FOUNDATION-ID-M3-P2). A flat/legacy record carries neither, so its shape is what it always was,
+   * and its `runtimeSegment` is still the bare id's own encoding.
+   */
+  readonly spokeHubId?: SpokeHubId;
+  readonly spokeRef?: IdentifiedSpokeRef;
 }
 
 /** EVERY Spoke an Installation declares, in authored manifest order, and nothing selected. */
@@ -112,6 +119,12 @@ export interface SpokeRuntimeContext {
    * Spoke's, because a namespace this context does not declare is not in this array.
    */
   readonly runtimeAssetNamespaces: readonly RuntimeAssetNamespace[];
+  /**
+   * The OWNING Spoke Hub and the COMPOSITE identity — present ONLY for an Installation that identifies its
+   * Hubs, and the same pair as the record's (`FOUNDATION-ID-M3-P2`).
+   */
+  readonly spokeHubId?: SpokeHubId;
+  readonly spokeRef?: IdentifiedSpokeRef;
 }
 
 /** The generated platform namespace, and (for one segment) that Spoke's own — platform always first. */
@@ -218,11 +231,17 @@ export function runtimeContextForSpoke(
   key: SpokeId | string,
 ): SpokeRuntimeContext | null {
   const spoke = index.spokes.find(
-    (candidate) => candidate.id === key || candidate.runtimeSegment === key,
+    (candidate) =>
+      candidate.runtimeSegment === key ||
+      // A BARE LOCAL ID NAMES A SPOKE ONLY WHERE THERE IS ONE HUB (FOUNDATION-ID-M3-P2). In an Installation
+      // that identifies its Hubs the same local id may be declared in two of them, so a record that carries
+      // a Hub is reachable ONLY by its composite segment or reference — never by its local id, which would
+      // otherwise select whichever Hub happened to be declared first.
+      (candidate.spokeHubId === undefined && candidate.id === key),
   );
   if (spoke === undefined) return null;
 
-  return {
+  const context: SpokeRuntimeContext = {
     id: spoke.id,
     runtimeSegment: spoke.runtimeSegment,
     canonicalHostname: spoke.canonicalHostname,
@@ -235,6 +254,30 @@ export function runtimeContextForSpoke(
       runtimeNamespacesFor(index.mode === "legacy" ? null : spoke.runtimeSegment),
     ),
   };
+
+  return spoke.spokeRef === undefined
+    ? context
+    : { ...context, spokeHubId: spoke.spokeHubId, spokeRef: spoke.spokeRef };
+}
+
+/**
+ * The runtime context of ONE COMPOSITE Spoke identity, or `null` (`FOUNDATION-ID-M3-P2`).
+ *
+ * This is the only way to address a Spoke of an Installation that identifies its Hubs, and it is
+ * deliberately not satisfiable by a local id: BOTH halves must match the same record, so two Hubs each
+ * declaring `docs` resolve to two different contexts and neither can be reached by spelling the other's id.
+ * `null` is a result — an undeclared Hub or an undeclared id inside a declared Hub answers nothing, and no
+ * Hub, first-Spoke or cross-Hub fallback exists here.
+ */
+export function runtimeContextForIdentifiedSpoke(
+  index: InstallationRuntimeIndex,
+  ref: IdentifiedSpokeRef,
+): SpokeRuntimeContext | null {
+  const spoke = index.spokes.find(
+    (candidate) => candidate.spokeHubId === ref.spokeHubId && candidate.id === ref.spokeId,
+  );
+  if (spoke === undefined) return null;
+  return runtimeContextForSpoke(index, spoke.runtimeSegment);
 }
 
 /**

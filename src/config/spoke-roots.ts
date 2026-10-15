@@ -103,8 +103,28 @@ export interface InstallationSpokeCollectionFile {
 export interface InstallationSpokeHubCollectionFile {
   readonly spokeHubs: readonly {
     readonly id: string;
-    readonly spokes: readonly { readonly id: string; readonly root: string }[];
+    readonly spokes: readonly {
+      readonly id: string;
+      readonly root: string;
+      /** The Spoke's exact ADDITIONAL hostname claims, routing claims only (WEB-1 requirement 6). */
+      readonly hostAliases?: readonly string[];
+    }[];
+    /** The Hub-scoped switcher: the members of THIS Hub, in authored order. */
+    readonly spokeSwitcher?: {
+      readonly options: readonly {
+        readonly spokeId: string;
+        readonly label: string;
+        readonly href: string;
+      }[];
+    };
   }[];
+  /**
+   * The Installation-wide inspection nomination — a COMPOSITE reference, never a bare local id: where Hubs
+   * are identified, a local id may name a Spoke in either Hub (FOUNDATION-ID-M3-P2 §8.4).
+   */
+  readonly inspectionSpoke?: { readonly spokeHubId: string; readonly spokeId: string } | null;
+  /** Exact hostnames no Spoke owns publicly, which select the nominated composite Spoke. */
+  readonly inspectionHosts?: readonly string[];
 }
 
 /**

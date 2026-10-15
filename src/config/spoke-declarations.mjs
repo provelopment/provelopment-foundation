@@ -467,15 +467,44 @@ export const installationSpokeHubCollectionSchema = {
       return { success: false, error: { issues } };
     }
 
-    // OPTIONAL manifest-level leaves, typed exactly as the flat form types them: the STRUCTURE is shared
-    // even though this form's MEANING for them is later work.
-    /** @type {string | null} */
+    // OPTIONAL manifest-level leaves, typed exactly as the flat form types them — EXCEPT the inspection
+    // nomination, which in THIS form is a COMPOSITE reference (FOUNDATION-ID-M3-P2 §8.4): a bare local id
+    // may name a Spoke in either Hub, so it is refused here with its own message rather than carried
+    // through as something the runtime would have to guess about.
+    /** @type {{ spokeHubId: string, spokeId: string } | null} */
     let inspectionSpoke = null;
     if (raw.inspectionSpoke !== undefined && raw.inspectionSpoke !== null) {
-      if (typeof raw.inspectionSpoke !== "string") {
-        issues.push({ path: ["inspectionSpoke"], message: "Invalid input: expected string" });
+      const nomination = raw.inspectionSpoke;
+      if (typeof nomination === "string") {
+        issues.push({
+          path: ["inspectionSpoke"],
+          message:
+            "Invalid input: in the nested form the inspection nomination is the COMPOSITE reference " +
+            '{ "spokeHubId": "…", "spokeId": "…" }, not a bare Spoke id — a local id alone may name a Spoke ' +
+            "in either Spoke Hub, so nothing could decide which one represents this Installation.",
+        });
+      } else if (nomination === null || typeof nomination !== "object" || Array.isArray(nomination)) {
+        issues.push({ path: ["inspectionSpoke"], message: "Invalid input: expected object" });
       } else {
-        inspectionSpoke = raw.inspectionSpoke;
+        unrecognized(nomination, ["spokeHubId", "spokeId"], ["inspectionSpoke"], issues);
+        const halves = { spokeHubId: nomination.spokeHubId, spokeId: nomination.spokeId };
+        let complete = true;
+        for (const half of ["spokeHubId", "spokeId"]) {
+          if (typeof nomination[half] !== "string") {
+            issues.push({
+              path: ["inspectionSpoke", half],
+              message: "Invalid input: expected string",
+            });
+            complete = false;
+          } else if (nomination[half].trim() === "") {
+            issues.push({
+              path: ["inspectionSpoke", half],
+              message: "Invalid input: expected a non-blank identity",
+            });
+            complete = false;
+          }
+        }
+        if (complete) inspectionSpoke = halves;
       }
     }
 
@@ -503,7 +532,19 @@ export const installationSpokeHubCollectionSchema = {
         issues.push({ path: at, message: "Invalid input: expected object" });
         return;
       }
-      unrecognized(hub, ["id", "spokes", "spokeSwitcher"], at, issues);
+      // A HUB IS NOT A FLAT SPOKE ENTRY (FOUNDATION-ID-M3-P2 §8.2). Mixing the two forms inside ONE object
+      // is named rather than reported as an anonymous unknown leaf, because that is precisely the mistake
+      // an author makes while converting a flat manifest into identified Spoke Hubs.
+      if (hub.root !== undefined) {
+        issues.push({
+          path: [...at, "root"],
+          message:
+            "Invalid input: a Spoke Hub carries no root of its own — it CONTAINS its Spokes, each authored " +
+            'at its own "root" beneath the dedicated "spokes/" namespace. This object mixes the flat Spoke ' +
+            "entry shape into a Hub declaration.",
+        });
+      }
+      unrecognized(hub, ["id", "spokes", "spokeSwitcher", "root"], at, issues);
 
       const idIsString = typeof hub.id === "string";
       if (!idIsString) issues.push({ path: [...at, "id"], message: "Invalid input: expected string" });

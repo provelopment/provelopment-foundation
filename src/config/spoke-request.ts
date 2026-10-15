@@ -34,7 +34,7 @@ import {
   type SpokeRuntimeContext,
 } from "./installation-runtime";
 import { SPOKE_SELECTION_HEADER } from "./spoke-selection";
-import { hostRoutingForBuild, spokeSelectionForHost } from "./spoke-routing";
+import { hostRoutingForBuild, routingEntryForSelection, spokeSelectionForHost } from "./spoke-routing";
 
 let cachedIndex: InstallationRuntimeIndex | null = null;
 
@@ -73,7 +73,12 @@ export function runtimeContextForRequestHost(
   if (routing.mode === "multi") {
     const selection = spokeSelectionForHost(routing, host);
     if (selection === null) return null;
-    return runtimeContextForSpoke(index, selection.spokeId);
+    // THE RUNTIME KEY IS THE SELECTED ENTRY'S SEGMENT (FOUNDATION-ID-M3-P2): for an identified Installation
+    // that segment is COMPOSITE, so the context resolved here is the one BOTH halves of the identity name —
+    // never another Hub's Spoke that happens to share a local id. A selection with no entry answers nothing.
+    const entry = routingEntryForSelection(routing, selection);
+    if (entry === null) return null;
+    return runtimeContextForSpoke(index, entry.runtimeSegment);
   }
 
   // SINGLE — the Installation declares exactly ONE Spoke, so it answers every host. Length is checked

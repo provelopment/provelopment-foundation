@@ -29,7 +29,7 @@
  * function is valid at a request boundary, in a test and at build time.
  */
 import { normalizeHostname, type Hostname } from "./hostname";
-import type { Spoke, SpokeHub, SpokeId } from "./model";
+import type { Spoke, SpokeHub, SpokeHubId, SpokeId } from "./model";
 
 /**
  * How a Spoke was selected.
@@ -58,6 +58,16 @@ export type SpokeSelectionReason = "registered-hostname" | "inspection-hostname"
  */
 export interface SpokeInspectionPolicy {
   readonly spokeId: SpokeId;
+  /**
+   * The OWNING Spoke Hub, when the Installation IDENTIFIES its Hubs (FOUNDATION-ID-M3-P2).
+   *
+   * `spokeId` alone is a LOCAL id: two Hubs may each declare a Spoke called `docs`, so in an Installation
+   * that identifies its Hubs the nomination is the COMPOSITE `(spokeHubId, spokeId)`. It is optional
+   * because the flat/legacy form has exactly one implicit Hub and nothing to disambiguate — an installation
+   * that does identify its Hubs states it, and a nomination that states only a local id is refused by the
+   * composite decision rather than resolved by a first-match guess.
+   */
+  readonly spokeHubId?: SpokeHubId;
   readonly hostnames: readonly Hostname[];
 }
 
@@ -66,6 +76,11 @@ export interface SpokeSelection {
   readonly spokeId: SpokeId;
   readonly hostname: Hostname;
   readonly reason: SpokeSelectionReason;
+  /**
+   * The owning Spoke Hub, present ONLY when the Installation identifies its Hubs (FOUNDATION-ID-M3-P2).
+   * A flat/legacy decision names no Hub, because its one Spoke Hub is implicit and unnamed.
+   */
+  readonly spokeHubId?: SpokeHubId;
 }
 
 /**

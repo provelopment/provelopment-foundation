@@ -194,6 +194,11 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
     "synthetic Installation roots under OS temp — the build/S3C1 declaration-parity proofs' own throwaway " +
     "trees (every accepted and refused declaration shape, including links), removed by exact ownership. " +
     "The canonical deployment is only ever READ (S3F1)",
+  "tests/unit/spoke-runtime-composite.test.ts":
+    "OS temp for the composite GATE proof — one synthetic Installation root (a nested `spokeHubs` manifest " +
+    "and the Spoke root it declares) it creates and removes by exact ownership. Every other case in that " +
+    "suite is computed in memory from routing/runtime values built as data, so the canonical deployment " +
+    "and the committed authoring are only ever READ (M3-P2)",
   "tests/unit/installation-runtime-context.test.ts":
     "synthetic Installation trees under OS temp — the two-Spoke runtime-context proofs' own throwaway " +
     "Installations (alpha/beta plus legacy and one-Spoke variants: manifests, configurations, dictionaries, " +

@@ -136,6 +136,12 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
     "OS temp (its disposable two-Spoke Installation) and `public/spokes/<segment>/**` — the GENERATED " +
     "namespaces it materialises FROM THE CANONICAL ASSET PLAN (never by inventing files) and removes for the " +
     "cross-host asset proof",
+  "tests/browser/multi-hub.scenario.mjs":
+    "OS temp (its disposable IDENTIFIED Installation, and the one-Hub/one-Spoke variant it proves separately) " +
+    "plus `public/spokes/<composite segment>/**` — the GENERATED per-member namespaces it materialises FROM " +
+    "THE CANONICAL ASSET PLAN (never by inventing files) and removes again, each through the harness's own " +
+    "guarded writers. Both dev servers it starts are stopped and the platform identity it exported is " +
+    "removed, on success and on failure (M3-P3C)",
   "tests/browser/required-location.scenario.mjs":
     "OS temp only: TWO disposable copies of the committed synthetic deployment it materialises, patches (one " +
     "required-Location policy and one regional page) and removes, each behind its own dev server — every write " +
@@ -162,6 +168,11 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
     "writers, and the copy is removed when the run ends (R1)",
   "tests/support/multihost-installation.mjs":
     "OS temp only: the disposable two-Spoke Installation it authors and the caller removes",
+  "tests/support/multi-hub-installation.mjs":
+    "OS temp only: the disposable IDENTIFIED (nested `spokeHubs`) Installation it authors — two Spoke Hubs " +
+    "whose members repeat a local id — which the caller removes. It is the ONE fixture authority for the " +
+    "multi-Hub runtime suite and the multi-Hub browser scenario, so the two prove the SAME Installation; " +
+    "the repository's deployment state, generated catalogs and committed fixtures are only ever READ (M3-P3C)",
   "tests/unit/multihost-fixture-assets.test.ts":
     "OS temp only: the disposable two-Spoke Installation (through the fixture builder) and this suite's own " +
     "throwaway PUBLISHED catalogs, both removed when the suite ends. The repository's generated catalog, the " +

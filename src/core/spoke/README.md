@@ -59,6 +59,36 @@ at least one Spoke, non-blank ids, the reserved id, and exact uniqueness. Where 
 `spokes.json`, the `spokes/` directory, paths, roots — is configuration's business and never this
 module's: no path type and no filesystem concern enters `@/core/spoke`.
 
+## Identified Spoke Hubs (FOUNDATION-ID-M3-P1)
+
+The outer layer now has an IDENTITY, and the hierarchy it names is
+`Installation → Spoke Hub → Spoke → Site Hub → Site → Locale`:
+
+| Name | What it is |
+| --- | --- |
+| `SpokeHubId` / `SpokeHubIdentity` | a Spoke Hub's stable id — never a path, a hostname, a URL segment, a resource directory or Business/Tenant ownership |
+| `IdentifiedSpokeHub` | an identified `SpokeHub`: the same `{ spokes }` collection, named. NOT a redefinition — it is assignable to `SpokeHub` and every existing pure function accepts it unchanged |
+| `InstallationSpokeHubCollection` | an Installation's identified Hubs, in AUTHORED order (never sorted, never a directory listing) |
+| `IdentifiedSpokeRef` | the COMPOSITE reference `(SpokeHubId, SpokeId)` — the only way to name one Spoke unambiguously, because a local id may repeat in another Hub |
+| `IMPLICIT_SPOKE_HUB_ID` | the reserved id of the ONE Spoke Hub the runtime composes today. It is NOT authorable, and it is declared independently of `IMPLICIT_SPOKE_ID` and `IMPLICIT_HUB_ID` — three markers, three declarations, three rule sets, one spelling |
+| `identifiedSpokeHubCollectionIssues` | the collection's coherence: nonempty Hubs, unique Hub ids, nonempty Spoke membership, unique Spoke ids *within* a Hub, a local id reused in a different Hub ACCEPTED, and one Spoke in one Hub per exact hostname |
+| `spokeByRef(collection, ref)` | the composite lookup: an undeclared Hub or id answers `null` — never a fallback, never a default |
+
+**A Spoke id is Hub-local; a hostname is Installation-wide.** That asymmetry is the whole reason the
+composite reference exists: two Hubs may each own a Spoke called `global`, while a request carries ONE
+host and must select exactly ONE Spoke in exactly ONE Hub.
+
+**Reuse, not restatement.** The collection's coherence is COMPOSED from the existing authorities — the
+hub-id rules (`spoke-hub-id.mjs`) and the per-`SpokeHub` rules (`coherence.ts`) — and adds only the two
+rules that exist across Hubs. Nothing here re-derives a Site, a Site Hub or a default.
+
+**Phase 1 does not activate the runtime.** An AUTHORED collection of identified Hubs is recognised and
+fully validated by the configuration seam (`src/config/spoke-declarations.mjs`, the nested `spokeHubs`
+form) and then REFUSED: it is never flattened into the flat Spoke collection, no Hub or Spoke is chosen
+for it, and nothing consumes it to build. The composite RUNTIME SEGMENT is recorded, not implemented
+(`spoke-hub-collection.ts`): one atomic, injective, legacy-safe, case-portable and STABLE segment, with
+`runtimeSegmentForSpokeId` keeping its contract exactly.
+
 ## What is deliberately NOT here
 
 The domain vocabulary stays pure — and that is what lets the REQUEST BOUNDARY use it: the proxy

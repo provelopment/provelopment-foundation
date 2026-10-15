@@ -69,6 +69,10 @@ import { installationSpokeCollectionSchema, resolveSpokeDeclarations } from "./s
 
 export { SPOKE_ROOTS_DIRECTORY_NAME } from "./spoke-declarations.mjs";
 export { INSTALLATION_SPOKE_COLLECTION_FILE_NAME } from "./spoke-declarations.mjs";
+export {
+  INSTALLATION_SPOKE_HUB_COLLECTION_LEAF,
+  SPOKE_HUB_RUNTIME_NOT_ENABLED,
+} from "./spoke-declarations.mjs";
 export { installationSpokeCollectionSchema };
 
 /**
@@ -80,6 +84,27 @@ export { installationSpokeCollectionSchema };
  */
 export interface InstallationSpokeCollectionFile {
   readonly spokes: readonly { readonly id: string; readonly root: string }[];
+}
+
+/**
+ * THE NESTED AUTHORING FORM, typed — RECOGNISED, VALIDATED AND REFUSED (FOUNDATION-ID-M3-P1).
+ *
+ * It is the shape an author writes when they want their Spokes grouped into IDENTIFIED Spoke Hubs:
+ *
+ *     { "spokeHubs": [ { "id": "…", "spokes": [ { "id": "…", "root": "spokes/…" } ] } ] }
+ *
+ * It is typed here for the same reason the flat shape is — a caller can name what an author may write —
+ * and it is NOT a runnable shape in this phase. The declaration seam recognises it, validates it
+ * completely (identity, membership and roots, with the same authorities the flat form uses) and then
+ * refuses it with `SPOKE_HUB_RUNTIME_NOT_ENABLED`, because multi-Spoke-Hub runtime support is not enabled
+ * yet: nothing flattens it, no Hub or Spoke is chosen from it, and no consumer of this module can obtain
+ * declarations from one. The permanent compatibility format is the flat `spokes[]` shape above.
+ */
+export interface InstallationSpokeHubCollectionFile {
+  readonly spokeHubs: readonly {
+    readonly id: string;
+    readonly spokes: readonly { readonly id: string; readonly root: string }[];
+  }[];
 }
 
 /**

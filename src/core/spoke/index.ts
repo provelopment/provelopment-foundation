@@ -17,6 +17,15 @@
  * ONE Spoke — and is exported here ALSO as `SiteHub` (with `SiteHubId` / `SiteHubIdentity`). Those
  * explicit names are compile-time aliases of the same entities, so every name exported before M2 is
  * still exported, unchanged and undeprecated, and no runtime behaviour differs.
+ *
+ * ONE SPOKE HUB IS NAMED (FOUNDATION-ID-M3-P1). The outer layer gains an IDENTITY — `SpokeHubId`,
+ * `SpokeHubIdentity`, `IdentifiedSpokeHub`, `InstallationSpokeHubCollection` and the composite
+ * `IdentifiedSpokeRef` — plus its pure collection rules (`identifiedSpokeHubCollectionIssues`,
+ * `spokeByRef`) and its reserved implicit marker (`IMPLICIT_SPOKE_HUB_ID`, declared independently of the
+ * implicit Spoke and Site Hub markers). `SpokeHub` itself is NOT redefined: an `IdentifiedSpokeHub` IS a
+ * `SpokeHub`, so every existing consumer compiles and behaves exactly as before. The collection's
+ * coherence is COMPOSED from the existing authorities (`./coherence`, `./spoke-hub-id`) plus the two rules
+ * that only exist across Hubs: unique Hub identity, and one Spoke in one Hub per exact hostname.
  */
 export { normalizeHostname, hostnameFromOrigin } from "./hostname";
 export type { Hostname } from "./hostname";
@@ -25,16 +34,29 @@ export type {
   Hub,
   HubId,
   HubIdentity,
+  IdentifiedSpokeHub,
+  IdentifiedSpokeRef,
+  InstallationSpokeHubCollection,
   SiteHub,
   SiteHubId,
   SiteHubIdentity,
   Spoke,
   SpokeHub,
+  SpokeHubId,
+  SpokeHubIdentity,
   SpokeId,
   SpokeIdentity,
 } from "./model";
 
 export { IMPLICIT_SPOKE_ID, spokeCollectionIssues } from "./spoke-id";
+
+export { IMPLICIT_SPOKE_HUB_ID, spokeHubCollectionIssues } from "./spoke-hub-id";
+
+export {
+  identifiedSpokeHubCollectionIssues,
+  isCoherentIdentifiedSpokeHubCollection,
+  spokeByRef,
+} from "./spoke-hub-collection";
 
 export { isCoherentSpokeHub, spokeHubIssues } from "./coherence";
 

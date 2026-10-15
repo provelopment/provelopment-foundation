@@ -367,3 +367,103 @@ describe("build selection and S3C1 ACCEPT the same declarations", () => {
     expect(resolveInstallationSpokeRoots(root).manifestFile).toBe(path.join(root, "spokes.json"));
   });
 });
+
+/**
+ * THE NESTED `spokeHubs` FORM (FOUNDATION-ID-M3-P1): BOTH SIDES REFUSE IT, IN THE SAME WORDS
+ * ========================================================================================
+ *
+ * A second authored form exists — an Installation's IDENTIFIED SPOKE HUB collection — and Phase 1 supports
+ * its recognition and its complete validation, and then refuses it. That refusal must therefore reach BOTH
+ * answers this file exists to keep identical: the build's selection seam and the S3C1 configuration
+ * authority. They agree by construction (there is still ONE implementation), and this block proves it AT
+ * THE SEAM for the new form exactly as the block above does for every flat rule.
+ */
+
+/** Writes the NESTED manifest form. */
+function declareHubs(root: string, hubs: readonly unknown[]): void {
+  write(path.join(root, "spokes.json"), JSON.stringify({ spokeHubs: hubs }, null, 2));
+}
+
+/** One nested manifest per way it can be unacceptable — plus one that is entirely well authored. */
+const NESTED_REFUSED: readonly { readonly name: string; readonly fixture: (root: string) => void }[] = [
+  {
+    name: "a well-authored nested form (ONE Hub — the gate is not softened for it)",
+    fixture: (root) => {
+      authoredSpoke(root, "spokes/one");
+      declareHubs(root, [{ id: "one", spokes: [{ id: "global", root: "spokes/one" }] }]);
+    },
+  },
+  {
+    name: "the nested form with an unknown Hub leaf",
+    fixture: (root) => {
+      authoredSpoke(root, "spokes/one");
+      write(
+        path.join(root, "spokes.json"),
+        JSON.stringify({
+          spokeHubs: [{ id: "one", spokes: [{ id: "global", root: "spokes/one" }], hostname: "x.test" }],
+        }),
+      );
+    },
+  },
+  {
+    name: "the nested form with BOTH the flat and the nested collections",
+    fixture: (root) => {
+      authoredSpoke(root, "spokes/one");
+      write(
+        path.join(root, "spokes.json"),
+        JSON.stringify({
+          spokes: [{ id: "flat", root: "spokes/one" }],
+          spokeHubs: [{ id: "one", spokes: [{ id: "global", root: "spokes/one" }] }],
+        }),
+      );
+    },
+  },
+  {
+    name: "the nested form with a Hub that owns no Spoke",
+    fixture: (root) => declareHubs(root, [{ id: "one", spokes: [] }]),
+  },
+  {
+    name: "the nested form with a root OUTSIDE the dedicated namespace",
+    fixture: (root) => {
+      write(path.join(root, "config", "site.config.json"), "{}");
+      declareHubs(root, [{ id: "one", spokes: [{ id: "global", root: "config" }] }]);
+    },
+  },
+  {
+    name: "the nested form with two Hubs sharing ONE physical root",
+    fixture: (root) => {
+      authoredSpoke(root, "spokes/one");
+      declareHubs(root, [
+        { id: "one", spokes: [{ id: "global", root: "spokes/one" }] },
+        { id: "two", spokes: [{ id: "global", root: "spokes/one" }] },
+      ]);
+    },
+  },
+];
+
+describe("build selection and S3C1 refuse the nested Spoke-Hub form in the SAME words", () => {
+  for (const testCase of NESTED_REFUSED) {
+    it(`refuses ${testCase.name}`, () => {
+      const { build, authority } = on("foundation-parity-hubs-", testCase.fixture);
+
+      expect(build, "the build selection seam must refuse").not.toBeNull();
+      expect(authority, "the S3C1 authority must refuse").not.toBeNull();
+      expect(build).toBe(authority);
+      // ALWAYS the activation diagnostic, whatever else is also wrong: the reason this Installation cannot
+      // run is never buried under its authoring defects.
+      expect(build).toMatch(/multi-Spoke-Hub runtime support is NOT YET ENABLED/);
+    });
+  }
+
+  it("cannot be RESOLVED by the build at all, so no unsupported Installation can run", () => {
+    const { root } = on("foundation-parity-hubs-build-", (installation) => {
+      authoredSpoke(installation, "spokes/one");
+      declareHubs(installation, [{ id: "one", spokes: [{ id: "global", root: "spokes/one" }] }]);
+    });
+
+    // The ONE question the build asks, and the whole-deployment resolution that follows it, both fail:
+    // there is no mode, no single Spoke and no flattened collection to fall back to.
+    expect(() => installationSpokes(root)).toThrow(/NOT YET ENABLED/);
+    expect(() => resolveDeploymentForBuild({}, root)).toThrow(/NOT YET ENABLED/);
+  });
+});

@@ -33,9 +33,21 @@
  *
  * IDENTITY SEMANTICS ARE NOT RESTATED HERE
  * ----------------------------------------
- * Non-blank ids, the reserved implicit identity and duplicate ids come from the pure domain module, which
- * this one imports — so the configuration layer, the build seam and the domain cannot disagree about what
- * an acceptable id is.
+ * Non-blank ids, the reserved implicit identities and duplicate ids come from the pure domain modules this
+ * one imports — `../core/spoke/spoke-id.mjs` for a Spoke id and `../core/spoke/spoke-hub-id.mjs` for a
+ * Spoke Hub id — so the configuration layer, the build seam and the domain cannot disagree about what an
+ * acceptable id is.
+ *
+ * A SECOND AUTHORING FORM IS RECOGNISED, VALIDATED AND REFUSED (FOUNDATION-ID-M3-P1)
+ * --------------------------------------------------------------------------------
+ * The nested `spokeHubs` form — an Installation's IDENTIFIED SPOKE HUB collection, each Hub carrying its
+ * identity and explicitly containing its Spokes — is parsed and COMPLETELY validated here, and it is then
+ * REFUSED with `SPOKE_HUB_RUNTIME_NOT_ENABLED`: multi-Spoke-Hub runtime support is not enabled yet, so no
+ * caller of this seam can obtain declarations from it. It is never flattened into the flat collection,
+ * never given a default Hub or Spoke, and never chosen from. The flat `spokes` form keeps its exact
+ * meaning, code path and diagnostics. See `installationSpokeHubCollectionSchema` (the nested STRUCTURE, a
+ * recogniser that resolves nothing and runs nothing) and `resolveSpokeDeclarations` (the ONE decision
+ * every consumer makes, where the gate lives).
  *
  * SERVER/BUILD ONLY: this module reads the filesystem.
  */
@@ -43,10 +55,43 @@ import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 
 import { IMPLICIT_SPOKE_ID, spokeCollectionIssues } from "../core/spoke/spoke-id.mjs";
+import { spokeHubCollectionIssues } from "../core/spoke/spoke-hub-id.mjs";
 import { normalizeHostname } from "../core/spoke/hostname.mjs";
 
 /** The authored manifest an Installation may carry at its own root. */
 export const INSTALLATION_SPOKE_COLLECTION_FILE_NAME = "spokes.json";
+
+/**
+ * THE NESTED AUTHORING FORM'S ONE LEAF (FOUNDATION-ID-M3-P1): `spokeHubs`, an Installation's IDENTIFIED
+ * Spoke Hub collection, each Hub carrying its identity and explicitly containing its Spokes.
+ *
+ * It is MUTUALLY EXCLUSIVE with the flat `spokes` form — an Installation is authored one way or the other,
+ * never both, and never by precedence.
+ */
+export const INSTALLATION_SPOKE_HUB_COLLECTION_LEAF = "spokeHubs";
+
+/**
+ * THE PHASE 1 ACTIVATION REFUSAL — the ONE stable diagnostic that stands between an authored
+ * `spokeHubs` collection and a running deployment.
+ *
+ * The nested form is RECOGNISED and COMPLETELY VALIDATED (so an author sees every defect of their own
+ * manifest), and it is then REFUSED: it is never flattened into the flat Spoke collection, no Spoke Hub
+ * and no Spoke is chosen for it, and no consumer of this seam — the build's selection seam, the S3C1
+ * configuration authority, the installation runtime, the establishment boundary, the host-routing
+ * authority — can obtain declarations from it. Existing flat and legacy Installations are untouched by
+ * this gate: it applies only to a manifest that declares `spokeHubs`.
+ *
+ * The gate is lifted when the runtime identity and isolation work lands, and not before.
+ *
+ * @type {string}
+ */
+export const SPOKE_HUB_RUNTIME_NOT_ENABLED =
+  'FOUNDATION-ID-M3-P1: "spokeHubs" declares an IDENTIFIED SPOKE HUB COLLECTION, and multi-Spoke-Hub ' +
+  "runtime support is NOT YET ENABLED. This form is recognised and validated so that every authoring " +
+  "defect is reported, but an Installation authored with it cannot be built, composed or run: it is " +
+  "never flattened into the flat Spoke collection, and no Spoke Hub and no Spoke is chosen for it. " +
+  'Author the flat "spokes" form until the runtime identity and isolation work enables this one.';
+
 
 /**
  * The DEDICATED NAMESPACE every explicitly declared Spoke root lives in: `<InstallationRoot>/spokes/`.
@@ -130,11 +175,6 @@ export const installationSpokeCollectionSchema = {
   safeParse(raw) {
     /** @type {{ path: (string|number)[], message: string }[]} */
     const issues = [];
-    const unrecognized = (value, allowed, at) => {
-      for (const key of Object.keys(value)) {
-        if (!allowed.includes(key)) issues.push({ path: at, message: `Unrecognized key: "${key}"` });
-      }
-    };
 
     if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
       return {
@@ -143,7 +183,23 @@ export const installationSpokeCollectionSchema = {
       };
     }
 
-    unrecognized(raw, ["spokes", "inspectionSpoke", "inspectionHosts", "spokeSwitcher"], []);
+    // FOUNDATION-ID-M3-P1 — THE NESTED FORM: RECOGNISED, VALIDATED AND REFUSED.
+    //
+    // A manifest that declares `spokeHubs` never reaches the flat code path below, so the flat form's
+    // diagnostics are untouched by this form's existence. The nested form is parsed structurally and
+    // refused UNCONDITIONALLY (`spokeHubAuthoringIssues`), so no consumer of this schema can ever obtain
+    // `success: true` for it — not even for a collection with ONE Hub, and not through any other entry.
+    if (declaresSpokeHubCollection(raw)) {
+      const nested = installationSpokeHubCollectionSchema.safeParse(raw);
+      return { success: false, error: { issues: spokeHubAuthoringIssues(raw, nested) } };
+    }
+
+    unrecognized(
+      raw,
+      ["spokes", "inspectionSpoke", "inspectionHosts", "spokeSwitcher"],
+      [],
+      issues,
+    );
     if (!Array.isArray(raw.spokes)) {
       issues.push({ path: ["spokes"], message: "Invalid input: expected array" });
       return { success: false, error: { issues } };
@@ -193,77 +249,17 @@ export const installationSpokeCollectionSchema = {
     /** @type {{ options: { spokeId: string, label: string, href: string }[] } | null} */
     let spokeSwitcher = null;
     if (raw.spokeSwitcher !== undefined && raw.spokeSwitcher !== null) {
-      if (typeof raw.spokeSwitcher !== "object" || Array.isArray(raw.spokeSwitcher)) {
-        issues.push({ path: ["spokeSwitcher"], message: "Invalid input: expected object" });
-      } else {
-        unrecognized(raw.spokeSwitcher, ["options"], ["spokeSwitcher"]);
-        if (!Array.isArray(raw.spokeSwitcher.options)) {
-          issues.push({ path: ["spokeSwitcher", "options"], message: "Invalid input: expected array" });
-        } else {
-          /** @type {{ spokeId: string, label: string, href: string }[]} */
-          const options = [];
-          raw.spokeSwitcher.options.forEach((option, index) => {
-            const at = ["spokeSwitcher", "options", index];
-            if (option === null || typeof option !== "object" || Array.isArray(option)) {
-              issues.push({ path: at, message: "Invalid input: expected object" });
-              return;
-            }
-            unrecognized(option, ["spokeId", "label", "href"], at);
-            /** @type {{ spokeId?: string, label?: string, href?: string }} */
-            const typed = {};
-            let complete = true;
-            for (const leaf of ["spokeId", "label", "href"]) {
-              if (typeof option[leaf] !== "string") {
-                issues.push({ path: [...at, leaf], message: "Invalid input: expected string" });
-                complete = false;
-              } else {
-                typed[leaf] = option[leaf];
-              }
-            }
-            if (complete) options.push(/** @type {{ spokeId: string, label: string, href: string }} */ (typed));
-          });
-          spokeSwitcher = { options };
-        }
-      }
+      spokeSwitcher = switcherStructure(raw.spokeSwitcher, ["spokeSwitcher"], issues);
     }
 
+    // Every entry's STRUCTURE — including the OPTIONAL `hostAliases` of the Spoke's ADDITIONAL hostname
+    // claims (WEB-1 owner requirement 6) — is decided by ONE shared rule, so the flat form and the nested
+    // form cannot drift into accepting different Spoke leaves.
     /** @type {{ id: string, root: string, hostAliases: string[] }[]} */
     const declared = [];
     raw.spokes.forEach((entry, index) => {
-      const at = ["spokes", index];
-      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
-        issues.push({ path: at, message: "Invalid input: expected object" });
-        return;
-      }
-      unrecognized(entry, ["id", "root", "hostAliases"], at);
-      const idIsString = typeof entry.id === "string";
-      const rootIsString = typeof entry.root === "string";
-      if (!idIsString) issues.push({ path: [...at, "id"], message: "Invalid input: expected string" });
-      if (!rootIsString) issues.push({ path: [...at, "root"], message: "Invalid input: expected string" });
-      // OPTIONAL, and structural only — the Spoke's ADDITIONAL hostname claims (WEB-1 owner requirement 6):
-      // exact hostnames this Spoke answers for IN ADDITION to its canonical one, which stays the origin
-      // every canonical URL, sitemap entry and social card is built from. WHETHER each value is an exact
-      // hostname, and whether it collides with another Spoke's claim or with an inspection hostname, are
-      // checks the authorities make below and in `./spoke-host-routing.mjs` — never restated here.
-      /** @type {string[]} */
-      const hostAliases = [];
-      if (entry.hostAliases !== undefined && entry.hostAliases !== null) {
-        if (!Array.isArray(entry.hostAliases)) {
-          issues.push({ path: [...at, "hostAliases"], message: "Invalid input: expected array" });
-        } else {
-          entry.hostAliases.forEach((value, aliasIndex) => {
-            if (typeof value !== "string") {
-              issues.push({
-                path: [...at, "hostAliases", aliasIndex],
-                message: "Invalid input: expected string",
-              });
-            } else {
-              hostAliases.push(value);
-            }
-          });
-        }
-      }
-      if (idIsString && rootIsString) declared.push({ id: entry.id, root: entry.root, hostAliases });
+      const declaredEntry = spokeDeclarationStructure(entry, ["spokes", index], issues);
+      if (declaredEntry !== null) declared.push(declaredEntry);
     });
 
     return issues.length > 0
@@ -271,6 +267,325 @@ export const installationSpokeCollectionSchema = {
       : { success: true, data: { spokes: declared, inspectionSpoke, inspectionHosts, spokeSwitcher } };
   },
 };
+
+/**
+ * Whether a parsed manifest DECLARES the nested identified-Spoke-Hub form.
+ *
+ * THE PRESENCE OF THE KEY decides it, whatever the value: `spokeHubs: null`, `spokeHubs: []` and a
+ * populated `spokeHubs` all declare the form — so an author can never be told about a *flat*-form problem
+ * in a manifest they wrote in the nested form, and no manifest can slip past the activation refusal by
+ * leaving the leaf empty. Nothing is inferred from a value, an order, a directory or a file name.
+ *
+ * @param {unknown} raw the parsed manifest
+ * @returns {boolean}
+ */
+function declaresSpokeHubCollection(raw) {
+  return (
+    raw !== null &&
+    typeof raw === "object" &&
+    !Array.isArray(raw) &&
+    raw[INSTALLATION_SPOKE_HUB_COLLECTION_LEAF] !== undefined
+  );
+}
+
+/**
+ * THE ONE STRICT-LEAF RULE, shared by both authoring forms: every key an authored object actually carries
+ * must be a leaf its form allows. An unknown leaf is refused rather than ignored, because a leaf nobody
+ * reads is a leaf nobody meant to write — and because `spokes`, `spokeHubs` and `spokeSwitcher` must never
+ * be silently accepted together.
+ *
+ * It reports into the caller's issue list, so ONE implementation serves the flat schema, the nested schema
+ * and every shared structural helper.
+ *
+ * @param {Record<string, unknown>} value the authored object
+ * @param {readonly string[]} allowed the leaves this form allows
+ * @param {(string|number)[]} at the path the object was authored at
+ * @param {{ path: (string|number)[], message: string }[]} issues the issue list to report into
+ */
+function unrecognized(value, allowed, at, issues) {
+  for (const key of Object.keys(value)) {
+    if (!allowed.includes(key)) issues.push({ path: at, message: `Unrecognized key: "${key}"` });
+  }
+}
+
+/**
+ * ONE authored Spoke entry's STRUCTURE — the SAME rule in BOTH authoring forms: the flat `spokes[]` list,
+ * and a nested Spoke Hub's own `spokes[]` list. It is spelled once so the two forms cannot drift into
+ * accepting different leaves.
+ *
+ * `hostAliases` is OPTIONAL and structural only — the Spoke's ADDITIONAL hostname claims. WHETHER each
+ * value is an exact hostname, and whether it collides with another Spoke's claim, are checks the
+ * authorities make (`resolveAuthoredSpoke` below, `./spoke-host-routing.mjs`), never restated here.
+ *
+ * @param {unknown} entry the authored entry
+ * @param {(string|number)[]} at the path the entry was authored at
+ * @param {{ path: (string|number)[], message: string }[]} issues the issue list to report into
+ * @returns {{ id: string, root: string, hostAliases: string[] } | null} the typed entry, or `null`
+ */
+function spokeDeclarationStructure(entry, at, issues) {
+  if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+    issues.push({ path: at, message: "Invalid input: expected object" });
+    return null;
+  }
+
+  unrecognized(entry, ["id", "root", "hostAliases"], at, issues);
+  const idIsString = typeof entry.id === "string";
+  const rootIsString = typeof entry.root === "string";
+  if (!idIsString) issues.push({ path: [...at, "id"], message: "Invalid input: expected string" });
+  if (!rootIsString) issues.push({ path: [...at, "root"], message: "Invalid input: expected string" });
+
+  /** @type {string[]} */
+  const hostAliases = [];
+  if (entry.hostAliases !== undefined && entry.hostAliases !== null) {
+    if (!Array.isArray(entry.hostAliases)) {
+      issues.push({ path: [...at, "hostAliases"], message: "Invalid input: expected array" });
+    } else {
+      entry.hostAliases.forEach((value, aliasIndex) => {
+        if (typeof value !== "string") {
+          issues.push({
+            path: [...at, "hostAliases", aliasIndex],
+            message: "Invalid input: expected string",
+          });
+        } else {
+          hostAliases.push(value);
+        }
+      });
+    }
+  }
+
+  if (!idIsString || !rootIsString) return null;
+  return { id: entry.id, root: entry.root, hostAliases };
+}
+
+/**
+ * ONE hub-scoped Spoke switcher's STRUCTURE — again the SAME rule in both authoring forms: the flat
+ * Installation-wide Hub's `spokeSwitcher`, and each nested Hub's own.
+ *
+ * STRUCTURAL ONLY: whether an option's destination actually ROUTES to the member it names is a routing
+ * question (`./spoke-host-routing.mjs`), and whether an option names a DECLARED member is decided where
+ * the declared set is known (`hubSwitcherMembership`). ORDER IS AUTHORED DATA: the list is preserved
+ * exactly as written, never sorted and never derived.
+ *
+ * @param {unknown} value the authored switcher
+ * @param {(string|number)[]} at the path it was authored at
+ * @param {{ path: (string|number)[], message: string }[]} issues the issue list to report into
+ * @returns {{ options: { spokeId: string, label: string, href: string }[] } | null}
+ */
+function switcherStructure(value, at, issues) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    issues.push({ path: at, message: "Invalid input: expected object" });
+    return null;
+  }
+
+  unrecognized(value, ["options"], at, issues);
+  if (!Array.isArray(value.options)) {
+    issues.push({ path: [...at, "options"], message: "Invalid input: expected array" });
+    return null;
+  }
+
+  /** @type {{ spokeId: string, label: string, href: string }[]} */
+  const options = [];
+  value.options.forEach((option, index) => {
+    const optionAt = [...at, "options", index];
+    if (option === null || typeof option !== "object" || Array.isArray(option)) {
+      issues.push({ path: optionAt, message: "Invalid input: expected object" });
+      return;
+    }
+    unrecognized(option, ["spokeId", "label", "href"], optionAt, issues);
+    /** @type {{ spokeId?: string, label?: string, href?: string }} */
+    const typed = {};
+    let complete = true;
+    for (const leaf of ["spokeId", "label", "href"]) {
+      if (typeof option[leaf] !== "string") {
+        issues.push({ path: [...optionAt, leaf], message: "Invalid input: expected string" });
+        complete = false;
+      } else {
+        typed[leaf] = option[leaf];
+      }
+    }
+    if (complete) options.push(typed);
+  });
+
+  return { options };
+}
+
+/**
+ * THE NESTED AUTHORING FORM'S STRUCTURE (FOUNDATION-ID-M3-P1) — an Installation's IDENTIFIED SPOKE HUB
+ * collection.
+ *
+ *     <InstallationRoot>/spokes.json
+ *       { "spokeHubs": [ { "id": "…", "spokes": [ { "id": "…", "root": "spokes/…" } ] } ] }
+ *
+ * STRUCTURAL ONLY, and only a RECOGNISER: it answers "is this authored manifest shaped as an identified
+ * Spoke Hub collection?" and nothing else. It resolves NO root, reads no configuration, composes no Spoke,
+ * returns NO runtime collection, and NOTHING consumes it to build — every path from a manifest to a
+ * runnable deployment goes through `resolveSpokeDeclarations`, which refuses this form unconditionally
+ * (`SPOKE_HUB_RUNTIME_NOT_ENABLED`).
+ *
+ * The leaves are the SAME leaves the flat form authors, regrouped: a Spoke entry is `id`, `root` and the
+ * OPTIONAL `hostAliases` (`spokeDeclarationStructure`), a hub-scoped `spokeSwitcher` is the same switcher
+ * (`switcherStructure`), and `spokeHubs` is the new grouping. What is new is that every Spoke explicitly
+ * belongs to an identified Hub.
+ *
+ * The INSTALLATION-level `inspectionSpoke` / `inspectionHosts` leaves are recognised — they are
+ * manifest-level facts, not Hub facts — but their nested-form meaning (a COMPOSITE Spoke reference, because
+ * a local id no longer names one Spoke) is LATER work: nothing interprets them while the form is refused,
+ * and no Hub and no Spoke is ever chosen from them.
+ *
+ * @type {{ safeParse: (raw: unknown) => { success: true, data: { hubs: { id: string, spokes: { id: string, root: string, hostAliases: string[] }[], spokeSwitcher: { options: { spokeId: string, label: string, href: string }[] } | null }[], inspectionSpoke: string | null, inspectionHosts: string[] } } | { success: false, error: { issues: { path: (string|number)[], message: string }[] } } }}
+ */
+export const installationSpokeHubCollectionSchema = {
+  safeParse(raw) {
+    /** @type {{ path: (string|number)[], message: string }[]} */
+    const issues = [];
+
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+      return {
+        success: false,
+        error: { issues: [{ path: [], message: "Invalid input: expected object" }] },
+      };
+    }
+
+    unrecognized(
+      raw,
+      [
+        INSTALLATION_SPOKE_HUB_COLLECTION_LEAF,
+        "spokes",
+        "spokeSwitcher",
+        "inspectionSpoke",
+        "inspectionHosts",
+      ],
+      [],
+      issues,
+    );
+
+    if (!Array.isArray(raw[INSTALLATION_SPOKE_HUB_COLLECTION_LEAF])) {
+      issues.push({
+        path: [INSTALLATION_SPOKE_HUB_COLLECTION_LEAF],
+        message: "Invalid input: expected array",
+      });
+      return { success: false, error: { issues } };
+    }
+
+    // OPTIONAL manifest-level leaves, typed exactly as the flat form types them: the STRUCTURE is shared
+    // even though this form's MEANING for them is later work.
+    /** @type {string | null} */
+    let inspectionSpoke = null;
+    if (raw.inspectionSpoke !== undefined && raw.inspectionSpoke !== null) {
+      if (typeof raw.inspectionSpoke !== "string") {
+        issues.push({ path: ["inspectionSpoke"], message: "Invalid input: expected string" });
+      } else {
+        inspectionSpoke = raw.inspectionSpoke;
+      }
+    }
+
+    /** @type {string[]} */
+    const inspectionHosts = [];
+    if (raw.inspectionHosts !== undefined && raw.inspectionHosts !== null) {
+      if (!Array.isArray(raw.inspectionHosts)) {
+        issues.push({ path: ["inspectionHosts"], message: "Invalid input: expected array" });
+      } else {
+        raw.inspectionHosts.forEach((value, index) => {
+          if (typeof value !== "string") {
+            issues.push({ path: ["inspectionHosts", index], message: "Invalid input: expected string" });
+          } else {
+            inspectionHosts.push(value);
+          }
+        });
+      }
+    }
+
+    /** @type {{ id: string, spokes: { id: string, root: string, hostAliases: string[] }[], spokeSwitcher: { options: { spokeId: string, label: string, href: string }[] } | null }[]} */
+    const hubs = [];
+    raw[INSTALLATION_SPOKE_HUB_COLLECTION_LEAF].forEach((hub, index) => {
+      const at = [INSTALLATION_SPOKE_HUB_COLLECTION_LEAF, index];
+      if (hub === null || typeof hub !== "object" || Array.isArray(hub)) {
+        issues.push({ path: at, message: "Invalid input: expected object" });
+        return;
+      }
+      unrecognized(hub, ["id", "spokes", "spokeSwitcher"], at, issues);
+
+      const idIsString = typeof hub.id === "string";
+      if (!idIsString) issues.push({ path: [...at, "id"], message: "Invalid input: expected string" });
+
+      if (!Array.isArray(hub.spokes)) {
+        issues.push({ path: [...at, "spokes"], message: "Invalid input: expected array" });
+        return;
+      }
+
+      /** @type {{ id: string, root: string, hostAliases: string[] }[]} */
+      const spokes = [];
+      hub.spokes.forEach((entry, spokeIndex) => {
+        const declaredEntry = spokeDeclarationStructure(entry, [...at, "spokes", spokeIndex], issues);
+        if (declaredEntry !== null) spokes.push(declaredEntry);
+      });
+
+      /** @type {{ options: { spokeId: string, label: string, href: string }[] } | null} */
+      let spokeSwitcher = null;
+      if (hub.spokeSwitcher !== undefined && hub.spokeSwitcher !== null) {
+        spokeSwitcher = switcherStructure(hub.spokeSwitcher, [...at, "spokeSwitcher"], issues);
+      }
+
+      if (idIsString) hubs.push({ id: hub.id, spokes, spokeSwitcher });
+    });
+
+    return issues.length > 0
+      ? { success: false, error: { issues } }
+      : { success: true, data: { hubs, inspectionSpoke, inspectionHosts } };
+  },
+};
+
+/**
+ * EVERY issue the nested form raises WITHOUT reading the filesystem: the activation refusal first, then the
+ * manifest-level authoring rules, then the structure of the collection itself.
+ *
+ * THE ACTIVATION REFUSAL COMES FIRST, and always: it is the reason this manifest cannot run at all, so an
+ * author reads it before the defects and a caller matching the diagnostic does so without depending on what
+ * else happens to be wrong. It is unconditional — including for a collection with exactly ONE Hub — because
+ * "one identified Hub" is still a manifest the runtime cannot serve.
+ *
+ * @param {Record<string, unknown>} raw the parsed manifest
+ * @param {{ success: true, data: unknown } | { success: false, error: { issues: { path: (string|number)[], message: string }[] } }} structural the collection's own structural answer
+ * @returns {{ path: (string|number)[], message: string }[]}
+ */
+function spokeHubAuthoringIssues(raw, structural) {
+  /** @type {{ path: (string|number)[], message: string }[]} */
+  const issues = [
+    { path: [INSTALLATION_SPOKE_HUB_COLLECTION_LEAF], message: SPOKE_HUB_RUNTIME_NOT_ENABLED },
+  ];
+
+  // THE TWO FORMS ARE MUTUALLY EXCLUSIVE — never a precedence rule, never a silent migration.
+  if (raw.spokes !== undefined) {
+    issues.push({
+      path: ["spokes"],
+      message:
+        'Invalid input: "spokes" and "spokeHubs" are MUTUALLY EXCLUSIVE — an Installation is authored one ' +
+        "way or the other, never both. Declare its Spokes either flat, as \"spokes\", or grouped into " +
+        'identified Spoke Hubs, as "spokeHubs"; nothing is merged and no precedence exists.',
+    });
+  }
+
+  // A HUB-SCOPED SWITCHER BELONGS TO ITS HUB. At the manifest level, in this form, it would name neither
+  // the Hub nor the membership it offers — an ambiguous authoring leaf, refused rather than guessed at.
+  if (raw.spokeSwitcher !== undefined) {
+    issues.push({
+      path: ["spokeSwitcher"],
+      message:
+        'Invalid input: a hub-scoped "spokeSwitcher" is authored BESIDE THE SPOKES IT OFFERS, so in the ' +
+        'nested form it belongs INSIDE the Spoke Hub that owns them ("spokeHubs[].spokeSwitcher"). A ' +
+        "manifest-level switcher in this form would name no Hub and no membership.",
+    });
+  }
+
+  if (!structural.success) issues.push(...structural.error.issues);
+  return issues;
+}
+
+/** ONE schema issue as the readable line every caller reports: the path it was found at, then its message. */
+function renderZodIssue(issue) {
+  const where = issue.path.join(".") || "(root)";
+  return `${where}: ${issue.message}`;
+}
 
 function renderIssues(issues) {
   return issues.map((issue) => `  - ${issue}`).join("\n");
@@ -316,6 +631,248 @@ function locatorIssue(locator, where) {
 function isInside(root, target) {
   const relative = path.relative(root, target);
   return !(relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative));
+}
+
+/**
+ * ONE authored Spoke entry, RESOLVED AND PROVEN — the SHARED per-Spoke rule set, used by BOTH authoring
+ * forms: the flat `spokes[]` list, and a nested Spoke Hub's own `spokes[]` list.
+ *
+ * It answers the AUTHORING questions only, in reading order, and reports the FIRST defect that makes a root
+ * unusable — so a diagnostic never speculates about a directory it could not resolve:
+ *
+ *   · the locator is lexical: relative, POSIX, free of `..`, and beneath the dedicated `spokes/` namespace
+ *     (which is an ownership boundary, so the container itself is not a Spoke root);
+ *   · the root EXISTS, IS a directory, and resolves inside the Installation root AND inside `spokes/`;
+ *   · it carries `site.config.json` — the ONE root-level contract a Spoke root satisfies;
+ *   · no OTHER Spoke of the Installation claims the same PHYSICAL directory. The `seen` map is shared
+ *     across the whole resolution, so one authored root can never be declared twice — in one Hub, or
+ *     across two — while the message names the Spoke that claimed it first;
+ *   · each ADDITIONAL hostname claim (`hostAliases`, WEB-1 owner requirement 6) is an exact hostname in the
+ *     ONE normalized spelling and is stated once.
+ *
+ * It creates no Spoke, reads no configuration and composes no Hub: it resolves an AUTHORED ROOT.
+ *
+ * @param {string} root the resolved Installation root
+ * @param {string} realRoot its real path (the outermost containment boundary)
+ * @param {Map<string, { subject: string, locator: string }>} seen every physical root already claimed
+ * @param {{ id: string, root: string, hostAliases: string[] }} entry the authored entry
+ * @param {string} subject how ANOTHER Spoke's message names this Spoke (e.g. `Spoke #2`)
+ * @param {string} where the full subject this Spoke's own messages use (e.g. `Spoke #2 ("docs")`)
+ * @param {string[]} issues the issue list to report into
+ * @returns {{ id: string, locator: string, root: string, hostAliases: string[] } | null}
+ */
+function resolveAuthoredSpoke(root, realRoot, seen, entry, subject, where, issues) {
+  const lexical = locatorIssue(entry.root, where);
+  if (lexical !== null) {
+    issues.push(lexical);
+    return null;
+  }
+
+  const resolved = path.resolve(root, entry.root);
+  if (!existsSync(resolved)) {
+    issues.push(`${where}: root "${entry.root}" does not exist`);
+    return null;
+  }
+  if (!statSync(resolved).isDirectory()) {
+    issues.push(`${where}: root "${entry.root}" is not a directory`);
+    return null;
+  }
+
+  // PHYSICAL containment, in TWO steps: the Installation root must not be escaped at all, and the boundary
+  // that actually owns Spoke roots is the DEDICATED CONTAINER — so the container itself may not be a link
+  // out, and a link inside `spokes/` may not reach material elsewhere in the Installation.
+  const realResolved = realpathSync(resolved);
+  if (!isInside(realRoot, realResolved)) {
+    issues.push(
+      `${where}: root "${entry.root}" resolves outside the Installation root — a Spoke root must ` +
+        "be authored inside it",
+    );
+    return null;
+  }
+  const realContainer = realpathSync(path.join(root, SPOKE_ROOTS_DIRECTORY_NAME));
+  if (!isInside(realContainer, realResolved)) {
+    issues.push(
+      `${where}: root "${entry.root}" resolves outside the dedicated ` +
+        `"${SPOKE_ROOTS_DIRECTORY_NAME}/" namespace`,
+    );
+    return null;
+  }
+  if (!existsSync(path.join(resolved, SPOKE_CONFIG_FILE_NAME))) {
+    issues.push(`${where}: root "${entry.root}" carries no "${SPOKE_CONFIG_FILE_NAME}"`);
+    return null;
+  }
+
+  const previous = seen.get(realResolved);
+  if (previous !== undefined) {
+    issues.push(
+      `${where}: root "${entry.root}" resolves to the same directory as ${previous.subject} ` +
+        `("${previous.locator}") — two Spokes cannot share one authored root`,
+    );
+    return null;
+  }
+  seen.set(realResolved, { subject, locator: entry.root });
+
+  // THE SPOKE'S ADDITIONAL CLAIMS — resolved HERE, where the Spoke they belong to is known, so every
+  // diagnostic can name it. Each one must be an EXACT hostname in the ONE normalized spelling (never a
+  // wildcard, a suffix rule, a URL or a path — recognition at the boundary is exact equality), and a Spoke
+  // may not state the same alias twice: a duplicate would read as two claims while being one.
+  /** @type {string[]} */
+  const accepted = [];
+  for (const value of entry.hostAliases) {
+    const issue = exactHostnameIssue(value, `${where}: `, "hostAliases");
+    if (issue !== null) {
+      issues.push(issue);
+      continue;
+    }
+    if (accepted.includes(value)) {
+      issues.push(`${where}: hostAliases states "${value}" more than once`);
+      continue;
+    }
+    accepted.push(value);
+  }
+
+  return { id: entry.id, locator: entry.root, root: resolved, hostAliases: accepted };
+}
+
+/**
+ * THE HUB-SCOPED SPOKE SWITCHER'S MEMBERSHIP RULES, decided where a Hub's declared MEMBERS are known — ONE
+ * implementation for BOTH authoring forms, because the rules are identical and only the vocabulary of the
+ * membership sentence differs:
+ *
+ *   · every option must NAME a member of the Hub it is authored in — the membership boundary itself, so an
+ *     unrelated organization (which belongs to another Hub or another Installation) can never be listed;
+ *   · no two options may name the same member, or offer the same DESTINATION hostname — two options would
+ *     then send the visitor to one Spoke;
+ *   · the label must say something (it is what the visitor reads);
+ *   · the destination must be an absolute HTTPS ORIGIN (`switcherDestination`): a switcher travels to
+ *     another domain, so a relative path could not reach one, and a non-HTTPS origin is refused rather than
+ *     silently downgraded.
+ *
+ * WHETHER such an origin actually ROUTES to the member it names stays a routing question, refused by
+ * `./spoke-host-routing.mjs`. ORDER IS AUTHORED DATA: the returned list is preserved exactly as written,
+ * never sorted and never derived.
+ *
+ * @param {{ options: { spokeId: string, label: string, href: string }[] }} authored the valid switcher
+ * @param {readonly string[]} memberIds the Spokes of the Hub the switcher belongs to
+ * @param {{ where: string, members: string, audience: string }} vocabulary how this Hub's members and the
+ *   membership rule are named in a message
+ * @param {string[]} issues the issue list to report into
+ * @returns {{ options: { spokeId: string, label: string, href: string }[] } | null}
+ */
+function hubSwitcherMembership(authored, memberIds, vocabulary, issues) {
+  const before = issues.length;
+  const seenSpokes = new Set();
+  const seenHosts = new Set();
+
+  for (const [index, option] of authored.options.entries()) {
+    const where = `${vocabulary.where}[${index}]`;
+    if (!memberIds.includes(option.spokeId)) {
+      issues.push(
+        `${where}: spokeId "${option.spokeId}" is not ${vocabulary.members} ` +
+          `(${memberIds.map((id) => `"${id}"`).join(", ")}). ${vocabulary.audience}`,
+      );
+      continue;
+    }
+    if (option.label.trim() === "") {
+      issues.push(`${where}: label must not be blank — it is what the visitor reads.`);
+      continue;
+    }
+    const destination = switcherDestination(option.href);
+    if (destination === null) {
+      issues.push(
+        `${where}: href "${option.href}" must be an absolute HTTPS origin such as ` +
+          '"https://docs.example.test" — a switcher sends the visitor to ANOTHER domain, so a ' +
+          "relative path, a non-HTTPS scheme, a path, a query or a fragment can never be one.",
+      );
+      continue;
+    }
+    if (seenSpokes.has(option.spokeId)) {
+      issues.push(`${where}: spokeId "${option.spokeId}" is offered more than once`);
+      continue;
+    }
+    if (seenHosts.has(destination.hostname)) {
+      issues.push(
+        `${where}: href "${option.href}" names a destination hostname another option already offers — ` +
+          "two options would send the visitor to the same Spoke",
+      );
+      continue;
+    }
+    seenSpokes.add(option.spokeId);
+    seenHosts.add(destination.hostname);
+  }
+
+  if (issues.length > before) return null;
+  return { options: authored.options.map((option) => ({ ...option })) };
+}
+
+/**
+ * Every SEMANTIC issue in a STRUCTURALLY valid nested collection: identity, membership, roots, and each
+ * Hub's own switcher.
+ *
+ * It is the nested form's counterpart to the flat path's semantic pass, and it REUSES the same authorities
+ * rather than restating them:
+ *
+ *   · SPOKE HUB IDENTITY — `../core/spoke/spoke-hub-id.mjs`: nonblank ids, the reserved marker, exact
+ *     uniqueness, at least one Hub;
+ *   · SPOKE IDENTITY — `../core/spoke/spoke-id.mjs`, applied to EACH Hub's own members, so an id is unique
+ *     WITHIN its Hub and may REPEAT in another — which is exactly why a Spoke is named by a composite
+ *     reference. A Hub with NO member is reported by that same authority: an authored Hub cannot be empty;
+ *   · ROOTS — `resolveAuthoredSpoke`, with ONE `seen` map for the whole collection, so reusing a physical
+ *     root across two Hub declarations is refused exactly as reusing it twice inside one is;
+ *   · THE HUB-SCOPED SWITCHER — `hubSwitcherMembership`, against that Hub's own members.
+ *
+ * Only a structurally valid collection reaches here, so each diagnostic can name its Hub and its Spoke
+ * exactly as authored. Nothing is returned: the caller throws on any issue, and the nested form is refused
+ * by the activation gate in every case.
+ *
+ * @param {string} root the resolved Installation root
+ * @param {{ id: string, spokes: { id: string, root: string, hostAliases: string[] }[], spokeSwitcher: { options: { spokeId: string, label: string, href: string }[] } | null }[]} hubs the structurally valid Hubs
+ * @returns {string[]} the issues, empty when the nested collection is coherent
+ */
+function identifiedSpokeHubDeclarationIssues(root, hubs) {
+  /** @type {string[]} */
+  const issues = [...spokeHubCollectionIssues(hubs.map((hub) => hub.id))];
+
+  const realRoot = realpathSync(root);
+  /** @type {Map<string, { subject: string, locator: string }>} */
+  const seen = new Map();
+
+  hubs.forEach((hub, hubIndex) => {
+    const hubWhere = `Spoke Hub #${hubIndex + 1} ("${hub.id}")`;
+
+    issues.push(
+      ...spokeCollectionIssues(hub.spokes.map((spoke) => spoke.id)).map(
+        (issue) => `${hubWhere}: ${issue}`,
+      ),
+    );
+
+    hub.spokes.forEach((spoke, spokeIndex) => {
+      resolveAuthoredSpoke(
+        root,
+        realRoot,
+        seen,
+        spoke,
+        `${hubWhere} > Spoke #${spokeIndex + 1}`,
+        `${hubWhere} > Spoke #${spokeIndex + 1} ("${spoke.id}")`,
+        issues,
+      );
+    });
+
+    if (hub.spokeSwitcher !== null) {
+      hubSwitcherMembership(
+        hub.spokeSwitcher,
+        hub.spokes.map((spoke) => spoke.id),
+        {
+          where: `${hubWhere} > spokeSwitcher.options`,
+          members: "one of the Spokes this Spoke Hub declares",
+          audience: "A switcher is HUB-SCOPED: it can only offer Spokes its own Spoke Hub declares.",
+        },
+        issues,
+      );
+    }
+  });
+
+  return issues;
 }
 
 /**
@@ -402,14 +959,24 @@ function resolveExplicitSpokeDeclarations(root, manifestFile) {
     );
   }
 
+  // FOUNDATION-ID-M3-P1 — THE NESTED FORM: RECOGNISED, COMPLETELY VALIDATED, AND REFUSED.
+  //
+  // The activation refusal, the manifest-level authoring rules and the collection's STRUCTURE are reported
+  // first (none of them reads the filesystem), and only a STRUCTURALLY valid collection is then validated
+  // SEMANTICALLY — identity, membership, roots, containment — so a diagnostic never refers to a Hub whose
+  // own shape is unusable. Nothing is RETURNED from this branch: there is no code path in which a
+  // `spokeHubs` manifest becomes declarations, and therefore none in which it can be built, composed or run.
+  if (declaresSpokeHubCollection(raw)) {
+    const nested = installationSpokeHubCollectionSchema.safeParse(raw);
+    throw invalid([
+      ...spokeHubAuthoringIssues(raw, nested).map(renderZodIssue),
+      ...(nested.success ? identifiedSpokeHubDeclarationIssues(root, nested.data.hubs) : []),
+    ]);
+  }
+
   const parsed = installationSpokeCollectionSchema.safeParse(raw);
   if (!parsed.success) {
-    throw invalid(
-      parsed.error.issues.map((issue) => {
-        const where = issue.path.join(".") || "(root)";
-        return `${where}: ${issue.message}`;
-      }),
-    );
+    throw invalid(parsed.error.issues.map(renderZodIssue));
   }
 
   const declarations = parsed.data.spokes;
@@ -417,84 +984,22 @@ function resolveExplicitSpokeDeclarations(root, manifestFile) {
   const issues = [...spokeCollectionIssues(declarations.map((entry) => entry.id))];
 
   const realRoot = realpathSync(root);
-  /** @type {Map<string, { index: number, locator: string }>} */
+  /** @type {Map<string, { subject: string, locator: string }>} */
   const seen = new Map();
-  /** @type {{ id: string, locator: string, root: string }[]} */
+  /** @type {{ id: string, locator: string, root: string, hostAliases: string[] }[]} */
   const declared = [];
 
   declarations.forEach((entry, index) => {
-    const where = `Spoke #${index + 1} ("${entry.id}")`;
-    const lexical = locatorIssue(entry.root, where);
-    if (lexical !== null) {
-      issues.push(lexical);
-      return;
-    }
-
-    const resolved = path.resolve(root, entry.root);
-    if (!existsSync(resolved)) {
-      issues.push(`${where}: root "${entry.root}" does not exist`);
-      return;
-    }
-    if (!statSync(resolved).isDirectory()) {
-      issues.push(`${where}: root "${entry.root}" is not a directory`);
-      return;
-    }
-
-    // PHYSICAL containment, in TWO steps: the Installation root must not be escaped at all, and the
-    // boundary that actually owns Spoke roots is the DEDICATED CONTAINER — so the container itself may
-    // not be a link out, and a link inside `spokes/` may not reach material elsewhere in the
-    // Installation.
-    const realResolved = realpathSync(resolved);
-    if (!isInside(realRoot, realResolved)) {
-      issues.push(
-        `${where}: root "${entry.root}" resolves outside the Installation root — a Spoke root must ` +
-          "be authored inside it",
-      );
-      return;
-    }
-    const realContainer = realpathSync(path.join(root, SPOKE_ROOTS_DIRECTORY_NAME));
-    if (!isInside(realContainer, realResolved)) {
-      issues.push(
-        `${where}: root "${entry.root}" resolves outside the dedicated ` +
-          `"${SPOKE_ROOTS_DIRECTORY_NAME}/" namespace`,
-      );
-      return;
-    }
-    if (!existsSync(path.join(resolved, SPOKE_CONFIG_FILE_NAME))) {
-      issues.push(`${where}: root "${entry.root}" carries no "${SPOKE_CONFIG_FILE_NAME}"`);
-      return;
-    }
-
-    const previous = seen.get(realResolved);
-    if (previous !== undefined) {
-      issues.push(
-        `${where}: root "${entry.root}" resolves to the same directory as Spoke #${previous.index} ` +
-          `("${previous.locator}") — two Spokes cannot share one authored root`,
-      );
-      return;
-    }
-    seen.set(realResolved, { index: index + 1, locator: entry.root });
-
-    // THE SPOKE'S ADDITIONAL CLAIMS (WEB-1 owner requirement 6) — resolved and validated HERE, where the
-    // Spoke they belong to is known, so every diagnostic can name it. Each one must be an EXACT hostname in
-    // the ONE normalized spelling (never a wildcard, a suffix rule, a URL or a path — recognition at the
-    // boundary is exact equality), and a Spoke may not state the same alias twice: a duplicate would read
-    // as two claims while being one.
-    const accepted = [];
-    for (const value of entry.hostAliases) {
-      const issue = exactHostnameIssue(value, `${where}: `, "hostAliases");
-      if (issue !== null) {
-        issues.push(issue);
-        continue;
-      }
-      if (accepted.includes(value)) {
-        issues.push(`${where}: hostAliases states "${value}" more than once`);
-        continue;
-      }
-      accepted.push(value);
-    }
-
-    declared.push({ id: entry.id, locator: entry.root, root: resolved, hostAliases: accepted });
+    const declaredEntry = resolveAuthoredSpoke(
+      root,
+      realRoot,
+      seen,
+      entry,
+      `Spoke #${index + 1}`,
+      `Spoke #${index + 1} ("${entry.id}")`,
+      issues,
+    );
+    if (declaredEntry !== null) declared.push(declaredEntry);
   });
 
   if (issues.length > 0) throw invalid(issues);
@@ -563,53 +1068,21 @@ function resolveExplicitSpokeDeclarations(root, manifestFile) {
     // downgraded. WHETHER that origin actually ROUTES to the member the option names is a routing question,
     // refused by `./spoke-host-routing.mjs`.
   const authoredSwitcher = parsed.data.spokeSwitcher;
-  /** @type {{ options: { spokeId: string, label: string, href: string }[] } | null} */
-  let spokeSwitcher = null;
-  if (authoredSwitcher !== null) {
-    const seenSpokes = new Set();
-    const seenHosts = new Set();
-    for (const [index, option] of authoredSwitcher.options.entries()) {
-      const where = `spokeSwitcher.options[${index}]`;
-      if (!declaredIds.includes(option.spokeId)) {
-        issues.push(
-          `${where}: spokeId "${option.spokeId}" is not one of the declared Spokes ` +
-            `(${declaredIds.map((id) => `"${id}"`).join(", ")}). A switcher between Spokes can only ` +
-            "offer Spokes this Installation declares.",
+  // ONE INSTALLATION IS ONE HUB, and these are its MEMBERS — so the membership authority is reached with
+  // this Installation's declared ids. ORDER IS AUTHORED DATA: the list is preserved exactly as written.
+  const spokeSwitcher =
+    authoredSwitcher === null
+      ? null
+      : hubSwitcherMembership(
+          authoredSwitcher,
+          declaredIds,
+          {
+            where: "spokeSwitcher.options",
+            members: "one of the declared Spokes",
+            audience: "A switcher between Spokes can only offer Spokes this Installation declares.",
+          },
+          issues,
         );
-        continue;
-      }
-      if (option.label.trim() === "") {
-        issues.push(`${where}: label must not be blank — it is what the visitor reads.`);
-        continue;
-      }
-      const destination = switcherDestination(option.href);
-      if (destination === null) {
-        issues.push(
-          `${where}: href "${option.href}" must be an absolute HTTPS origin such as ` +
-            '"https://docs.example.test" — a switcher sends the visitor to ANOTHER domain, so a ' +
-            "relative path, a non-HTTPS scheme, a path, a query or a fragment can never be one.",
-        );
-        continue;
-      }
-      if (seenSpokes.has(option.spokeId)) {
-        issues.push(`${where}: spokeId "${option.spokeId}" is offered more than once`);
-        continue;
-      }
-      if (seenHosts.has(destination.hostname)) {
-        issues.push(
-          `${where}: href "${option.href}" names a destination hostname another option already offers — ` +
-            "two options would send the visitor to the same Spoke",
-        );
-        continue;
-      }
-      seenSpokes.add(option.spokeId);
-      seenHosts.add(destination.hostname);
-    }
-    // ORDER IS AUTHORED DATA: the list is preserved exactly as written, never sorted, never derived.
-    if (issues.length === 0) {
-      spokeSwitcher = { options: authoredSwitcher.options.map((option) => ({ ...option })) };
-    }
-  }
 
   if (issues.length > 0) throw invalid(issues);
 

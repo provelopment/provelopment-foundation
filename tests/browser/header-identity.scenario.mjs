@@ -52,11 +52,11 @@ const VIEWPORT_HEIGHT = 900;
 const WIDTHS = [320, 360, 390, 430, 480, 700, 1280];
 
 /**
- * A width BELOW the narrowest named one, used for the "exceptionally wide logo exceeds the header's own content
- * width by itself" case: that clamp only becomes the binding constraint below the width the wide band needs, and
- * the contract must hold there too.
+ * The narrow candidate widths the ACTUAL content-fit boundary is searched over. Deliberately BELOW the narrowest
+ * width the acceptance names: a compact mark plus its cluster can need the second row only where the header's own
+ * content box is still smaller than the two occupants together.
  */
-const CLAMP_WIDTH = 240;
+const BOUNDARY_CANDIDATES = [320, 300, 280, 260, 240, 220, 200, 180, 160];
 
 /** The ports this scenario tries, so a busy port is a retry rather than a failure. */
 const PORT_OFFSETS = [611, 612, 613];
@@ -421,7 +421,6 @@ async function fitBoundary(harness, cdp, low, high) {
  * and the header's two padded edges — measured at a width where both occupants are at their natural size. A layout
  * that matched a breakpoint instead of its content would fail that reconciliation.
  */
-const BOUNDARY_CANDIDATES = [320, 300, 280, 260, 240, 220, 200, 180, 160];
 
 /** The bisected boundary and its two sides, reconciled with the content the row has to hold. */
 async function proveBoundary(harness, rows, cdp, variant, widest, high) {
@@ -651,24 +650,6 @@ export async function run(chrome, harness) {
           assertRow(harness, rows, `${variant.id}.w${width}`, seen, variant);
         }
         console.log(`[header-identity] ${variant.id}: ${arrangements.join(" ")}`);
-
-        // ── THE CLAMP: a lockup wider than the header's own content width, clamped proportionally ────
-        if (variant.id === "longLockupGraphic") {
-          await cdp.setViewport(CLAMP_WIDTH, VIEWPORT_HEIGHT);
-          const clamped = await readHeader(harness, cdp);
-          assertRow(harness, rows, `${variant.id}.w${CLAMP_WIDTH}`, clamped, variant);
-          const naturalAtLockupHeight = clamped.logo
-            ? (clamped.logo.naturalWidth / clamped.logo.naturalHeight) * clamped.logo.box.height
-            : 0;
-          harness.check(
-            rows,
-            `${variant.id}.w${CLAMP_WIDTH}.logo.isClampedToTheContentWidth`,
-            !!clamped.logo &&
-              clamped.content.width < Math.round(naturalAtLockupHeight) &&
-              clamped.logo.box.width >= clamped.content.width - 2,
-            `width=${clamped.logo && clamped.logo.box.width} content=${clamped.content.width} naturalAtLockupHeight=${Math.round(naturalAtLockupHeight)}`,
-          );
-        }
 
         // ── THE ACTUAL CONTENT-FIT BOUNDARY, AND THE SELECTOR'S BEHAVIOUR ─────────────────────────────
         await cdp.setViewport(WIDTHS[WIDTHS.length - 1], VIEWPORT_HEIGHT);

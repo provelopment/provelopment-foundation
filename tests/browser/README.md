@@ -374,9 +374,17 @@ tree stays clean.
   taller than the shared display size, never enlarged when the file is smaller than both, scaled to fit
   rather than cropped or stretched, and its intrinsic ratio preserved — for a compact square mark, a
   naturally small 24×24 mark, a conventional horizontal lockup, a header band wider than the maximum
-  and an exceptionally wide 64:1 lockup. No document overflow at any supported width (and a documented
-  below-280 fallback), unchanged behaviour at tablet and desktop widths, and the rail, drawer, bottom
-  bar, selectors and keyboard/pointer interactions protected throughout.
+  and an exceptionally wide 64:1 lockup. FOUNDATION-UI-R1F extends the scenario with the OPTIONAL compact
+  alternative: with `site.assets.logoCompact` configured the browser's own answer (`img.currentSrc`) is read
+  at every one of the 27 widths — the compact artwork below 600 CSS pixels, the primary logo at 600 and wider —
+  the intrinsic size of what LOADED is compared across the boundary (so a different file really was fetched),
+  every selected artwork must have completed loading, and resizing 600 → 599 → 600 → 599 WITHOUT reloading must
+  follow the boundary in both directions. Spoke-scoped compact artwork is proved on the test-owned Hub, where each
+  member authors its own differently-sized compact mark and the selection must be served from that member's own
+  namespace. A variant that configures no compact artwork composes no `<source>` at all and shows the primary logo
+  at every width (the unchanged case), and the text fallback renders no image. No document overflow at any
+  supported width (and a documented below-280 fallback), unchanged behaviour at tablet and desktop widths, and the
+  rail, drawer, bottom bar, selectors and keyboard/pointer interactions protected throughout.
 - **bottom navigation layout** (`bottom-nav-wrap` scenario, NAV1A): the sticky bar's rows
   are the `<li>` children of its `<ul>`, so the LIST owns their flow and wrapping. Proven
   with test-owned navigation fixtures on the disposable copy: SHORT labels share ONE row at

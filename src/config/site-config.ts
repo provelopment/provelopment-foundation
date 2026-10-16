@@ -307,6 +307,14 @@ export interface SiteAssetsConfig {
   /** The `logo-footer` role (absolute URL); composed into the footer. */
   readonly logoFooter?: string;
   /**
+   * FOUNDATION-UI-R1F — the optional `logo-compact` role (absolute URL): the COMPACT header artwork the
+   * browser selects BY VIEWPORT WIDTH below 600 CSS pixels, while `logo` is selected at and above it. A
+   * HEADER-PRESENTATION ALTERNATIVE only — `logo` stays the authority for structured data — and valid only
+   * beside a configured primary logo (the schema refuses it otherwise). Absent → the primary logo at every
+   * width, which is the state of every existing deployment.
+   */
+  readonly logoCompact?: string;
+  /**
    * P6-3B — the `banner-*` role (absolute URL), keyed by PAGE SLUG
    * (`""`/`"home"` = home; `"about"` = About; …). A page with no entry renders
    * no banner.

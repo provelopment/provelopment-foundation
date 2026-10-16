@@ -93,6 +93,10 @@ const CONFIGURED_ROLES = [
   { key: "site.assets.ogImage", file: "og-image.png", url: siteConfig.assets?.ogImage },
   { key: "site.assets.favicon", file: "favicon.svg", url: siteConfig.assets?.favicon },
   { key: "site.assets.logoFooter", file: "logo-footer.svg", url: siteConfig.assets?.logoFooter },
+  // FOUNDATION-UI-R1F — the OPTIONAL compact alternative to the header mark. Absent by default (the template
+  // ships no compact artwork) and valid only beside a configured primary logo, whose canonical filename it
+  // names when an installation does configure it.
+  { key: "site.assets.logoCompact", file: "logo-compact.svg", url: siteConfig.assets?.logoCompact },
   {
     key: 'site.assets.backgrounds["all"]',
     file: "background-all.svg",
@@ -174,7 +178,7 @@ describe("swap contract — the configured role inventory", () => {
     // Artwork-only roles ship NOTHING until an adopter provides artwork: the
     // template never invents example imagery — neither in the installation's own
     // artwork sources nor in the generated tree.
-    for (const file of ["og-image.png", "background-all.svg", "status-graphic.svg"]) {
+    for (const file of ["og-image.png", "background-all.svg", "status-graphic.svg", "logo-compact.svg"]) {
       expect(existsSync(shippedRoleSource(file)), `${file} must not ship as a source`).toBe(false);
       expect(existsSync(runtimeAsset(file)), `${file} must not ship with the template`).toBe(false);
     }

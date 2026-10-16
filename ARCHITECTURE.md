@@ -1808,6 +1808,18 @@ which exists so a deployment can demonstrate the same site in two presentations.
   authored artwork's SOURCE dimensions; exceptionally wide or intricate artwork may still be better
   served by a more suitable logo or by the text-brand fallback (`site.assets.logo` absent). The FOOTER
   mark keeps its own unchanged contract (a fixed display size, natural width, never cropped).
+- **ONE OPTIONAL COMPACT ARTWORK, SELECTED BY THE BROWSER** (FOUNDATION-UI-R1F). A deployment may configure
+  `site.assets.logoCompact` beside `site.assets.logo`: below 600 CSS pixels the header shows the compact artwork,
+  at 600 and wider the primary logo, with no compact artwork the primary logo at every width, and with no logo at
+  all the text brand. The header composes ONE `<picture>` with an optional `<source>` whose `media` is the boundary
+  and ONE `<img>` whose `src` is the primary logo, so the BROWSER performs the selection in its own source-selection
+  step: no client state, no resize listener, no hydration-dependent switching and no CSS-hidden duplicate image, and
+  the answer is the same on the first paint as after any resize. The artwork is authored through the established
+  `content/assets/**` source tree and served from the runtime namespace that owns it; a compact value that addresses
+  generated artwork this context cannot serve (including another Spoke's private namespace) fails the BUILD, which is
+  the one deliberate exception to the shared "missing file renders nothing" rule. Both kinds obey the display
+  contract above verbatim, and the compact leaf is a HEADER PRESENTATION input only — `site.assets.logo` remains the
+  authority for JSON-LD and every other consumer. The shipped capsule configures neither leaf, so it is unchanged.
 - **One exposed navigation, by construction.** The shell composes the structures of both
   layouts and marks each one with the layouts it is the active navigation for
   (`data-ui-shell-part="rail" | "top-nav" | "bottom-bar" | "mobile-drawer"` +

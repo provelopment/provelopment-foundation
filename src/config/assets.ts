@@ -1,4 +1,7 @@
 import { deploymentPaths, type RuntimeAssetNamespace } from "./deployment-root";
+// FOUNDATION-UI-R1F — the ONE authority for the per-Spoke runtime namespace PATH CONTAINER ("spokes"), so the
+// compact-logo rule recognises generated per-Spoke artwork addressing without spelling the container again.
+import { SPOKE_RUNTIME_CONTAINER } from "./spoke-runtime-segment.mjs";
 import {
   createRuntimeAssetOwnershipResolver,
   owningNamespaceIn,
@@ -309,4 +312,101 @@ export function assertConfiguredIconAssetsExistFor(
         `Place the asset in public/assets/ (a plain filename) or use "" to deliberately omit the icon.`,
     );
   }
+}
+
+/** The site-asset leaves the compact-logo rule reads (structural projection). */
+export interface HeaderLogoConfigSource {
+  /**
+   * The deployment's own base URL — the PARSED configuration's top-level `url` (`site.url` in the file), which
+   * is what makes "same-origin" answerable without a second spelling of the site's identity.
+   */
+  readonly url?: string;
+  readonly assets?: {
+    readonly logo?: string;
+    readonly logoCompact?: string;
+  };
+}
+
+/** The ORIGIN of an absolute URL, or `undefined` when there is none to compare (schema-validated elsewhere). */
+function originOf(url: string | undefined): string | undefined {
+  if (!url || url === "") return undefined;
+  try {
+    return new URL(url).origin;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * FOUNDATION-UI-R1F — THE COMPACT HEADER LOGO'S BUILD-TIME RULE.
+ *
+ * `site.assets.logoCompact` is the ONE optional header-presentation ALTERNATIVE to the primary brand logo: the
+ * browser selects it natively below 600 CSS pixels and the primary artwork at and above that width. It is not a
+ * second organisation identity (JSON-LD and every other consumer keep reading `site.assets.logo`), so the only
+ * question worth failing a build over is whether the artwork the compact leaf names can actually be SERVED by
+ * the context doing the asking.
+ *
+ * THE RULE, as narrow as it can be and still be useful:
+ *
+ *   · absent (or deliberately empty) → nothing to prove: the compact role is optional, and its absence is the
+ *     shipped state — the template ships no compact artwork and configures none;
+ *   · a value that addresses artwork the ENGINE GENERATES — SAME-ORIGIN as the deployment's own `site.url`, and
+ *     either under a runtime namespace this context declares (`/assets/**`, `/spokes/<segment>/assets/**`) or
+ *     anywhere inside the per-Spoke namespace container (`/spokes/**`, which exists ONLY as generated artwork) →
+ *     the basename MUST be owned by THIS resolver's namespaces, or the build fails. That is precisely what the
+ *     leaf means: artwork authored under `content/assets/**` is mirrored into the owning Spoke's namespace, so a
+ *     URL that names it while no namespace this context may serve holds it is a typo, artwork that was never
+ *     installed, or a path pointing at ANOTHER Spoke's private namespace — each of which would otherwise become
+ *     a broken responsive image at (or below) the boundary, or silently serve another Spoke's mark;
+ *   · anything else — another origin (a CDN or a third-party host), or a same-origin path OUTSIDE the generated
+ *     namespace space (`/uploads/logo-compact.svg`) → nothing to prove here, exactly as the primary logo's
+ *     external URLs are left alone: the engine does not own that file and cannot know whether it exists.
+ *
+ * The resolver is built from the context's OWN namespaces, so a context can only ever be judged by the artwork
+ * it may serve: "one Spoke can never load another Spoke's private compact logo" is enforced by construction,
+ * never by a second, weaker check.
+ *
+ * The companion rule — a compact logo is valid only beside a primary logo — belongs to the SCHEMA
+ * (`./schema`, `siteAssetsSchema`), which already refuses the combination with an actionable message; it is
+ * deliberately not restated here.
+ */
+export function assertConfiguredCompactLogoAvailableFor(
+  resolver: RuntimeAssetOwnershipResolver,
+  json: HeaderLogoConfigSource,
+): void {
+  const configured = json.assets?.logoCompact;
+  if (!configured || configured === "") return;
+  const pathname = resolver.assetPathFromUrl(configured);
+  if (pathname === undefined || pathname === "") return;
+  const name = pathname.split("/").pop() ?? "";
+  if (name === "") return;
+
+  // OWNERSHIP IS ASKED ONLY WHERE THE ENGINE TRULY OWNS THE ANSWER: artwork it GENERATED for this deployment.
+  // A same-origin path into a declared namespace base — or anywhere inside the per-Spoke container, which is
+  // generated artwork by definition — must resolve; any other value (another origin, a hand-served path) is left
+  // exactly as configured, the latitude every role's absolute URL has always had.
+  const declaredBases = resolver.namespaces.map((namespace) => namespace.urlBase);
+  const underADeclaredBase = declaredBases.some((base) => pathname.startsWith(`${base}/`));
+  const insideTheSpokeNamespaceContainer = pathname.startsWith(`/${SPOKE_RUNTIME_CONTAINER}/`);
+  const siteOrigin = originOf(json.url);
+  const sameOrigin = siteOrigin !== undefined && originOf(configured) === siteOrigin;
+  const engineOwned = sameOrigin
+    ? underADeclaredBase || insideTheSpokeNamespaceContainer
+    : // With no comparable `site.url` the declared bases are the only generated address space this context can
+      // speak for, so that narrower test is the whole rule — a partial configuration is never failed on a guess.
+      siteOrigin === undefined && underADeclaredBase;
+  if (!engineOwned) return;
+
+  // OWNERSHIP, asked of THIS context's resolver: the basename must be held by the platform namespace or by a
+  // Spoke namespace this context declares — never by another Spoke's, and never by nothing at all.
+  if (resolver.iconAssetAvailable(name)) return;
+
+  throw new Error(
+    "Invalid site configuration: the configured compact header logo cannot be served in this context:\n" +
+      `  - site.assets.logoCompact: "${configured}" names "${name}", which no runtime asset namespace this ` +
+      `context may serve holds (searched: ${declaredBases.join(", ") || "none"}).\n` +
+      "Author the artwork under this Spoke's content/assets/ (BRAND_ASSETS.md — the logo-compact role) and let " +
+      'the asset mirror install it, or omit "site.assets.logoCompact" so the primary logo is used at every ' +
+      "width. Artwork belonging to ANOTHER Spoke's namespace is deliberately not served here.",
+  );
 }

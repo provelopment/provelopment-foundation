@@ -1632,6 +1632,19 @@ html[data-ui-shell-layout="menu-bar"] .ui-shell-sidebar:has([data-ui-shell-part=
  * image is scaled to FIT its box (contain-style) instead of being stretched or cropped — and a mark whose intrinsic
  * size is already smaller than both limits renders at its OWN size rather than being enlarged to fill the area.
  * The 44px brand link around it is what supplies the pointer target, so a smaller mark keeps a full-height target. */
+.ui-site-header-logo-frame {
+  display: contents;
+}
+
+/* FOUNDATION-UI-R1F — THE ART-DIRECTION FRAME IS NOT A BOX.
+ *
+ * The compact/full logo pair is served by ONE `<picture>` wrapping an optional `<source>` and the ONE `<img>`
+ * that remains the header's identity (see `site-header.tsx`). `display: contents` keeps that wrapper invisible
+ * to LAYOUT: the image is laid out exactly as if it were the brand link's own child, so the row's flex sizing,
+ * the identity's maximum inline size and the `.ui-site-header-logo` display contract above are all untouched by
+ * the responsive source selection. The browser swaps the ARTWORK, never the box, and the percentage cap on the
+ * mark still resolves against the header's own content width.
+ */
 .ui-site-header-logo {
   display: block;
   inline-size: auto;

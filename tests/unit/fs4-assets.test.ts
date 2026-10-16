@@ -46,6 +46,9 @@ describe("FS-4 — canonical asset contract", () => {
     const configured: Array<[string, string]> = [];
     if (siteConfig.assets?.logo) configured.push(["logo", siteConfig.assets.logo]);
     if (siteConfig.assets?.logoFooter) configured.push(["logoFooter", siteConfig.assets.logoFooter]);
+    // FOUNDATION-UI-R1F — the compact header alternative, when an installation configures one: it is absent by
+    // default, and the artwork it names must ship with the installation that named it, like every other role.
+    if (siteConfig.assets?.logoCompact) configured.push(["logoCompact", siteConfig.assets.logoCompact]);
     if (siteConfig.assets?.favicon) configured.push(["favicon", siteConfig.assets.favicon]);
     if (siteConfig.assets?.ogImage) configured.push(["ogImage", siteConfig.assets.ogImage]);
     for (const [key, url] of configured) {

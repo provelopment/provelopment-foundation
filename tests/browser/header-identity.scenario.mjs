@@ -161,6 +161,18 @@ const VARIANTS = [
     layoutSwitcher: true,
     label: "a naturally small square mark (24x24) beside the mode selector",
   },
+  {
+    // FOUNDATION-UI-R1F — THE COMPACT ALTERNATIVE. A PRIMARY mark (the platform namespace's 98x96 logo) plus a
+    // COMPACT one (its 24x24 icon) — the two files have DIFFERENT intrinsic sizes, so which one the browser
+    // selected is provable from `currentSrc` AND from the geometry of what actually loaded, never from a class
+    // name or a comment. Both live in the shared platform namespace (S3E1C), so this variant proves the
+    // selection and the display limits; the Spoke-owned namespaces are proved on the test-owned Hub below.
+    id: "compactPair",
+    logo: "https://synthetic.example.test/assets/github.svg",
+    logoCompact: "https://synthetic.example.test/assets/icon-globe.svg",
+    layoutSwitcher: true,
+    label: "a compact alternative (24x24) below 600px and the primary mark (98x96) at 600px and wider",
+  },
 ];
 
 /**
@@ -314,8 +326,31 @@ const PROBE = `(() => {
             return { width: Math.round(r.width * 100) / 100, height: Math.round(r.height * 100) / 100 };
           })(),
           objectFit: getComputedStyle(logo).objectFit,
+          // FOUNDATION-UI-R1F — THE ARTWORK THE BROWSER ACTUALLY CHOSE. 'currentSrc' is the resolved URL of the
+          // image the source-selection algorithm picked (the compact source or the fallback image), so "which
+          // variant is on screen" is read FROM THE BROWSER rather than inferred from the configuration.
+          currentSrc: logo.currentSrc,
+          // …and the FALLBACK the markup itself names (the '<img src>'), which must be the PRIMARY artwork: the
+          // compact alternative is a '<source>', never the thing every browser without '<picture>' falls back to.
+          src: logo.getAttribute('src'),
         }
       : null,
+    // FOUNDATION-UI-R1F — THE RESPONSIVE-IMAGE MACHINERY, as the DOM exposes it: the ONE wrapper, the ONE
+    // optional source (with the boundary it declares) and the number of images inside the identity — a second,
+    // CSS-hidden image is the defect this counts.
+    picture: (() => {
+      const frame = document.querySelector('.ui-site-header-logo-frame');
+      return {
+        present: !!frame,
+        sources: frame
+          ? [...frame.querySelectorAll('source')].map((source) => ({
+              media: source.getAttribute('media'),
+              srcset: source.getAttribute('srcset'),
+            }))
+          : [],
+        imagesInsideTheIdentity: document.querySelectorAll('.ui-site-header-identity img').length,
+      };
+    })(),
     // ── UI-R1C — THE ROW'S SURROUNDINGS, MEASURED ──────────────────────────────────────────────────
     brandIsFirstInReadingOrder: !!brand && !!row && row.firstElementChild === brand,
     topRowBottom: row ? Math.round(row.getBoundingClientRect().bottom) : null,
@@ -419,6 +454,10 @@ function configurationFor(original, variant) {
   const assets = { ...(config.site?.assets ?? {}) };
   if (variant.logo === null) delete assets.logo;
   else assets.logo = variant.logo;
+  // FOUNDATION-UI-R1F — the OPTIONAL compact alternative, applied the same way: absent for a variant that
+  // configures none, so a primary-only (or text-only) installation keeps exactly the configuration it has today.
+  if (!variant.logoCompact) delete assets.logoCompact;
+  else assets.logoCompact = variant.logoCompact;
   config.site = { ...config.site, assets };
   return `${JSON.stringify(config, null, 2)}\n`;
 }
@@ -426,6 +465,121 @@ function configurationFor(original, variant) {
 /** The arrangement a measurement shows: the cluster on the brand's line, or the cluster entirely below it. */
 function arrangementOf(seen) {
   return seen.cluster.present && seen.cluster.belowBrand ? "cluster-below" : "one-line";
+}
+
+/** The BASENAME a URL resolves to — the ONE thing "which artwork is on screen" is judged on. */
+function basenameOf(url) {
+  if (typeof url !== "string") return "";
+  return url.split("?")[0].split("#")[0].split("/").pop() ?? "";
+}
+
+/** Poll the probe until the SELECTED artwork has finished loading, or the budget runs out. */
+async function waitForSelectedArtwork(cdp, budgetMs) {
+  const deadline = Date.now() + budgetMs;
+  let seen = await cdp.evaluate(PROBE);
+  while (Date.now() < deadline && !(seen.logo && seen.logo.complete === true && seen.logo.naturalWidth > 0)) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    seen = await cdp.evaluate(PROBE);
+  }
+  return seen;
+}
+
+/**
+ * Poll the probe until the SELECTION is `expectedName`, or the budget runs out.
+ *
+ * A viewport change is asynchronous from the page's point of view: immediately after `Emulation.setDeviceMetricsOverride`
+ * the DOM still reports the PREVIOUS selection. Reading it then would prove nothing about the browser's rule — so every
+ * measurement of a compact-configured variant waits (bounded) for the selection itself, and the assertion is then made
+ * on the answer the browser eventually gave, not on a snapshot taken too early.
+ */
+async function waitForSelection(cdp, expectedName, budgetMs) {
+  const deadline = Date.now() + budgetMs;
+  let seen = await cdp.evaluate(PROBE);
+  while (Date.now() < deadline && basenameOf(seen.logo && seen.logo.currentSrc) !== expectedName) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    seen = await cdp.evaluate(PROBE);
+  }
+  return seen;
+}
+
+/**
+ * The artwork the width's side of the boundary entitles the visitor to, or `null` when the variant configures no
+ * compact alternative (nothing to select, so nothing to wait for).
+ */
+function expectedArtworkAt(variant, width) {
+  if (!variant.logo || !variant.logoCompact) return null;
+  return width < 600 ? basenameOf(variant.logoCompact) : basenameOf(variant.logo);
+}
+
+/**
+ * FOUNDATION-UI-R1F — THE RESPONSIVE-IMAGE MACHINERY, AT ONE MEASURED WIDTH.
+ *
+ * Exactly what the ruling asks the header to compose, read from the DOM the browser built (never from the
+ * component source): ONE image inside the identity (a second, CSS-hidden image is the defect), ONE `<source>`
+ * carrying the documented boundary, the compact artwork in that source's `srcset`, and the PRIMARY artwork as the
+ * fallback `<img src>`. A variant with no compact artwork configured must compose NO source at all and render the
+ * primary artwork at every width — the "primary-only installations are unchanged" half of the contract.
+ */
+function assertArtDirection(harness, rows, tag, seen, variant) {
+  const compact = variant.logoCompact ?? null;
+  const primary = variant.logo ?? null;
+  if (primary === null) {
+    // The TEXT-BRAND FALLBACK renders no image and no source at all: there is nothing to select, nothing to load
+    // and no second identity hiding behind CSS.
+    harness.check(
+      rows,
+      `${tag}.selection.noImageWithoutAGraphicIdentity`,
+      seen.logo === null && seen.picture.imagesInsideTheIdentity === 0 && seen.picture.sources.length === 0,
+      JSON.stringify(seen.picture),
+    );
+    return;
+  }
+  harness.check(
+    rows,
+    `${tag}.selection.exactlyOneImageInsideTheIdentity`,
+    seen.picture.imagesInsideTheIdentity === 1,
+    JSON.stringify(seen.picture),
+  );
+  if (compact === null) {
+    harness.check(
+      rows,
+      `${tag}.selection.noSourceWhenNothingIsConfigured`,
+      seen.picture.sources.length === 0,
+      JSON.stringify(seen.picture.sources),
+    );
+    harness.check(
+      rows,
+      `${tag}.selection.thePrimaryLogoAtEveryWidth`,
+      basenameOf(seen.logo && seen.logo.currentSrc) === basenameOf(primary),
+      `currentSrc=${seen.logo && seen.logo.currentSrc}`,
+    );
+    return;
+  }
+  const source = seen.picture.sources[0];
+  harness.check(
+    rows,
+    `${tag}.selection.oneSourceWithTheBoundary`,
+    seen.picture.sources.length === 1,
+    JSON.stringify(seen.picture.sources),
+  );
+  harness.check(
+    rows,
+    `${tag}.selection.theBoundaryIsTheDocumentedOne`,
+    !!source && /max-width:\s*599\.98px/.test(source.media ?? ""),
+    `media=${source && source.media}`,
+  );
+  harness.check(
+    rows,
+    `${tag}.selection.theSourceNamesTheCompactArtwork`,
+    basenameOf(source && source.srcset) === basenameOf(compact),
+    `srcset=${source && source.srcset}`,
+  );
+  harness.check(
+    rows,
+    `${tag}.selection.theFallbackImageIsThePrimaryArtwork`,
+    basenameOf(seen.logo && seen.logo.src) === basenameOf(primary),
+    `src=${seen.logo && seen.logo.src}`,
+  );
 }
 
 /** Start a dev server for a given installation, trying the next port when one is already taken. */
@@ -1069,12 +1223,26 @@ export async function run(chrome, harness) {
         // ── THE NINE VIEWPORT CATEGORIES, AT THEIR EXACT WIDTHS (the requested width is asserted) ────
         const arrangements = new Map();
         const frameByWidth = new Map();
+        // FOUNDATION-UI-R1F — WHAT THE BROWSER SELECTED AT EVERY WIDTH, kept for the across-width art-direction
+        // proof (which artwork, how large the file really is, and whether it finished loading).
+        const selectionByWidth = new Map();
         for (const { width, category } of VIEWPORTS) {
-          const seen = await readHeaderAt(cdp, width);
+          let seen = await readHeaderAt(cdp, width);
+          // A compact-configured variant is judged only once the browser has ANSWERED for this width: a viewport
+          // change is asynchronous, so reading the previous selection would prove nothing about the rule.
+          const entitledArtwork = expectedArtworkAt(variant, width);
+          if (entitledArtwork !== null) seen = await waitForSelection(cdp, entitledArtwork, 2500);
           arrangements.set(width, arrangementOf(seen));
           navigationByWidth.set(`${variant.id}|${width}`, seen.navigation.surfaces);
           frameByWidth.set(width, seen.frameWidth);
+          selectionByWidth.set(width, {
+            currentSrc: seen.logo ? seen.logo.currentSrc : null,
+            naturalWidth: seen.logo ? seen.logo.naturalWidth : 0,
+            naturalHeight: seen.logo ? seen.logo.naturalHeight : 0,
+            complete: seen.logo ? seen.logo.complete === true : false,
+          });
           assertRow(harness, rows, `${variant.id}.${category}.w${width}`, seen, variant);
+          assertArtDirection(harness, rows, `${variant.id}.${category}.w${width}`, seen, variant);
           harness.check(
             rows,
             `${variant.id}.${category}.w${width}.viewport.applied`,
@@ -1097,6 +1265,11 @@ export async function run(chrome, harness) {
         // ── THE CATEGORY BOUNDARIES AND THE SHELL'S OWN NAVIGATION BOUNDARIES ───────────────────────
         proveTransitions(harness, rows, variant.id, arrangements);
         proveFrameConsistencyAcrossBoundaries(harness, rows, variant.id, frameByWidth);
+        // ── FOUNDATION-UI-R1F — THE ART DIRECTION, ACROSS EVERY WIDTH AND ACROSS THE BOUNDARY ITSELF ────
+        // Which artwork the browser chose on each side of 600px, that a DIFFERENT file was really fetched, and
+        // that resizing back and forth (without reloading) keeps answering correctly.
+        proveArtDirectionAcrossWidths(harness, rows, variant.id, selectionByWidth, variant);
+        await proveSelectionRoundTrip(harness, rows, variant.id, cdp, variant);
         await proveNavigationBoundaries(harness, rows, cdp, variant.id);
         await proveBelowFloorFallback(harness, rows, cdp, variant.id);
 
@@ -1190,6 +1363,13 @@ export default { id, run };
 const LOCKUP_ROLE = "ui-r1-lockup.svg";
 const WIDE_LOCKUP_ROLE = "ui-r1-wide-lockup.svg";
 const HEADER_BAND_ROLE = "ui-r1-header-band.svg";
+/**
+ * FOUNDATION-UI-R1F — THE COMPACT ALTERNATIVE, authored per member. Each member gives it a DIFFERENT intrinsic
+ * size (96, 72 and 48 pixels square), so the artwork that loaded identifies WHICH Spoke served it as well as the
+ * URL does — the strongest form of the cross-Spoke isolation proof.
+ */
+const COMPACT_ROLE = "ui-r1f-compact.svg";
+
 
 const HUB_IDENTITIES = [
   {
@@ -1200,6 +1380,10 @@ const HUB_IDENTITIES = [
     // width (480) is already wider than the header's display maximum, so the HEIGHT cap is the binding limit here.
     svg: '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="128" viewBox="0 0 480 128" role="presentation"><rect x="0" y="52" width="480" height="24" rx="12" fill="#0f172a"/></svg>\n',
     widerThanTheDisplayMaximum: true,
+    compactRole: COMPACT_ROLE,
+    // 96x96 — a compact SQUARE reading of the same brand: at the shared display size it is a 32px mark, and it is
+    // what a visitor below 600px sees INSTEAD of the 480x128 lockup.
+    compactSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" role="presentation"><rect x="8" y="8" width="80" height="80" rx="16" fill="#0f172a"/></svg>\n',
     label: "a conventional horizontal lockup beside the Spoke switcher alone",
   },
   {
@@ -1210,6 +1394,10 @@ const HUB_IDENTITIES = [
     // still well inside the shared display size, so the WIDTH cap ALONE decides its rendered size.
     svg: '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="64" viewBox="0 0 1024 64" role="presentation"><rect x="0" y="24" width="1024" height="16" fill="#1d4ed8"/></svg>\n',
     widerThanTheDisplayMaximum: true,
+    compactRole: COMPACT_ROLE,
+    // 72x72 — this member's own compact mark (a DIFFERENT file from any other member's: the namespace is per
+    // Spoke, and the size proves which one was fetched).
+    compactSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="72" height="72" viewBox="0 0 72 72" role="presentation"><circle cx="36" cy="36" r="30" fill="#1d4ed8"/></svg>\n',
     label: "a header band wider than the display maximum, beside the Spoke switcher alone",
   },
   {
@@ -1220,6 +1408,10 @@ const HUB_IDENTITIES = [
     // binding constraint everywhere rather than an accident of one narrow viewport.
     svg: '<svg xmlns="http://www.w3.org/2000/svg" width="2048" height="32" viewBox="0 0 2048 32" role="presentation"><rect x="0" y="12" width="2048" height="8" fill="#0f172a"/></svg>\n',
     widerThanTheDisplayMaximum: true,
+    compactRole: COMPACT_ROLE,
+    // 48x48 — the third distinct compact mark, in the namespace of the member that ALSO carries the Layout
+    // selector, so both cluster conditions are exercised with a Spoke-scoped compact alternative.
+    compactSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" role="presentation"><rect x="4" y="4" width="40" height="40" rx="8" fill="#0f172a"/></svg>\n',
     label: "an exceptionally wide 64:1 lockup beside the Spoke switcher AND the Layout selector",
   },
   {
@@ -1265,13 +1457,22 @@ async function installArtwork(harness, owned, member) {
   // namespace is left behind for the deployment's own asset mirror to report as undeclared.
   owned.push(namespace);
   await harness.writeFile(path.join(assets, member.role), member.svg, "utf8");
+  // FOUNDATION-UI-R1F — the member's COMPACT alternative, authored into the SAME (its own) Spoke namespace, so
+  // the 600px boundary is proved with SPOKE-SCOPED artwork rather than a shared platform file.
+  if (member.compactSvg && member.compactRole) {
+    await harness.writeFile(path.join(assets, member.compactRole), member.compactSvg, "utf8");
+  }
 }
 
 /** Point a member's OWN configuration (in the DISPOSABLE installation tree) at its own artwork. */
-async function configureMemberIdentity(harness, installationRoot, spokeId, logoUrl) {
+async function configureMemberIdentity(harness, installationRoot, spokeId, logoUrl, compactUrl) {
   const file = path.join(installationRoot, "spokes", spokeId, "site.config.json");
   const config = JSON.parse(await readFile(file, "utf8"));
   config.site = { ...config.site, assets: { ...(config.site?.assets ?? {}), logo: logoUrl } };
+  // FOUNDATION-UI-R1F — the OPTIONAL compact alternative, configured only for a member that authors one; every
+  // other member keeps the primary-only configuration (the unchanged case, proved beside it).
+  if (compactUrl) config.site.assets.logoCompact = compactUrl;
+  else delete config.site.assets.logoCompact;
   await harness.writeFile(file, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 }
 
@@ -1295,11 +1496,20 @@ async function runHubIdentityPhase(harness, rows, chrome) {
     for (const member of members) {
       if (member.role === null) continue;
       await installArtwork(harness, owned, member);
+      // FOUNDATION-UI-R1F — BOTH identities the member authors, resolved through the member's OWN origin and
+      // namespace: the compact alternative is served from the Spoke that owns it, never from another's.
+      member.identityUrls = {
+        logo: identityLogoUrl(member.hostname, member.spokeId, member.role),
+        logoCompact: member.compactRole
+          ? identityLogoUrl(member.hostname, member.spokeId, member.compactRole)
+          : null,
+      };
       await configureMemberIdentity(
         harness,
         installation.root,
         member.spokeId,
-        identityLogoUrl(member.hostname, member.spokeId, member.role),
+        member.identityUrls.logo,
+        member.identityUrls.logoCompact,
       );
     }
 
@@ -1344,11 +1554,42 @@ async function runHubIdentityPhase(harness, rows, chrome) {
 
       const arrangements = new Map();
       const frameByWidth = new Map();
+      // FOUNDATION-UI-R1F — the same per-width selection evidence for a Spoke-owned compact alternative.
+      const selectionByWidth = new Map();
+      const memberVariant = {
+        id: member.id,
+        logo: member.role,
+        logoCompact: member.identityUrls?.logoCompact ?? null,
+      };
       for (const { width, category } of VIEWPORTS) {
-        const seen = await readHeaderAt(cdp, width);
+        let seen = await readHeaderAt(cdp, width);
+        // The same bounded wait for the browser's own answer, for a member that authors a compact alternative.
+        const entitledArtwork = expectedArtworkAt(memberVariant, width);
+        if (entitledArtwork !== null) seen = await waitForSelection(cdp, entitledArtwork, 2500);
         arrangements.set(width, arrangementOf(seen));
         frameByWidth.set(width, seen.frameWidth);
-        assertRow(harness, rows, `${member.id}.${category}.w${width}`, seen, { id: member.id, logo: member.role });
+        selectionByWidth.set(width, {
+          currentSrc: seen.logo ? seen.logo.currentSrc : null,
+          naturalWidth: seen.logo ? seen.logo.naturalWidth : 0,
+          naturalHeight: seen.logo ? seen.logo.naturalHeight : 0,
+          complete: seen.logo ? seen.logo.complete === true : false,
+        });
+        assertRow(harness, rows, `${member.id}.${category}.w${width}`, seen, memberVariant);
+        assertArtDirection(harness, rows, `${member.id}.${category}.w${width}`, seen, memberVariant);
+        // FOUNDATION-UI-R1F — SPOKE SCOPING, measured: when the compact artwork is the selection, it must be
+        // served from THIS member's own namespace (`/spokes/<segment>/assets/**`) — never from another Spoke's,
+        // and never from the shared platform tree. Each member authors a DIFFERENT-sized compact mark, so the
+        // intrinsic size of what loaded identifies the file as well as the URL does.
+        if (memberVariant.logoCompact && seen.logo && seen.logo.currentSrc) {
+          const selectedTheCompactArtwork =
+            basenameOf(seen.logo.currentSrc) === basenameOf(memberVariant.logoCompact);
+          harness.check(
+            rows,
+            `${member.id}.${category}.w${width}.selection.servedFromTheMembersOwnNamespace`,
+            !selectedTheCompactArtwork || seen.logo.currentSrc.includes(`/spokes/${member.spokeId}/assets/`),
+            `currentSrc=${seen.logo.currentSrc} spoke=${member.spokeId}`,
+          );
+        }
         harness.check(
           rows,
           `${member.id}.${category}.w${width}.viewport.applied`,
@@ -1363,17 +1604,24 @@ async function runHubIdentityPhase(harness, rows, chrome) {
         // by `assertRow` (never wider than the permitted maximum, never enlarged, never distorted) and the arrangement
         // by the fit rule, so nothing is restated here.
         if (member.widerThanTheDisplayMaximum !== true) continue;
+        // FOUNDATION-UI-R1F — the claim is about the member's PRIMARY artwork, so it is made where that artwork is
+        // the SELECTION: below the compact boundary the member's own compact mark is on screen, and a compact mark
+        // is small by definition (its own limits are asserted by `assertRow`, exactly like the primary's).
+        const selectedThePrimaryArtwork =
+          !member.identityUrls?.logoCompact ||
+          basenameOf(seen.logo && seen.logo.currentSrc) !== basenameOf(member.identityUrls.logoCompact);
         harness.check(
           rows,
           `${member.id}.${category}.w${width}.displayMaximum.theArtworkIsWiderThanTheDisplayMaximum`,
-          !!seen.logo && seen.logo.naturalWidth > seen.logoLimits.inline,
-          `natural=${seen.logo && seen.logo.naturalWidth} maximum=${seen.logoLimits.inline}`,
+          !selectedThePrimaryArtwork || (!!seen.logo && seen.logo.naturalWidth > seen.logoLimits.inline),
+          `natural=${seen.logo && seen.logo.naturalWidth} maximum=${seen.logoLimits.inline} selectedThePrimaryArtwork=${selectedThePrimaryArtwork}`,
         );
         harness.check(
           rows,
           `${member.id}.${category}.w${width}.displayMaximum.doesNotOccupyTheWholeHeaderWhereTheControlsShare`,
-          !!seen.logo &&
-            (arrangementOf(seen) !== "one-line" || seen.logo.size.width <= seen.content.width - 1),
+          !selectedThePrimaryArtwork ||
+            (!!seen.logo &&
+              (arrangementOf(seen) !== "one-line" || seen.logo.size.width <= seen.content.width - 1)),
           `width=${seen.logo && seen.logo.size.width} content=${seen.content.width} arrangement=${arrangementOf(seen)}`,
         );
       }
@@ -1390,6 +1638,11 @@ async function runHubIdentityPhase(harness, rows, chrome) {
       }
       proveTransitions(harness, rows, member.id, arrangements);
       proveFrameConsistencyAcrossBoundaries(harness, rows, member.id, frameByWidth);
+      // FOUNDATION-UI-R1F — the Spoke-scoped half of the art-direction proof: at 599px the member's OWN compact
+      // artwork is on screen (served from ITS namespace), at 600px its primary artwork, in both sizes of the
+      // member's artwork, without a reload.
+      proveArtDirectionAcrossWidths(harness, rows, member.id, selectionByWidth, memberVariant);
+      await proveSelectionRoundTrip(harness, rows, member.id, cdp, memberVariant);
       await proveNavigationBoundaries(harness, rows, cdp, member.id);
       await proveBelowFloorFallback(harness, rows, cdp, member.id);
       for (const [width, height] of HEIGHT_CASES) {
@@ -1417,6 +1670,124 @@ async function runHubIdentityPhase(harness, rows, chrome) {
 
 
 
+
+/**
+ * FOUNDATION-UI-R1F — WHICH ARTWORK THE BROWSER SELECTED, PROVED ACROSS EVERY MEASURED WIDTH.
+ *
+ * The browser's own answer (`img.currentSrc`) is compared with the side of the boundary the width is on, so the
+ * selection rule is judged by the BROWSER rather than by the markup that expresses it — and the intrinsic size of
+ * what LOADED is compared across the boundary too, because a different URL could otherwise be a rewrite to the
+ * same file. Every measured width must also have completed loading its artwork: an unloaded or missing image is a
+ * broken identity, whatever its URL says.
+ */
+function proveArtDirectionAcrossWidths(harness, rows, tag, selectionByWidth, variant) {
+  const compact = variant.logoCompact ?? null;
+  const primary = variant.logo ?? null;
+  if (primary === null || compact === null) return;
+  const compactName = basenameOf(compact);
+  const primaryName = basenameOf(primary);
+  const widths = [...selectionByWidth.keys()].sort((left, right) => left - right);
+  const below = widths.filter((width) => width < 600);
+  const atOrAbove = widths.filter((width) => width >= 600);
+  const selected = (width) => basenameOf(selectionByWidth.get(width)?.currentSrc);
+  const lastBelow = below[below.length - 1];
+  const firstAtOrAbove = atOrAbove[0];
+
+  harness.check(
+    rows,
+    `${tag}.selection.everyWidthBelowTheBoundarySelectedTheCompactArtwork`,
+    below.length > 0 && below.every((width) => selected(width) === compactName),
+    below.map((width) => `${width}:${selected(width)}`).join(" "),
+  );
+  harness.check(
+    rows,
+    `${tag}.selection.everyWidthAtOrAboveTheBoundarySelectedThePrimaryArtwork`,
+    atOrAbove.length > 0 && atOrAbove.every((width) => selected(width) === primaryName),
+    atOrAbove.map((width) => `${width}:${selected(width)}`).join(" "),
+  );
+  // THE PAIR THE OWNER NAMED, said explicitly rather than left implied by the two sides above.
+  harness.check(
+    rows,
+    `${tag}.selection.at599PixelsTheCompactArtwork`,
+    selectionByWidth.has(599) && selected(599) === compactName,
+    `599=${selected(599)} expected=${compactName}`,
+  );
+  harness.check(
+    rows,
+    `${tag}.selection.at600PixelsThePrimaryArtwork`,
+    selectionByWidth.has(600) && selected(600) === primaryName,
+    `600=${selected(600)} expected=${primaryName}`,
+  );
+  harness.check(
+    rows,
+    `${tag}.selection.theTwoSidesDiffer`,
+    lastBelow !== undefined && firstAtOrAbove !== undefined && selected(lastBelow) !== selected(firstAtOrAbove),
+    `${lastBelow}=${selected(lastBelow)} ${firstAtOrAbove}=${selected(firstAtOrAbove)}`,
+  );
+  const intrinsic = (width) => {
+    const entry = selectionByWidth.get(width);
+    return `${entry?.naturalWidth}x${entry?.naturalHeight}`;
+  };
+  harness.check(
+    rows,
+    `${tag}.selection.aDifferentFileWasFetchedOnEachSideOfTheBoundary`,
+    lastBelow !== undefined && firstAtOrAbove !== undefined && intrinsic(lastBelow) !== intrinsic(firstAtOrAbove),
+    `${lastBelow}=${intrinsic(lastBelow)} ${firstAtOrAbove}=${intrinsic(firstAtOrAbove)}`,
+  );
+  const unloaded = widths.filter((width) => selectionByWidth.get(width)?.complete !== true);
+  harness.check(
+    rows,
+    `${tag}.selection.everySelectedArtworkCompletedLoading`,
+    unloaded.length === 0,
+    `unloaded=${unloaded.join(",")}`,
+  );
+  harness.check(
+    rows,
+    `${tag}.selection.everyNamedWidthWasMeasured`,
+    widths.length === WIDTHS.length,
+    `measured=${widths.length} named=${WIDTHS.length}`,
+  );
+}
+
+/**
+ * FOUNDATION-UI-R1F — RESIZING ACROSS THE BOUNDARY IN BOTH DIRECTIONS, WITHOUT RELOADING THE PAGE.
+ *
+ * The page is navigated to ONCE and then only RESIZED: 600 → 599 → 600 → 599. A selection that depended on
+ * client-side state, a hydration pass or a resize listener would answer the first width and then keep its answer;
+ * a native media query must answer all four. Each step also waits for the newly selected artwork to LOAD, so the
+ * proof is that the browser fetched and decoded the OTHER file — not merely that a URL attribute changed.
+ */
+async function proveSelectionRoundTrip(harness, rows, tag, cdp, variant) {
+  if (!variant.logo || !variant.logoCompact) return;
+  const walk = [600, 599, 600, 599];
+  const expected = walk.map((width) =>
+    width < 600 ? basenameOf(variant.logoCompact) : basenameOf(variant.logo),
+  );
+  const answers = [];
+  for (const [index, width] of walk.entries()) {
+    await cdp.setViewport(width, 900);
+    const settled = await waitForSelection(cdp, expected[index], 4000);
+    // …and then let the newly selected artwork finish loading, so the proof is that the browser FETCHED it.
+    const loaded = await waitForSelectedArtwork(cdp, 2000);
+    answers.push({
+      width,
+      name: basenameOf(settled.logo && settled.logo.currentSrc),
+      loaded: !!loaded.logo && loaded.logo.complete === true && loaded.logo.naturalWidth > 0,
+    });
+  }
+  harness.check(
+    rows,
+    `${tag}.selection.theAnswerFollowsEveryResizeWithoutReloading`,
+    answers.every((answer, index) => answer.name === expected[index]),
+    answers.map((answer, index) => `${answer.width}=${answer.name} (expected ${expected[index]})`).join(" "),
+  );
+  harness.check(
+    rows,
+    `${tag}.selection.everyResizeLoadedItsArtwork`,
+    answers.every((answer) => answer.loaded),
+    JSON.stringify(answers),
+  );
+}
 
 /**
  * THE FIT RULE (FOUNDATION-UI-R1E): the CLUSTER moves, the MARK is never squeezed to keep a shared row.

@@ -110,6 +110,51 @@ above. Nothing is fetched from Vercel at request time, no Vercel setting is read
 deliberately **no `*.vercel.app` rule**: an unrelated project's Vercel URL, a team URL, or a name that merely
 *contains* ours answers 404 like any other unknown host.
 
+## Two ways to author an Installation's Spokes: flat `spokes[]`, or identified `spokeHubs[]` (FOUNDATION-ID-M3-P3)
+
+An Installation declares its Spokes in ONE manifest at its root (`spokes.json`), in ONE of two forms — never
+both, and never by precedence:
+
+```json
+// FLAT — the form this deployment uses. All declared Spokes belong to the ONE implicit Spoke Hub.
+{ "spokes": [ { "id": "foundation", "root": "spokes/foundation" } ] }
+
+// NESTED — IDENTIFIED Spoke Hubs, each carrying its own members and its OWN switcher.
+{
+  "spokeHubs": [
+    {
+      "id": "one",
+      "spokes": [ { "id": "docs", "root": "spokes/hub-one-docs" }, { "id": "news", "root": "spokes/hub-one-news" } ],
+      "spokeSwitcher": { "options": [ { "spokeId": "docs", "label": "Docs", "href": "https://docs.one.example.test" } ] }
+    },
+    { "id": "two", "spokes": [ { "id": "docs", "root": "spokes/hub-two-docs" } ] }
+  ],
+  "inspectionSpoke": { "spokeHubId": "two", "spokeId": "docs" },
+  "inspectionHosts": ["inspection.example.test"]
+}
+```
+
+What the nested form changes, and what it does not:
+
+- **A Spoke is named by `(spokeHubId, spokeId)`.** A local id may REPEAT across Hubs — the example declares
+  `docs` twice — so nothing addresses a member by its local id alone: its runtime segment is composite
+  (`hub+two+docs`), its own asset namespace is `/spokes/hub+two+docs/assets/**`, and its content, dictionaries,
+  configuration and artwork are its own.
+- **An exact hostname claim stays UNIQUE across the whole Installation** (canonical origins, `hostAliases` and
+  the inspection aliases), and one physical Spoke root may not be declared twice — the same rules the flat
+  form has always had.
+- **Both forms dispatch by exact hostname; only the FLAT form has the one-Spoke compatibility rule.** A flat
+  Installation declaring exactly ONE Spoke answers every host (development, preview and inspection hosts
+  included). An Installation authored with `spokeHubs` dispatches by EXACT hostname ALWAYS — even when it
+  declares one Hub and one Spoke — and an unknown host answers 404.
+- **`inspectionSpoke` is COMPOSITE in this form** (`{ "spokeHubId": "…", "spokeId": "…" }`): a local id alone
+  could name a Spoke in either Hub. The flat form keeps its string spelling.
+- **`spokeSwitcher` belongs INSIDE the Hub it offers members from.** A manifest-level `spokeSwitcher` is
+  refused in this form, because it would name neither the Hub nor the membership.
+
+Every authoring defect is reported at build time, naming the Hub and the Spoke it belongs to — nothing is
+chosen by first-match, and a partially valid nested Installation never becomes operational.
+
 ## One Installation composes one Spoke Hub: the Spoke-Hub-scoped Spoke switcher (R1)
 
 Two OPTIONAL leaves let an Installation state routing facts **beside** the topology above. Neither changes

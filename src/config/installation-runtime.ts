@@ -42,13 +42,13 @@
  */
 import path from "node:path";
 
-import { IMPLICIT_SPOKE_ID, type Hostname, type IdentifiedSpokeRef, type SpokeHubId, type SpokeId } from "@/core/spoke";
+import { IMPLICIT_SPOKE_ID, identifiedSpokeHubCollectionIssues, type Hostname, type IdentifiedSpokeRef, type InstallationSpokeHubCollection, type Spoke, type SpokeHubId, type SpokeId } from "@/core/spoke";
 
 import { deploymentPaths, type RuntimeAssetNamespace } from "./deployment-root";
-import { readSpokeSiteConfig } from "./spoke-config";
+import { readSpokeSiteConfig, spokeConfigFilePath } from "./spoke-config";
 import { composeInstallationSpokeHub, configureSpoke } from "./spoke-composition";
 import { spokeResourceIndexFor, type SpokeResourcePaths } from "./spoke-resources";
-import { resolveInstallationSpokeRoots } from "./spoke-roots";
+import { resolveInstallationSpokeRoots, type InstallationSpokeRoots, type SpokeRootDescriptor } from "./spoke-roots";
 import {
   spokeRuntimeAssetNamespacePath,
   spokeRuntimeAssetUrlBase,
@@ -60,8 +60,8 @@ import {
 import { withRuntimeAssetInventories } from "./runtime-asset-catalog";
 import type { SiteConfig } from "./site-config";
 
-/** How an Installation is authored: `legacy` (no manifest) or `explicit` (a manifest). */
-export type InstallationRuntimeMode = "legacy" | "explicit";
+/** How an Installation is authored: `legacy` (no manifest), `explicit` (a flat one) or `hubs` (a nested one). */
+export type InstallationRuntimeMode = "legacy" | "explicit" | "hubs";
 
 /**
  * ONE declared Spoke, described COMPLETELY and immutably: its identity, its runtime namespace, the
@@ -155,13 +155,31 @@ export function runtimeNamespacesFor(segment: string | null): readonly RuntimeAs
  * `configureSpoke` is the composition authority (S3D1A): it derives the canonical hostname from the
  * configuration's `site.url` and applies the Hub/claim rules, so this module never normalizes a hostname
  * or invents a claim.
+ *
+ * `ref` states the COMPOSITE identity when — and only when — the Installation identifies its Spoke Hubs:
+ * the runtime segment is then derived from BOTH halves (`spokeResourceIndexFor`), which is what makes two
+ * Hubs' Spokes called `docs` two namespaces and two contexts.
  */
-function describeSpoke(descriptor: { readonly id: SpokeId; readonly root: string }): InstallationRuntimeSpoke {
+function describeSpoke(
+  descriptor: { readonly id: SpokeId; readonly root: string },
+  ref?: IdentifiedSpokeRef,
+): InstallationRuntimeSpoke {
   const config = readSpokeSiteConfig(descriptor);
   const spoke = configureSpoke(descriptor, config);
-  const resourceIndex = spokeResourceIndexFor(descriptor);
+  const resourceIndex = spokeResourceIndexFor(descriptor, ref);
+  // §7 — THE DESCRIPTOR AND THE COMPOSITE REFERENCE MUST NAME THE SAME SPOKE. This is structural (the ref is
+  // built FROM the descriptor), and it is asserted anyway: a mismatch would produce a resource context, an
+  // asset namespace and a runtime segment under ANOTHER Spoke's identity — the one failure that must never
+  // be silently representable.
+  if (ref !== undefined && ref.spokeId !== descriptor.id) {
+    throw new Error(
+      `FOUNDATION-ID-M3-P3: the descriptor declares Spoke "${descriptor.id}" but the composite reference ` +
+        `names Spoke "${ref.spokeId}" in Spoke Hub "${ref.spokeHubId}". A context may only ever be composed ` +
+        "under the identity its own descriptor states.",
+    );
+  }
 
-  return {
+  const record: InstallationRuntimeSpoke = {
     id: descriptor.id,
     runtimeSegment: resourceIndex.runtimeSegment,
     canonicalHostname: spoke.identity.canonicalHostname,
@@ -169,6 +187,64 @@ function describeSpoke(descriptor: { readonly id: SpokeId; readonly root: string
     config,
     resources: resourceIndex.resources,
   };
+
+  return ref === undefined ? record : { ...record, spokeHubId: ref.spokeHubId, spokeRef: ref };
+}
+
+/**
+ * The Installation's IDENTIFIED Spoke Hubs, COMPOSED and proved coherent — or a loud failure.
+ *
+ * It is the nested form's counterpart to `composeInstallationSpokeHub`, and it uses the collection authority
+ * (`identifiedSpokeHubCollectionIssues`) rather than a flat Hub: every per-Hub rule stays the `SpokeHub`
+ * authority's, the same LOCAL id in two Hubs is ACCEPTED, and the one rule that reaches ACROSS Hubs — no
+ * exact hostname claimed in more than one Hub — is the one the collection authority owns.
+ */
+function composeIdentifiedSpokeHubs(roots: InstallationSpokeRoots): InstallationSpokeHubCollection {
+  const failures: string[] = [];
+  const collection: { identity: { id: SpokeHubId }; spokes: Spoke[] }[] = [];
+
+  for (const hub of roots.hubs) {
+    const spokes: Spoke[] = [];
+    for (const descriptor of hub.descriptors) {
+      try {
+        spokes.push(configureSpoke(descriptor, readSpokeSiteConfig(descriptor)));
+      } catch (error) {
+        failures.push(hubSpokeFailure(hub.id, descriptor, error));
+      }
+    }
+    collection.push({ identity: { id: hub.id }, spokes });
+  }
+
+  if (failures.length > 0) {
+    throw new Error(
+      `Invalid Installation Spoke configuration (${roots.manifestFile ?? roots.installationRoot}):\n` +
+        failures.map((failure) => `  - ${failure}`).join("\n"),
+    );
+  }
+
+  const issues = identifiedSpokeHubCollectionIssues(collection);
+  if (issues.length > 0) {
+    throw new Error(
+      `Invalid Installation Spoke Hub collection (${roots.manifestFile ?? roots.installationRoot}):\n` +
+        issues.map((issue) => `  - ${issue}`).join("\n"),
+    );
+  }
+
+  return collection;
+}
+
+/** ONE identified Hub's Spoke failure, in the terms its author needs to fix it. */
+function hubSpokeFailure(spokeHubId: SpokeHubId, descriptor: SpokeRootDescriptor, error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  const details = message
+    .split(/\r?\n/)
+    .map((line) => `      ${line}`)
+    .join("\n");
+
+  return (
+    `Spoke Hub "${spokeHubId}" > Spoke "${descriptor.id}" authored at "${descriptor.root}" ` +
+    `(${spokeConfigFilePath(descriptor)}):\n${details}`
+  );
 }
 
 /**
@@ -184,6 +260,46 @@ export function installationRuntimeIndex(installationRoot: string): Installation
   if (roots.mode === "legacy") {
     const descriptor = { id: IMPLICIT_SPOKE_ID, root: roots.installationRoot };
     return { mode: "legacy", spokes: [composeSpoke(descriptor)] };
+  }
+
+  // IDENTIFIED — ONE HUB AT A TIME, and every record addressed by BOTH halves of its identity.
+  //
+  // Each record's runtime segment is the COMPOSITE one, so the runtime index, the routing description and the
+  // generated asset namespace all name the same Spoke the same way, and two Hubs' Spokes called `docs` are
+  // two records that neither the other's segment nor the other's local id can reach.
+  if (roots.mode === "hubs") {
+    const collection = composeIdentifiedSpokeHubs(roots);
+    const spokes: InstallationRuntimeSpoke[] = [];
+
+    for (const hub of collection) {
+      for (const composed of hub.spokes) {
+        const ref: IdentifiedSpokeRef = {
+          spokeHubId: hub.identity.id,
+          spokeId: composed.identity.id,
+        };
+        // THE DESCRIPTOR THAT DECLARED THIS SPOKE — and its own identity is what the record is composed
+        // under, so a descriptor that disagreed with the composed Hub could never produce a record.
+        const descriptor = roots.descriptors.find(
+          (candidate) => candidate.spokeHubId === ref.spokeHubId && candidate.id === ref.spokeId,
+        );
+        if (descriptor === undefined) {
+          throw new Error(
+            `FOUNDATION-ID-M3-P3: Spoke Hub "${ref.spokeHubId}" > Spoke "${ref.spokeId}" was composed but ` +
+              "no declared descriptor names it. A record may only ever describe a Spoke this Installation " +
+              "declared.",
+          );
+        }
+        spokes.push(composeSpoke(descriptor, composed, ref));
+      }
+    }
+
+    if (spokes.length !== roots.descriptors.length) {
+      throw new Error(
+        "FOUNDATION-ID-M3-P3: the composed Spoke Hub collection does not describe every declared Spoke.",
+      );
+    }
+
+    return { mode: "hubs", spokes };
   }
 
   // The composed Hub is the authority for identity and claims; its order is the authored manifest order,
@@ -205,8 +321,9 @@ export function installationRuntimeIndex(installationRoot: string): Installation
 function composeSpoke(
   descriptor: { readonly id: SpokeId; readonly root: string },
   composed?: { readonly identity: { readonly canonicalHostname: Hostname; readonly hostnameClaims: readonly Hostname[] } },
+  ref?: IdentifiedSpokeRef,
 ): InstallationRuntimeSpoke {
-  const authored = describeSpoke(descriptor);
+  const authored = describeSpoke(descriptor, ref);
   if (composed === undefined) return authored;
   return {
     ...authored,
@@ -300,6 +417,22 @@ export function currentBuildRuntimeContext(): SpokeRuntimeContext {
       throw new Error("FOUNDATION-MULTISITE-S3F2A: a legacy Installation must describe its implicit Spoke.");
     }
     return implicitContext;
+  }
+
+  // AN IDENTIFIED INSTALLATION ACTIVATES NO SPOKE — NOT EVEN WHEN IT DECLARES ONE (§6).
+  //
+  // This compatibility seam exists for a build that activated ONE Spoke by inlining ITS configuration. An
+  // Installation authored with identified Spoke Hubs never activates a Spoke that way: it dispatches by
+  // EXACT hostname, always, so there is no "the" Spoke for a hostname-less caller to reach — and returning
+  // its single member here would hand a build-time caller the identity the request boundary deliberately
+  // refuses to guess.
+  if (index.mode === "hubs") {
+    throw new Error(
+      "FOUNDATION-ID-M3-P3: this Installation is authored with IDENTIFIED SPOKE HUBS, so no single Spoke is " +
+        "build-activated and none is selected here — not even when the collection declares exactly one. " +
+        "Dispatch is EXACT hostname dispatch in this form: select a Spoke context by hostname " +
+        "(`./spoke-request`) or by its COMPOSITE identity (`runtimeContextForIdentifiedSpoke`).",
+    );
   }
 
   if (index.spokes.length !== 1) {

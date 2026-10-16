@@ -38,16 +38,24 @@
  * Spoke Hub id — so the configuration layer, the build seam and the domain cannot disagree about what an
  * acceptable id is.
  *
- * A SECOND AUTHORING FORM IS RECOGNISED, VALIDATED AND REFUSED (FOUNDATION-ID-M3-P1)
- * --------------------------------------------------------------------------------
- * The nested `spokeHubs` form — an Installation's IDENTIFIED SPOKE HUB collection, each Hub carrying its
- * identity and explicitly containing its Spokes — is parsed and COMPLETELY validated here, and it is then
- * REFUSED with `SPOKE_HUB_RUNTIME_NOT_ENABLED`: multi-Spoke-Hub runtime support is not enabled yet, so no
- * caller of this seam can obtain declarations from it. It is never flattened into the flat collection,
- * never given a default Hub or Spoke, and never chosen from. The flat `spokes` form keeps its exact
- * meaning, code path and diagnostics. See `installationSpokeHubCollectionSchema` (the nested STRUCTURE, a
- * recogniser that resolves nothing and runs nothing) and `resolveSpokeDeclarations` (the ONE decision
- * every consumer makes, where the gate lives).
+ * TWO AUTHORING FORMS, ONE RESOLUTION (FOUNDATION-ID-M3-P1/P3)
+ * -----------------------------------------------------------
+ * The flat `spokes` form and the nested `spokeHubs` form — an Installation's IDENTIFIED SPOKE HUB
+ * collection, each Hub carrying its identity and explicitly containing its Spokes — are BOTH resolved here,
+ * by this ONE seam, and an Installation is authored exactly one way (never both, never by precedence).
+ * `resolveSpokeDeclarations` returns ONE of three shapes:
+ *
+ *   mode "legacy"     no manifest: the root is the implicit Spoke
+ *   mode "explicit"   a flat `spokes` manifest: `declarations`, in authored order — exactly as before
+ *   mode "hubs"       a nested `spokeHubs` manifest: `hubs`, each carrying its identity, its resolved
+ *                     Spokes (each of which names its owning Hub) and its own Hub-scoped switcher
+ *
+ * The nested form is NEVER FLATTENED into an unqualified list: a nested answer carries `hubs`, so a
+ * consumer that needs one Spoke's owning Hub cannot lose it, and there is no Installation-wide Spoke list
+ * in that mode to mistake for one. The flat form keeps its exact meaning, code path and diagnostics.
+ * The STRUCTURE of each form is recognised by its own schema (`installationSpokeCollectionSchema`,
+ * `installationSpokeHubCollectionSchema`) — recognisers that resolve nothing and run nothing — while
+ * `resolveSpokeDeclarations` remains the ONE decision every consumer makes.
  *
  * SERVER/BUILD ONLY: this module reads the filesystem.
  */
@@ -69,29 +77,6 @@ export const INSTALLATION_SPOKE_COLLECTION_FILE_NAME = "spokes.json";
  * never both, and never by precedence.
  */
 export const INSTALLATION_SPOKE_HUB_COLLECTION_LEAF = "spokeHubs";
-
-/**
- * THE PHASE 1 ACTIVATION REFUSAL — the ONE stable diagnostic that stands between an authored
- * `spokeHubs` collection and a running deployment.
- *
- * The nested form is RECOGNISED and COMPLETELY VALIDATED (so an author sees every defect of their own
- * manifest), and it is then REFUSED: it is never flattened into the flat Spoke collection, no Spoke Hub
- * and no Spoke is chosen for it, and no consumer of this seam — the build's selection seam, the S3C1
- * configuration authority, the installation runtime, the establishment boundary, the host-routing
- * authority — can obtain declarations from it. Existing flat and legacy Installations are untouched by
- * this gate: it applies only to a manifest that declares `spokeHubs`.
- *
- * The gate is lifted when the runtime identity and isolation work lands, and not before.
- *
- * @type {string}
- */
-export const SPOKE_HUB_RUNTIME_NOT_ENABLED =
-  'FOUNDATION-ID-M3-P1: "spokeHubs" declares an IDENTIFIED SPOKE HUB COLLECTION, and multi-Spoke-Hub ' +
-  "runtime support is NOT YET ENABLED. This form is recognised and validated so that every authoring " +
-  "defect is reported, but an Installation authored with it cannot be built, composed or run: it is " +
-  "never flattened into the flat Spoke collection, and no Spoke Hub and no Spoke is chosen for it. " +
-  'Author the flat "spokes" form until the runtime identity and isolation work enables this one.';
-
 
 /**
  * The DEDICATED NAMESPACE every explicitly declared Spoke root lives in: `<InstallationRoot>/spokes/`.
@@ -183,15 +168,32 @@ export const installationSpokeCollectionSchema = {
       };
     }
 
-    // FOUNDATION-ID-M3-P1 — THE NESTED FORM: RECOGNISED, VALIDATED AND REFUSED.
+    // FOUNDATION-ID-M3-P1/P3 — THE NESTED FORM, REFUSED *HERE* ONLY because this is the FLAT form's schema.
     //
     // A manifest that declares `spokeHubs` never reaches the flat code path below, so the flat form's
-    // diagnostics are untouched by this form's existence. The nested form is parsed structurally and
-    // refused UNCONDITIONALLY (`spokeHubAuthoringIssues`), so no consumer of this schema can ever obtain
-    // `success: true` for it — not even for a collection with ONE Hub, and not through any other entry.
+    // diagnostics are untouched by this form's existence. The nested form has its OWN authority
+    // (`resolveSpokeDeclarations` → `installationSpokeHubCollectionSchema`), and a caller that asks the FLAT
+    // schema about one is told exactly which authority answers it — rather than being handed the flat form's
+    // rules applied to a shape they were not written for.
     if (declaresSpokeHubCollection(raw)) {
       const nested = installationSpokeHubCollectionSchema.safeParse(raw);
-      return { success: false, error: { issues: spokeHubAuthoringIssues(raw, nested) } };
+      return {
+        success: false,
+        error: {
+          issues: [
+            {
+              path: [INSTALLATION_SPOKE_HUB_COLLECTION_LEAF],
+              message:
+                'Invalid input: this manifest declares "spokeHubs" — the NESTED form, an Installation\'s ' +
+                "IDENTIFIED SPOKE HUB collection — and this is the FLAT form's schema: it accepts only " +
+                '"spokes". The nested form is resolved by its OWN authority ' +
+                "(`installationSpokeHubCollectionSchema`, reached through `resolveSpokeDeclarations`), which " +
+                "returns Hubs rather than a flattened Spoke list.",
+            },
+            ...spokeHubAuthoringIssues(raw, nested),
+          ],
+        },
+      };
     }
 
     unrecognized(
@@ -577,13 +579,13 @@ export const installationSpokeHubCollectionSchema = {
 };
 
 /**
- * EVERY issue the nested form raises WITHOUT reading the filesystem: the activation refusal first, then the
- * manifest-level authoring rules, then the structure of the collection itself.
+ * EVERY issue the nested form raises WITHOUT reading the filesystem: the manifest-level authoring rules
+ * first, then the structure of the collection itself.
  *
- * THE ACTIVATION REFUSAL COMES FIRST, and always: it is the reason this manifest cannot run at all, so an
- * author reads it before the defects and a caller matching the diagnostic does so without depending on what
- * else happens to be wrong. It is unconditional — including for a collection with exactly ONE Hub — because
- * "one identified Hub" is still a manifest the runtime cannot serve.
+ * THE MANIFEST-LEVEL RULES COME FIRST because they are the ones an author of this form can actually fix,
+ * and they are reported before the structure so a caller reading the output sees "which form is this"
+ * before "which leaf is wrong". They are unchanged from Phase 1 — the two forms stay mutually exclusive, and
+ * a Hub-scoped switcher still belongs inside its Hub.
  *
  * @param {Record<string, unknown>} raw the parsed manifest
  * @param {{ success: true, data: unknown } | { success: false, error: { issues: { path: (string|number)[], message: string }[] } }} structural the collection's own structural answer
@@ -591,9 +593,7 @@ export const installationSpokeHubCollectionSchema = {
  */
 function spokeHubAuthoringIssues(raw, structural) {
   /** @type {{ path: (string|number)[], message: string }[]} */
-  const issues = [
-    { path: [INSTALLATION_SPOKE_HUB_COLLECTION_LEAF], message: SPOKE_HUB_RUNTIME_NOT_ENABLED },
-  ];
+  const issues = [];
 
   // THE TWO FORMS ARE MUTUALLY EXCLUSIVE — never a precedence rule, never a silent migration.
   if (raw.spokes !== undefined) {
@@ -847,8 +847,8 @@ function hubSwitcherMembership(authored, memberIds, vocabulary, issues) {
 }
 
 /**
- * Every SEMANTIC issue in a STRUCTURALLY valid nested collection: identity, membership, roots, and each
- * Hub's own switcher.
+ * EVERY declared Spoke Hub of a STRUCTURALLY valid nested collection, resolved and validated — or an
+ * itemised failure naming each unacceptable entry (FOUNDATION-ID-M3-P1/P3).
  *
  * It is the nested form's counterpart to the flat path's semantic pass, and it REUSES the same authorities
  * rather than restating them:
@@ -860,25 +860,39 @@ function hubSwitcherMembership(authored, memberIds, vocabulary, issues) {
  *     reference. A Hub with NO member is reported by that same authority: an authored Hub cannot be empty;
  *   · ROOTS — `resolveAuthoredSpoke`, with ONE `seen` map for the whole collection, so reusing a physical
  *     root across two Hub declarations is refused exactly as reusing it twice inside one is;
- *   · THE HUB-SCOPED SWITCHER — `hubSwitcherMembership`, against that Hub's own members.
+ *   · THE HUB-SCOPED SWITCHER — `hubSwitcherMembership`, against that Hub's own members;
+ *   · THE INSPECTION NOMINATION — resolved against DECLARED MEMBERSHIP (below), so a nomination naming a Hub
+ *     or a Spoke this Installation does not declare is refused here rather than becoming a request-time
+ *     surprise.
  *
- * Only a structurally valid collection reaches here, so each diagnostic can name its Hub and its Spoke
- * exactly as authored. Nothing is returned: the caller throws on any issue, and the nested form is refused
- * by the activation gate in every case.
+ * HUB OWNERSHIP IS CARRIED OUT, NOT FLATTENED: every resolved Spoke names its owning Hub, and the Hubs stay
+ * separate, so no consumer of this answer can lose which Hub a Spoke belongs to. Nothing is chosen: no Hub
+ * and no Spoke is "the" one, and neither is first.
+ *
+ * CANONICAL AND ADDITIONAL HOSTNAME CLAIMS ARE NOT DECIDED HERE. A Spoke's canonical hostname is derived
+ * from its own `site.url`, a configuration fact this seam deliberately does not read; the installation-wide
+ * claim rules belong to the build authority (`./spoke-host-routing.mjs`), which applies the SAME rules to
+ * BOTH authoring forms rather than each form having its own.
  *
  * @param {string} root the resolved Installation root
- * @param {{ id: string, spokes: { id: string, root: string, hostAliases: string[] }[], spokeSwitcher: { options: { spokeId: string, label: string, href: string }[] } | null }[]} hubs the structurally valid Hubs
- * @returns {string[]} the issues, empty when the nested collection is coherent
+ * @param {string} manifestFile the manifest's absolute path
+ * @param {{ hubs: { id: string, spokes: { id: string, root: string, hostAliases: string[] }[], spokeSwitcher: { options: { spokeId: string, label: string, href: string }[] } | null }[], inspectionSpoke: { spokeHubId: string, spokeId: string } | null, inspectionHosts: string[] }} nested the structurally valid collection
+ * @returns {{ mode: "hubs", installationRoot: string, manifestFile: string, inspectionSpoke: { spokeHubId: string, spokeId: string } | null, inspectionHosts: string[], hubs: { id: string, spokes: { id: string, locator: string, root: string, hostAliases: string[], spokeHubId: string }[], spokeSwitcher: { options: { spokeId: string, label: string, href: string }[] } | null }[], spokeSwitcher: null }}
  */
-function identifiedSpokeHubDeclarationIssues(root, hubs) {
+function resolveIdentifiedSpokeHubDeclarations(root, manifestFile, nested) {
+  const invalid = (issues) =>
+    new Error(`Invalid Installation Spoke collection (${manifestFile}):\n${renderIssues(issues)}`);
+
   /** @type {string[]} */
-  const issues = [...spokeHubCollectionIssues(hubs.map((hub) => hub.id))];
+  const issues = [...spokeHubCollectionIssues(nested.hubs.map((hub) => hub.id))];
 
   const realRoot = realpathSync(root);
   /** @type {Map<string, { subject: string, locator: string }>} */
   const seen = new Map();
+  /** @type {{ id: string, spokes: { id: string, locator: string, root: string, hostAliases: string[], spokeHubId: string }[], spokeSwitcher: { options: { spokeId: string, label: string, href: string }[] } | null }[]} */
+  const hubs = [];
 
-  hubs.forEach((hub, hubIndex) => {
+  nested.hubs.forEach((hub, hubIndex) => {
     const hubWhere = `Spoke Hub #${hubIndex + 1} ("${hub.id}")`;
 
     issues.push(
@@ -887,8 +901,10 @@ function identifiedSpokeHubDeclarationIssues(root, hubs) {
       ),
     );
 
+    /** @type {{ id: string, locator: string, root: string, hostAliases: string[], spokeHubId: string }[]} */
+    const spokes = [];
     hub.spokes.forEach((spoke, spokeIndex) => {
-      resolveAuthoredSpoke(
+      const resolvedSpoke = resolveAuthoredSpoke(
         root,
         realRoot,
         seen,
@@ -897,34 +913,125 @@ function identifiedSpokeHubDeclarationIssues(root, hubs) {
         `${hubWhere} > Spoke #${spokeIndex + 1} ("${spoke.id}")`,
         issues,
       );
+      // THE OWNING HUB IS ATTACHED TO EACH SPOKE, and the Spoke to its Hub: a resolved Spoke is never
+      // addressable without the Hub that owns it, which is what stops a local id from naming a Spoke in
+      // either Hub.
+      if (resolvedSpoke !== null) spokes.push({ ...resolvedSpoke, spokeHubId: hub.id });
     });
 
-    if (hub.spokeSwitcher !== null) {
-      hubSwitcherMembership(
-        hub.spokeSwitcher,
-        hub.spokes.map((spoke) => spoke.id),
-        {
-          where: `${hubWhere} > spokeSwitcher.options`,
-          members: "one of the Spokes this Spoke Hub declares",
-          audience: "A switcher is HUB-SCOPED: it can only offer Spokes its own Spoke Hub declares.",
-        },
-        issues,
-      );
-    }
+    const spokeSwitcher =
+      hub.spokeSwitcher === null
+        ? null
+        : hubSwitcherMembership(
+            hub.spokeSwitcher,
+            hub.spokes.map((spoke) => spoke.id),
+            {
+              where: `${hubWhere} > spokeSwitcher.options`,
+              members: "one of the Spokes this Spoke Hub declares",
+              audience: "A switcher is HUB-SCOPED: it can only offer Spokes its own Spoke Hub declares.",
+            },
+            issues,
+          );
+
+    hubs.push({ id: hub.id, spokes, spokeSwitcher });
   });
 
-  return issues;
-}
+  // §4 — THE INSPECTION NOMINATION IS COMPOSITE, AND IT MUST NAME A DECLARED MEMBER. The policy is
+  // INSTALLATION-scoped: the Spoke that represents this whole Installation on a hostname no Spoke owns
+  // publicly. It is only meaningful if the Installation actually declares that member, so an unresolvable
+  // nomination is refused HERE, naming the members that do exist, instead of resolving to nothing at request
+  // time (which would look identical to a working policy that never matches).
+  const inspectionSpoke = nested.inspectionSpoke;
+  if (inspectionSpoke !== null) {
+    const owner = hubs.find((hub) => hub.id === inspectionSpoke.spokeHubId);
+    const declared = hubs
+      .map(
+        (hub) =>
+          `"${hub.id}"` +
+          (hub.spokes.length === 0 ? "" : ` (${hub.spokes.map((s) => `"${s.id}"`).join(", ")})`),
+      )
+      .join(", ");
+    if (owner === undefined) {
+      issues.push(
+        `inspectionSpoke: spokeHubId "${inspectionSpoke.spokeHubId}" is not one of the declared Spoke ` +
+          `Hubs (${declared}). The Spoke that represents this Installation on an accepted hosting-platform ` +
+          "inspection hostname is named by BOTH halves of its identity — there is no default Hub.",
+      );
+    } else if (!owner.spokes.some((spoke) => spoke.id === inspectionSpoke.spokeId)) {
+      issues.push(
+        `inspectionSpoke: Spoke Hub "${inspectionSpoke.spokeHubId}" declares no Spoke ` +
+          `"${inspectionSpoke.spokeId}" — it declares ` +
+          `${owner.spokes.map((spoke) => `"${spoke.id}"`).join(", ") || "none"}. The Spoke that represents ` +
+          "this Installation on an accepted hosting-platform inspection hostname must be declared here, by " +
+          "its COMPOSITE identity — there is no default Spoke.",
+      );
+    }
+  }
 
+  // THE POLICY'S ALIASES — the same semantic rules the flat form applies, reached through the SAME
+  // authorities: an alias with no nominated Spoke could never select anything, each alias must be an EXACT
+  // hostname in the ONE normalized spelling (`inspectionAliasIssue`), and no alias may be stated twice.
+  // WHETHER an alias restates a Spoke's own canonical hostname is decided by the build authority, where a
+  // canonical origin is known.
+  if (nested.inspectionHosts.length > 0 && inspectionSpoke === null) {
+    issues.push(
+      `inspectionHosts: ${nested.inspectionHosts.length} inspection alias hostname(s) are declared, but ` +
+        'the collection declares no "inspectionSpoke" — an alias selects the Spoke the policy nominates, ' +
+        "so without one nothing could ever answer on it. Nominate the Spoke that represents this " +
+        'Installation there, as { "spokeHubId": "…", "spokeId": "…" }, or remove the aliases.',
+    );
+  }
+
+  /** @type {string[]} */
+  const inspectionHosts = [];
+  for (const value of nested.inspectionHosts) {
+    const issue = inspectionAliasIssue(value);
+    if (issue !== null) {
+      issues.push(issue);
+      continue;
+    }
+    if (inspectionHosts.includes(value)) {
+      issues.push(`inspectionHosts: the hostname "${value}" is stated more than once`);
+      continue;
+    }
+    inspectionHosts.push(value);
+  }
+
+  if (issues.length > 0) throw invalid(issues);
+
+  return {
+    mode: "hubs",
+    installationRoot: root,
+    manifestFile,
+    inspectionSpoke,
+    inspectionHosts,
+    hubs,
+    // A HUB-SCOPED SWITCHER BELONGS TO ITS HUB: this form has no Installation-wide switcher, and a manifest
+    // that authors one is refused by `spokeHubAuthoringIssues`. The key stays present (`null`) so a consumer
+    // can read it without checking the mode first.
+    spokeSwitcher: null,
+  };
+}
 /**
  * The Spokes ONE Installation root declares, or a descriptive, build-time-loud failure.
  *
  * `installationRoot` is an INPUT: this function never discovers a root of its own (no `process.cwd()`, no
  * environment, no layout) — the Installation is already selected by the ONE build authority.
  *
+ * THREE SHAPES, ONE PER AUTHORING MODE. A legacy Installation answers `declarations` (its one implicit
+ * Spoke) and no `hubs`; a FLAT manifest answers `declarations`, exactly as it always has, and no `hubs`; a
+ * NESTED manifest answers `hubs` — each with its identity, its resolved Spokes (each naming its owning Hub)
+ * and its own Hub-scoped switcher — and NO `declarations`, because flattening an identified collection into
+ * one Spoke list is exactly what would lose Hub ownership.
+ *
  * @param {string} installationRoot the Installation root to describe
  * @returns {{ mode: "legacy"|"explicit", installationRoot: string, manifestFile: string|null,
- *   inspectionSpoke: string|null, declarations: { id: string, locator: string|null, root: string }[] }}
+ *   inspectionSpoke: string|null, inspectionHosts: string[], declarations: { id: string, locator: string|null, root: string, hostAliases: string[] }[],
+ *   spokeSwitcher: { options: { spokeId: string, label: string, href: string }[] } | null, hubs: [] }
+ *   | { mode: "hubs", installationRoot: string, manifestFile: string,
+ *   inspectionSpoke: { spokeHubId: string, spokeId: string } | null, inspectionHosts: string[],
+ *   hubs: { id: string, spokes: { id: string, locator: string, root: string, hostAliases: string[], spokeHubId: string }[], spokeSwitcher: { options: { spokeId: string, label: string, href: string }[] } | null }[],
+ *   spokeSwitcher: null }}
  */
 export function resolveSpokeDeclarations(installationRoot) {
   const root = path.resolve(installationRoot);
@@ -970,6 +1077,8 @@ export function resolveSpokeDeclarations(installationRoot) {
       declarations: [{ id: IMPLICIT_SPOKE_ID, locator: null, root, hostAliases: [] }],
       // A switcher between Spokes is authored in the manifest this Installation does not carry.
       spokeSwitcher: null,
+      // NOT an identified collection: a legacy Installation has ONE implicit Spoke Hub, and it is unnamed.
+      hubs: [],
     };
   }
 
@@ -1000,19 +1109,27 @@ function resolveExplicitSpokeDeclarations(root, manifestFile) {
     );
   }
 
-  // FOUNDATION-ID-M3-P1 — THE NESTED FORM: RECOGNISED, COMPLETELY VALIDATED, AND REFUSED.
+  // FOUNDATION-ID-M3-P1/P3 — THE NESTED FORM: RESOLVED BY ITS OWN AUTHORITY.
   //
-  // The activation refusal, the manifest-level authoring rules and the collection's STRUCTURE are reported
-  // first (none of them reads the filesystem), and only a STRUCTURALLY valid collection is then validated
-  // SEMANTICALLY — identity, membership, roots, containment — so a diagnostic never refers to a Hub whose
-  // own shape is unusable. Nothing is RETURNED from this branch: there is no code path in which a
-  // `spokeHubs` manifest becomes declarations, and therefore none in which it can be built, composed or run.
+  // The manifest-level authoring rules and the collection's STRUCTURE are reported first (neither reads the
+  // filesystem), and only a STRUCTURALLY valid AND manifest-legal collection is then validated SEMANTICALLY
+  // — identity, membership, roots, containment, the Hub-scoped switchers and the inspection nomination — so a
+  // diagnostic never refers to a Hub whose own shape is unusable. A coherent collection is RETURNED as
+  // `hubs`, with the owning Hub attached to every Spoke: this is the ONE path from an authored nested
+  // manifest to the build, the runtime index and the asset generator, and it never flattens the Hubs into one
+  // list.
+  //
+  // THE MANIFEST-LEVEL RULES ARE A REFUSAL, NOT A NOTE. A manifest that authors BOTH forms (or a
+  // manifest-level switcher this form has no place for) is refused HERE — before anything is resolved —
+  // because "there is one acceptable way to author this Installation" is exactly what those rules state, and
+  // a rule that only warned would leave a second, ignored collection in the file.
   if (declaresSpokeHubCollection(raw)) {
     const nested = installationSpokeHubCollectionSchema.safeParse(raw);
-    throw invalid([
-      ...spokeHubAuthoringIssues(raw, nested).map(renderZodIssue),
-      ...(nested.success ? identifiedSpokeHubDeclarationIssues(root, nested.data.hubs) : []),
-    ]);
+    const authoring = spokeHubAuthoringIssues(raw, nested);
+    if (!nested.success || authoring.length > 0) {
+      throw invalid(authoring.map(renderZodIssue));
+    }
+    return resolveIdentifiedSpokeHubDeclarations(root, manifestFile, nested.data);
   }
 
   const parsed = installationSpokeCollectionSchema.safeParse(raw);
@@ -1135,6 +1252,9 @@ function resolveExplicitSpokeDeclarations(root, manifestFile) {
     inspectionHosts,
     declarations: declared,
     spokeSwitcher,
+    // NOT an identified collection: a flat manifest declares Spokes, not Spoke Hubs, and the Installation's
+    // single implicit Hub is unnamed — so this answer carries no Hubs and every decision here is unchanged.
+    hubs: [],
   };
 }
 

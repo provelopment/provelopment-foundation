@@ -45,7 +45,7 @@ import {
   assertSpokeSwitcherLabelPresent,
 } from "./i18n/invariants";
 import type { SpokeRuntimeContext } from "./installation-runtime";
-import { spokeSwitcherForBuild } from "./spoke-routing";
+import { spokeSwitcherForRenderingSpoke } from "./spoke-routing";
 import { loadSpokeDictionaryRegistry } from "./spoke-dictionaries";
 
 /**
@@ -100,13 +100,15 @@ export function dictionaryAccessForRuntimeContext(
     `Spoke "${context.id}"`,
   );
 
-  // R1 — THE CROSS-SPOKE SWITCHER LABEL LOCK. The control is INSTALLATION-level chrome (`spokeSwitcher` in
-  // the Spoke collection) that appears on every page of every Spoke, so the build's own routing description
-  // — the ONE authority that knows whether this Installation authors one — decides whether every served
-  // locale must be able to name it. A build with no switcher checks nothing.
+  // R1 — THE CROSS-SPOKE SWITCHER LABEL LOCK. The control is chrome that appears on every page of the Spoke
+  // that renders it, so the build's own routing description — the ONE authority that knows whether the
+  // rendering Spoke receives a switcher at all — decides whether every served locale must be able to name
+  // it. In an Installation authored with identified Spoke Hubs that is the OWNING Hub's own list; in a
+  // flat/legacy one it is the Installation's, exactly as before (FOUNDATION-ID-M3-P3 §8). A Spoke that
+  // receives no switcher checks nothing.
   assertSpokeSwitcherLabelPresent(
     effectiveDictionaries,
-    spokeSwitcherForBuild() !== null,
+    spokeSwitcherForRenderingSpoke(context) !== null,
     `Spoke "${context.id}"`,
   );
 

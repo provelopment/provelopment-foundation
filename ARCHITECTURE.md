@@ -594,18 +594,23 @@ today is narrower than the approved target. These two lists are not each other:
 - The pure `(BusinessId, SiteId)` domain CONTRACTS merged in FOUNDATION-ID-M1 — the types, the grammar and the
   composite identity — which exist but are NOT yet connected to managed-mode Site resolution.
 
-**Approved, and NOT implemented:**
+**Approved, and implemented for Spoke Hubs (FOUNDATION-ID-M3-P3) — and NOT implemented for managed-mode Sites:**
 
-- SEVERAL independently identified Spoke Hubs per installation.
-- Spoke ids scoped to their owning Spoke Hub.
+- SEVERAL independently identified Spoke Hubs per installation: an Installation may author `spokeHubs[]`,
+  each Hub carrying its id, its members and its OWN Hub-scoped switcher. Its members are addressed by the
+  COMPOSITE `(SpokeHubId, SpokeId)`, so a local id may repeat across Hubs.
+- Spoke ids scoped to their owning Spoke Hub — while an exact hostname claim stays UNIQUE Installation-wide,
+  because a request carries one host and must select exactly one Spoke in exactly one Hub.
 - Managed-mode composite Site ownership and resolution: `(BusinessId, SiteId)` carried through membership and
-  lookup.
-- The identity-safe addressing, content, dictionary and asset isolation that managed mode implies.
+  lookup. **This remains unimplemented** (and is not part of this work).
+- The identity-safe addressing, content, dictionary and asset isolation the composite identity implies —
+  implemented for identified Spoke Hubs (composite runtime segments, per-member namespaces and contexts);
+  managed-mode Site isolation follows the item above.
 
 | Layer | Today | Approved, not implemented |
 | --- | --- | --- |
-| **Spoke Hub** | exactly ONE per installation, implicit and with no id of its own | SEVERAL independently identified Spoke Hubs per installation |
-| **Spoke** | one or more, declared by the manifest; Spoke ids unique installation-wide | Spoke ids local to, and scoped by, their owning Spoke Hub |
+| **Spoke Hub** | ONE implicit Hub per Installation in the FLAT form, with no id of its own; SEVERAL NAMED Hubs in the NESTED `spokeHubs` form, each with its own identity, members and switcher | none |
+| **Spoke** | one or more, declared by the manifest; ids unique Installation-wide in the flat form and LOCAL TO their owning Hub in the nested form | none |
 | **Site Hub** | one implicit Site Hub per Spoke, or the several its `sites[].hub` leaves name; scoped to its Spoke either way | none — Site Hubs stay scoped to individual Spokes |
 | **Site** | the EXISTING authored Site context (`sites[]`), resolved exactly as it always was; the `(BusinessId, SiteId)` contracts exist but are not connected | managed-mode composite Site ownership and resolution |
 | **Locale** | per Site — already independent | none — locales stay independent within each Site |
@@ -617,16 +622,17 @@ route, hostname rule, membership algorithm or resolved Site population changes w
 
 The levels above are STRUCTURAL. One ORGANIZATIONAL rule sits on top of them, and it is binding:
 
-- **In the CURRENT implementation, ONE Installation composes ONE Spoke Hub** for organizational/navigation
-  purposes, and every Spoke that Installation declares is a **member** of it. (The approved target's SEVERAL
-  independently identified Spoke Hubs per Installation are not implemented — see above.) **The declaration is
-  the whole membership boundary** — there is no `hubId`, no organization registry and no second membership
-  record anywhere in the platform.
-- A **Spoke-Hub-scoped Spoke switcher** (`spokeSwitcher`, the fifth manifest leaf) may therefore offer **only**
-  declared members, and every option's destination must route back to the member it names — its canonical
-  origin, one of its additional hostname claims, or an inspection hostname the policy nominates for it. The
-  ROUTING CHECK is the enforcement mechanism: an unrelated organization's hostname is refused at build time
-  because it is not a routing claim of any member.
+- **An Installation composes ONE Spoke Hub in the FLAT form, and SEVERAL NAMED ones in the NESTED
+  (`spokeHubs`) form** (FOUNDATION-ID-M3-P3). In the flat form every Spoke the manifest declares is a member
+  of the single implicit Hub. In the nested form each Hub is IDENTIFIED and owns its OWN members, and a
+  member is addressed by `(SpokeHubId, SpokeId)`. **The declaration is the whole membership boundary** —
+  there is no `hubId`, no organization registry and no second membership record anywhere in the platform.
+- A **Spoke-Hub-scoped Spoke switcher** (`spokeSwitcher`) may offer **only** declared members — in the nested
+  form, only the members of the Hub that AUTHORS the list, and a rendering Spoke receives its OWNING Hub's
+  list, never an Installation-wide merge. Every option's destination must route back to the member it names —
+  its canonical origin, one of its additional hostname claims, or an inspection hostname the policy nominates
+  for it. The ROUTING CHECK is the enforcement mechanism: an unrelated organization's hostname is refused at
+  build time because it is not a routing claim of any member.
 - A **domain suffix does not determine membership**: `support.acme.com`, `acme.de`, `acme-australia.com` and
   `www.acme.com` may be members together when they are **declared** in the same Installation; an unrelated
   `www.abc.com` is not switchable in that Spoke Hub no matter how its URL is authored.

@@ -72,7 +72,10 @@ import {
   SPOKE_CONFIG_FILE_NAME,
 } from "./spoke-declarations.mjs";
 import { hostRoutingForInstallation } from "./spoke-host-routing.mjs";
-import { runtimeSegmentForSpokeId } from "./spoke-runtime-segment.mjs";
+import {
+  runtimeSegmentForIdentifiedSpokeRef,
+  runtimeSegmentForSpokeId,
+} from "./spoke-runtime-segment.mjs";
 
 /**
  * The layouts a build may select. Type-only reference to the client-safe authority's union.
@@ -87,8 +90,9 @@ import { runtimeSegmentForSpokeId } from "./spoke-runtime-segment.mjs";
 
 /**
  * How an Installation is authored: a legacy implicit Spoke, an explicit collection of exactly ONE Spoke
- * (the accepted one-Spoke runtime), or an explicit collection of SEVERAL (hostname dispatch, M16).
- * @typedef {"legacy" | "explicit" | "multi"} InstallationAuthoringMode
+ * (the accepted one-Spoke runtime), an explicit collection of SEVERAL (hostname dispatch, M16), or an
+ * IDENTIFIED Spoke Hub collection (hostname dispatch ALWAYS, M3-P3).
+ * @typedef {"legacy" | "explicit" | "multi" | "hubs"} InstallationAuthoringMode
  */
 
 /**
@@ -98,7 +102,11 @@ import { runtimeSegmentForSpokeId } from "./spoke-runtime-segment.mjs";
  * @property {string} id the manifest's authored identity
  * @property {string} relativeRoot the authored root, POSIX-relative to the Installation root
  * @property {string} root the resolved absolute root
- * @property {string} segment `runtimeSegmentForSpokeId(id)` — the Spoke's runtime namespace token
+ * @property {string} segment the Spoke's runtime namespace token: `runtimeSegmentForSpokeId(id)` for a
+ *   flat/legacy Spoke, and the COMPOSITE `runtimeSegmentForIdentifiedSpokeRef({spokeHubId, id})` when the
+ *   Installation IDENTIFIES its Spoke Hubs — because two Hubs may each declare the same local id, and a
+ *   bare id would address whichever Hub came first
+ * @property {string} [spokeHubId] the OWNING Spoke Hub, present only for an identified collection
  */
 
 /**
@@ -187,12 +195,37 @@ export const DEPLOYMENT_CONFIG_FILE_NAME = SPOKE_CONFIG_FILE_NAME;
  * construction rather than by agreement between two copies.
  *
  * @param {string} installationRoot the Installation root to describe
- * @returns {{ mode: InstallationAuthoringMode, manifestFile: string|null, spokes: DeclaredSpoke[] }}
+ * @returns {{ mode: InstallationAuthoringMode, manifestFile: string|null, spokes: DeclaredSpoke[],
+ *   hubIds?: string[] }}
  */
 export function installationSpokes(installationRoot) {
   const resolved = resolveSpokeDeclarations(installationRoot);
 
   if (resolved.mode === "legacy") return { mode: "legacy", manifestFile: null, spokes: [] };
+
+  // NESTED — AN IDENTIFIED COLLECTION: every Spoke is addressed by BOTH halves of its identity.
+  //
+  // Each declared Spoke carries its owning Hub, and its runtime SEGMENT is the composite one, so the
+  // namespace, the routing entry and the runtime context of the same Spoke are derived from the same fact.
+  // The Hubs stay separate (`hubIds`, in authored order) so a consumer that must know the membership — the
+  // Hub-scoped switcher above all — never has to reconstruct it from a flattened list.
+  if (resolved.mode === "hubs") {
+    const hubs = resolved.hubs.map((hub) => hub.id);
+    return {
+      mode: "hubs",
+      manifestFile: resolved.manifestFile,
+      hubIds: hubs,
+      spokes: resolved.hubs.flatMap((hub) =>
+        hub.spokes.map((spoke) => ({
+          id: spoke.id,
+          relativeRoot: spoke.locator,
+          root: spoke.root,
+          segment: runtimeSegmentForIdentifiedSpokeRef({ spokeHubId: hub.id, spokeId: spoke.id }),
+          spokeHubId: hub.id,
+        })),
+      ),
+    };
+  }
 
   return {
     mode: "explicit",
@@ -272,6 +305,26 @@ export function resolveDeploymentForBuild(environment = process.env, repositoryR
   }
 
   const declared = authoring.spokes;
+
+  // AN IDENTIFIED SPOKE HUB COLLECTION IS ALWAYS HOSTNAME DISPATCH (§6). Even when the whole nested
+  // Installation contains exactly ONE Hub and ONE Spoke, an explicitly identified Spoke uses EXACT hostname
+  // dispatch: the one-Spoke compatibility rule below belongs to the LEGACY/FLAT authoring form (a
+  // development or preview host has to reach something), and an identified Spoke Hub was authored
+  // deliberately enough that "answer any host" would be a lie about what its author declared. It inlines no
+  // single configuration and claims no single resource root, so the permissive path cannot be reached
+  // through `deploymentMode()` either.
+  if (authoring.mode === "hubs") {
+    return {
+      layout,
+      mode: "hubs",
+      root,
+      resourceRoot: null,
+      siteConfigFile: "",
+      config: "",
+      spoke: null,
+      hostRouting,
+    };
+  }
 
   // EXACTLY ONE declared Spoke: the accepted one-Spoke runtime, unchanged — its resources are the ones
   // dictionaries, pages and artwork resolve from, and its configuration is the one the build inlines.

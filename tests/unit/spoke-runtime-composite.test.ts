@@ -13,6 +13,8 @@ import {
   spokeRuntimeAssetUrlBase,
 } from "@/config/spoke-runtime-segment.mjs";
 import { spokeResourceIndexFor } from "@/config/spoke-resources";
+import { hostRoutingForInstallation } from "@/config/spoke-host-routing.mjs";
+import { resolveDeploymentForBuild } from "@/config/deployment-build.mjs";
 import {
   runtimeContextForIdentifiedSpoke,
   runtimeContextForSpoke,
@@ -414,24 +416,62 @@ describe("per-Hub isolation: context, resources, artwork and switcher", () => {
   });
 });
 
-describe("the activation gate is unchanged", () => {
-  it("still refuses a nested Installation at the build seam, whatever the runtime can now do", () => {
-    const root = mkdtempSync(path.join(tmpdir(), "foundation-p2-gate-"));
+describe("the activation gate is LIFTED for a coherent collection — and only for one", () => {
+  it("resolves a nested Installation at the build seam, with the composite identity of every member", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "foundation-p3-gate-"));
     try {
       mkdirSync(path.join(root, "spokes", "one"), { recursive: true });
-      writeFileSync(path.join(root, "spokes", "one", "site.config.json"), "{}", "utf8");
+      writeFileSync(
+        path.join(root, "spokes", "one", "site.config.json"),
+        JSON.stringify({ site: { name: "One", url: "https://one.test" } }),
+        "utf8",
+      );
       writeFileSync(
         path.join(root, "spokes.json"),
         JSON.stringify({ spokeHubs: [{ id: "one", spokes: [{ id: "docs", root: "spokes/one" }] }] }),
         "utf8",
       );
 
-      // Phase 2 implements and proves the composite runtime WITHOUT making a partially implemented
-      // Installation operable: the configuration authority still refuses this manifest, and the BUILD seam
-      // refuses it too — that half is proved where the seam's own parity is proved
-      // (`tests/unit/spoke-declaration-parity.test.ts`, which is a sanctioned consumer of the build harness).
-      expect(() => resolveInstallationSpokeRoots(root)).toThrow(
-        /multi-Spoke-Hub runtime support is NOT YET ENABLED/,
+      // Phase 3 ENABLES the form — for a COHERENT collection, through the same authority that validated it
+      // while it was gated. The member is addressed by BOTH halves of its identity from here on.
+      const roots = resolveInstallationSpokeRoots(root);
+      expect(roots.mode).toBe("hubs");
+      expect(roots.hubs[0].id).toBe("one");
+      expect(roots.descriptors).toEqual([
+        {
+          id: "docs",
+          root: path.join(root, "spokes", "one"),
+          spokeHubId: "one",
+        },
+      ]);
+
+      const routing = hostRoutingForInstallation(root);
+      expect(routing.mode).toBe("identified");
+      expect(routing.spokes.map((spoke) => spoke.segment)).toEqual(["hub+one+docs"]);
+      expect(routing.spokes[0].spokeHubId).toBe("one");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("still refuses an INVALID nested Installation, with an actionable diagnostic", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "foundation-p3-gate-invalid-"));
+    try {
+      mkdirSync(path.join(root, "spokes", "one"), { recursive: true });
+      writeFileSync(path.join(root, "spokes", "one", "site.config.json"), "{}", "utf8");
+      // A member with no canonical origin: an identified collection ALWAYS dispatches by hostname, so this
+      // Installation can never be dispatched to — it is refused at the build seam, by name.
+      writeFileSync(
+        path.join(root, "spokes.json"),
+        JSON.stringify({ spokeHubs: [{ id: "one", spokes: [{ id: "docs", root: "spokes/one" }] }] }),
+        "utf8",
+      );
+
+      expect(() => hostRoutingForInstallation(root)).toThrow(
+        /Spoke Hub "one" > Spoke "docs" declares no canonical origin/,
+      );
+      expect(() => resolveDeploymentForBuild({}, root)).toThrow(
+        /Spoke Hub "one" > Spoke "docs" declares no canonical origin/,
       );
     } finally {
       rmSync(root, { recursive: true, force: true });

@@ -236,6 +236,11 @@ describe("deployment-owned paths are spelled in ONE place", () => {
       // of the REAL authored capsule, so it must know where that capsule is; asking the build authority
       // (`capsuleDirectory`) is the sanctioned way to know it, and it selects no deployment itself.
       "tests/integration/foundation-installation-multispoke.test.ts",
+      // FOUNDATION-ID-M3-P3 — the COMPOSITE-IDENTITY suite proves what the build seam produces for an
+      // IDENTIFIED installation (the routing description of a synthetic nested root, and the deployment that
+      // root resolves to), so it asks the seam itself about a DISPOSABLE root — exactly as the parity suite
+      // above does. It selects no deployment and writes none: its root is its own OS-temp tree.
+      "tests/unit/spoke-runtime-composite.test.ts",
     ];
     // FOUNDATION-B4B adds three of these, and for the same reason the list already had entries: they must
     // know WHERE an installation's authored material lives, and asking the authority is the only sanctioned

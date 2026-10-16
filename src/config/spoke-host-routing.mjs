@@ -47,21 +47,35 @@ import {
   SPOKE_CONFIG_FILE_NAME,
   switcherDestination,
 } from "./spoke-declarations.mjs";
-import { runtimeSegmentForSpokeId } from "./spoke-runtime-segment.mjs";
+import {
+  runtimeSegmentForIdentifiedSpokeRef,
+  runtimeSegmentForSpokeId,
+} from "./spoke-runtime-segment.mjs";
 
 /**
- * How many Spokes a build serves: the ONE-Spoke compatibility runtime, or hostname dispatch (`multi`).
- * @typedef {"single" | "multi"} HostRoutingMode
+ * How many Spokes a build serves, and WHICH RULE decides: the ONE-Spoke compatibility runtime, hostname
+ * dispatch, or hostname dispatch for an Installation authored with identified Spoke Hubs.
+ *
+ *   single      a legacy/flat Installation declaring exactly ONE Spoke: that Spoke answers every host
+ *   multi       a flat Installation declaring SEVERAL Spokes: exact hostname dispatch
+ *   identified  an Installation AUTHORED with `spokeHubs`: exact hostname dispatch ALWAYS, even when the
+ *               whole Installation contains one Hub and one Spoke (the permissive `single` rule belongs to
+ *               the legacy/flat form alone, and an identified collection never takes it)
+ *
+ * @typedef {"single" | "multi" | "identified"} HostRoutingMode
  */
 
 /**
  * ONE Spoke's request-routing identity.
  * @typedef {object} SpokeHostRoutingEntry
  * @property {string} id the Spoke's authored identity
- * @property {string} segment its runtime segment (`runtimeSegmentForSpokeId`)
+ * @property {string} segment its runtime segment (`runtimeSegmentForSpokeId`) — or, for an identified
+ *   Installation, the COMPOSITE `runtimeSegmentForIdentifiedSpokeRef`
  * @property {string} canonicalOrigin the authored absolute origin its hostname claims derive from
  * @property {string[]} hostAliases the exact ADDITIONAL hostnames this Spoke answers for — routing claims
  *   only, never a second canonical origin (WEB-1 owner requirement 6)
+ * @property {string} [spokeHubId] the OWNING Spoke Hub, present ONLY for an Installation authored with
+ *   `spokeHubs` — so `(spokeHubId, id)` names this entry and `id` alone may name another Hub's Spoke
  */
 
 /**
@@ -81,17 +95,22 @@ import { runtimeSegmentForSpokeId } from "./spoke-runtime-segment.mjs";
  * `hostnames` is their UNION, deduplicated in that order: the one list the request boundary matches a
  * request host against, exactly.
  *
- * `spokeSwitcher` is the Installation's authored HUB-SCOPED SPOKE SWITCHER (R1): the ordered options a
- * visitor may travel between, each already PROVED to route back to the member it names. ONE INSTALLATION IS
- * ONE HUB, and its DECLARED Spokes are its members — so this list can never contain anything else, and no
+ * `spokeSwitcher` is the FLAT Installation's authored HUB-SCOPED SPOKE SWITCHER (R1): the ordered options a
+ * visitor may travel between, each already PROVED to route back to the member it names. A flat Installation
+ * is ONE Hub and its DECLARED Spokes are its members, so this list can never contain anything else, and no
  * organization registry participates. It is `null` when the Installation authors none, so a build that
  * declares no switcher is byte-identical to before.
+ *
+ * `spokeHubSwitchers` is the IDENTIFIED form's answer to the same requirement (`FOUNDATION-ID-M3-P3`): ONE
+ * list per Hub, each proved against that Hub's OWN members, in authored order — and absent entirely for a
+ * flat/legacy Installation, whose single implicit Hub is what `spokeSwitcher` above already describes.
  *
  * @typedef {object} InstallationHostRouting
  * @property {HostRoutingMode} mode
  * @property {SpokeHostRoutingEntry[]} spokes
  * @property {InstallationHostRoutingInspection | null} inspection
  * @property {{ options: { spokeId: string, label: string, href: string }[] } | null} spokeSwitcher
+ * @property {{ spokeHubId: string, options: { spokeId: string, label: string, href: string }[] }[]} [spokeHubSwitchers]
  */
 
 /**
@@ -99,6 +118,8 @@ import { runtimeSegmentForSpokeId } from "./spoke-runtime-segment.mjs";
  *
  * @typedef {object} InstallationHostRoutingInspection
  * @property {string} spokeId the Spoke the collection nominates for inspection hostnames
+ * @property {string} [spokeHubId] the OWNING Spoke Hub of that Spoke, present ONLY for an Installation
+ *   authored with `spokeHubs` — where a local id alone could name a Spoke in either Hub
  * @property {string[]} hostnames platform-reported ∪ authored aliases, deduplicated — what is matched
  * @property {string[]} platformHostnames the hostnames the platform reported for THIS build
  * @property {string[]} authoredHostnames the deployment-owned aliases the Installation declared
@@ -216,42 +237,132 @@ function canonicalOriginFor(spokeRoot, where) {
 export function hostRoutingForInstallation(installationRoot) {
   const resolved = resolveSpokeDeclarations(installationRoot);
 
-  /** @type {{ id: string, root: string, hostAliases: string[] }[]} */
-  const roots =
+  // ONE WORKING LIST, TWO AUTHORING FORMS — and ONE set of claim rules over it.
+  //
+  // Every rule below ("an additional claim needs a canonical origin", "no hostname routes to two Spokes",
+  // "an alias may never restate a Spoke's own hostname", "an alias may never collide with an inspection
+  // hostname of another Spoke") is stated ONCE and applied to whichever form produced this list. The rules
+  // are identical because they are about HOSTNAMES, not about authoring: an Installation answers one host
+  // with exactly one Spoke however its Spokes were written down. What changes between the forms is only the
+  // VOCABULARY — a flat Spoke is named by its id, an identified one by its Hub AND its id — and that lives
+  // in `subject` (the readable name a diagnostic uses) and `key` (the unique handle the rules compare).
+  //
+  // `key` is the runtime SEGMENT: injective over `(spokeHubId, id)` by construction
+  // (`./spoke-runtime-segment`), equal to the id's encoding for a flat Spoke, and the COMPOSITE encoding for
+  // an identified one — so two Hubs' Spokes called `docs` are two different keys and no collision rule can
+  // confuse them.
+  /** @type {{ key: string, subject: string, id: string, spokeHubId?: string, root: string, hostAliases: string[] }[]} */
+  const entries =
     resolved.mode === "legacy"
-      ? [{ id: IMPLICIT_SPOKE_ID, root: resolved.installationRoot ?? installationRoot, hostAliases: [] }]
-      : resolved.declarations.map((declaration) => ({
-          id: declaration.id,
-          root: declaration.root,
-          hostAliases: declaration.hostAliases ?? [],
-        }));
+      ? [
+          {
+            key: runtimeSegmentForSpokeId(IMPLICIT_SPOKE_ID),
+            subject: `Spoke "${IMPLICIT_SPOKE_ID}"`,
+            id: IMPLICIT_SPOKE_ID,
+            root: resolved.installationRoot ?? installationRoot,
+            hostAliases: [],
+          },
+        ]
+      : resolved.mode === "hubs"
+        ? resolved.hubs.flatMap((hub) =>
+            hub.spokes.map((spoke) => ({
+              key: runtimeSegmentForIdentifiedSpokeRef({
+                spokeHubId: spoke.spokeHubId,
+                spokeId: spoke.id,
+              }),
+              subject: `Spoke Hub "${spoke.spokeHubId}" > Spoke "${spoke.id}"`,
+              id: spoke.id,
+              spokeHubId: spoke.spokeHubId,
+              root: spoke.root,
+              hostAliases: spoke.hostAliases ?? [],
+            })),
+          )
+        : resolved.declarations.map((declaration) => ({
+            key: runtimeSegmentForSpokeId(declaration.id),
+            subject: `Spoke "${declaration.id}"`,
+            id: declaration.id,
+            root: declaration.root,
+            hostAliases: declaration.hostAliases ?? [],
+          }));
 
-  const spokes = roots.map((spoke) => ({
-    id: spoke.id,
-    segment: runtimeSegmentForSpokeId(spoke.id),
-    canonicalOrigin: canonicalOriginFor(spoke.root, `Spoke "${spoke.id}"`),
+  // A SPOKE WITH NO CANONICAL ORIGIN CANNOT BE DISPATCHED TO — and in an IDENTIFIED collection that is true
+  // even for a collection of ONE, because this form always dispatches by hostname (§6): there is no
+  // permissive single-Spoke path to fall back to, so a member without an origin would simply be unreachable.
+  if (resolved.mode === "hubs") {
+    for (const entry of entries) {
+      if (canonicalOriginFor(entry.root, entry.subject) === "") {
+        throw new Error(
+          `FOUNDATION-ID-M3-P3: ${entry.subject} declares no canonical origin, but an Installation authored ` +
+            "with identified Spoke Hubs always dispatches by EXACT hostname — even when it declares one " +
+            "Hub and one Spoke. Author each member's `site.url` (the origin its hostname claim derives " +
+            "from); there is no permissive fallback in this form.",
+        );
+      }
+    }
+  }
+
+  /** @type {{ key: string, subject: string, id: string, spokeHubId?: string, segment: string, canonicalOrigin: string, hostAliases: string[] }[]} */
+  const spokes = entries.map((entry) => ({
+    ...entry,
+    segment: entry.key,
+    canonicalOrigin: canonicalOriginFor(entry.root, entry.subject),
     // NORMALIZED through the ONE pure step — the same one the request boundary applies — so the artifact
     // can never carry a claim the runtime would spell differently (the declaration seam already refused a
     // value that is not spelled the normalized way; this keeps that invariant structural).
-    hostAliases: spoke.hostAliases.map((alias) => normalizeHostname(alias) ?? alias),
+    hostAliases: entry.hostAliases.map((alias) => normalizeHostname(alias) ?? alias),
   }));
 
-  const mode = spokes.length > 1 ? "multi" : "single";
+  // THE MODE IS THE AUTHORING FORM's, AND IT IS THE ROUTING RULE.
+  //
+  //   single      a LEGACY/FLAT Installation declaring exactly ONE Spoke: that Spoke answers every host
+  //               (the accepted one-Spoke compatibility behaviour, §6)
+  //   multi       a FLAT Installation declaring SEVERAL Spokes: exact hostname dispatch
+  //   identified  an Installation AUTHORED with identified Spoke Hubs: exact hostname dispatch ALWAYS
+  //
+  // `identified` makes the distinction STRUCTURAL rather than something a consumer must infer: an identified
+  // collection with ONE Hub and ONE Spoke is `identified`, so the proxy, the request boundary and the
+  // compatibility accessors cannot mistake it for the permissive single-Spoke case.
+  const mode = resolved.mode === "hubs" ? "identified" : spokes.length > 1 ? "multi" : "single";
   const platformHostnames = inspectionHostnamesFromPlatform(process.env);
   const authoredHostnames = resolved.inspectionHosts;
 
-  if (mode === "multi" && platformHostnames.length > 0 && resolved.inspectionSpoke === null) {
+  // THE INSPECTION NOMINATION, in ONE spelling: the KEY of the nominated Spoke, plus the label a diagnostic
+  // uses for it. A flat Installation nominates a local id; an identified one nominates BOTH halves.
+  const nomination = resolved.inspectionSpoke;
+  const nominatedKey =
+    nomination === null
+      ? null
+      : nomination.spokeHubId === undefined
+        ? runtimeSegmentForSpokeId(nomination)
+        : runtimeSegmentForIdentifiedSpokeRef({
+            spokeHubId: nomination.spokeHubId,
+            spokeId: nomination.spokeId,
+          });
+  const nominatedSubject =
+    nomination === null
+      ? null
+      : nomination.spokeHubId === undefined
+        ? `Spoke "${nomination}"`
+        : `Spoke Hub "${nomination.spokeHubId}" > Spoke "${nomination.spokeId}"`;
+
+  if (mode !== "single" && platformHostnames.length > 0 && nomination === null) {
     throw new Error(
-      "FOUNDATION-MULTISITE-M20: this multi-Spoke Installation is being built on a hosting platform " +
-        `that reports its own inspection hostnames (${platformHostnames.join(", ")}), but the ` +
-        "collection declares no \"inspectionSpoke\". State which Spoke represents this Installation on " +
-        "such a hostname — there is no default, and no Spoke is ever chosen by manifest order.",
+      mode === "identified"
+        ? "FOUNDATION-ID-M3-P3: this Installation identifies its Spoke Hubs and is being built on a " +
+            `hosting platform that reports its own inspection hostnames (${platformHostnames.join(", ")}), ` +
+            'but the collection declares no "inspectionSpoke". State which member represents this ' +
+            'Installation there, as { "spokeHubId": "…", "spokeId": "…" } — there is no default Hub and no ' +
+            "default Spoke, and no member is ever chosen by authored order."
+        : "FOUNDATION-MULTISITE-M20: this multi-Spoke Installation is being built on a hosting platform " +
+            `that reports its own inspection hostnames (${platformHostnames.join(", ")}), but the ` +
+            'collection declares no "inspectionSpoke". State which Spoke represents this Installation on ' +
+            "such a hostname — there is no default, and no Spoke is ever chosen by manifest order.",
     );
   }
 
-  /** EVERY Spoke's canonical hostname, by identity — the origin its canonical metadata is built from. */
+  /** EVERY Spoke's canonical hostname, by KEY — the origin its canonical metadata is built from. */
   const canonicalHostnames = new Map(
-    spokes.map((spoke) => [spoke.id, hostnameFromOrigin(spoke.canonicalOrigin)]),
+    spokes.map((spoke) => [spoke.key, hostnameFromOrigin(spoke.canonicalOrigin)]),
   );
 
   // AN ADDITIONAL CLAIM PRESUPPOSES A CANONICAL ORIGIN. `hostAliases` are claims IN ADDITION to a Spoke's
@@ -259,9 +370,9 @@ export function hostRoutingForInstallation(installationRoot) {
   // is built from — so a Spoke that authors aliases but no usable `site.url` could be reached at a hostname
   // while having no canonical identity to render there. That is refused rather than half-honoured.
   for (const spoke of spokes) {
-    if (spoke.hostAliases.length > 0 && canonicalHostnames.get(spoke.id) === null) {
+    if (spoke.hostAliases.length > 0 && canonicalHostnames.get(spoke.key) === null) {
       throw new Error(
-        `FOUNDATION-MULTISITE-M23: Spoke "${spoke.id}" declares ${spoke.hostAliases.length} additional ` +
+        `FOUNDATION-MULTISITE-M23: ${spoke.subject} declares ${spoke.hostAliases.length} additional ` +
           "hostname claim(s) but no usable canonical origin: its `site.url` yields no hostname. An " +
           "additional claim is a route IN ADDITION to the canonical one, and the canonical origin is what " +
           "canonical metadata is built from — author the Spoke's `site.url`, or remove the claims.",
@@ -284,33 +395,33 @@ export function hostRoutingForInstallation(installationRoot) {
   /** @type {Map<string, string>} */
   const claimedBy = new Map();
   for (const spoke of spokes) {
-    const canonical = canonicalHostnames.get(spoke.id);
+    const canonical = canonicalHostnames.get(spoke.key);
     for (const alias of spoke.hostAliases) {
       const canonicalOwner = spokes.find(
-        (other) => other.id !== spoke.id && canonicalHostnames.get(other.id) === alias,
+        (other) => other.key !== spoke.key && canonicalHostnames.get(other.key) === alias,
       );
       if (canonicalOwner !== undefined) {
         throw new Error(
-          `FOUNDATION-MULTISITE-M23: the additional hostname claim "${alias}" of Spoke "${spoke.id}" is ` +
-            `already the CANONICAL hostname of Spoke "${canonicalOwner.id}". A canonical hostname always ` +
+          `FOUNDATION-MULTISITE-M23: the additional hostname claim "${alias}" of ${spoke.subject} is ` +
+            `already the CANONICAL hostname of ${canonicalOwner.subject}. A canonical hostname always ` +
             "selects its own Spoke, so an additional claim may never restate or shadow one — author a " +
             "hostname no Spoke answers for canonically.",
         );
       }
       if (canonical === alias) {
         throw new Error(
-          `FOUNDATION-MULTISITE-M23: Spoke "${spoke.id}" states its own canonical hostname "${alias}" as ` +
+          `FOUNDATION-MULTISITE-M23: ${spoke.subject} states its own canonical hostname "${alias}" as ` +
             "an additional claim as well. The canonical hostname is already claimed; remove the duplicate.",
         );
       }
       const previous = claimedBy.get(alias);
       if (previous !== undefined) {
         throw new Error(
-          `FOUNDATION-MULTISITE-M23: the additional hostname claim "${alias}" is declared by BOTH Spoke ` +
-            `"${previous}" and Spoke "${spoke.id}". A hostname may never route to two Spokes — remove one.`,
+          `FOUNDATION-MULTISITE-M23: the additional hostname claim "${alias}" is declared by BOTH ` +
+            `${previous} and ${spoke.subject}. A hostname may never route to two Spokes — remove one.`,
         );
       }
-      claimedBy.set(alias, spoke.id);
+      claimedBy.set(alias, spoke.subject);
     }
   }
 
@@ -325,7 +436,7 @@ export function hostRoutingForInstallation(installationRoot) {
     if (owner !== undefined) {
       throw new Error(
         `FOUNDATION-MULTISITE-M22: the inspection alias "${alias}" is already the authored hostname of ` +
-          `Spoke "${owner.id}". A Spoke's own hostname always selects that Spoke, so an inspection alias ` +
+          `${owner.subject}. A Spoke's own hostname always selects that Spoke, so an inspection alias ` +
           "may never restate or shadow one — remove the alias, or declare a hostname that Spoke does not " +
           "already answer for.",
       );
@@ -347,16 +458,18 @@ export function hostRoutingForInstallation(installationRoot) {
   // appearing in both would make one host mean two things depending on which rule was applied first. A claim
   // that coincides with an inspection hostname of the SAME Spoke is left alone: it routes to that Spoke
   // either way, so the answer stays unambiguous and deterministic (authored claims are tested first).
-  if (resolved.inspectionSpoke !== null) {
+  if (nominatedKey !== null) {
     for (const spoke of spokes) {
-      if (spoke.id === resolved.inspectionSpoke) continue;
+      // A CLAIM THAT COINCIDES WITH AN INSPECTION HOSTNAME OF THE SAME SPOKE IS LEFT ALONE: it routes to
+      // that Spoke either way. The comparison is by KEY, so in an identified Installation "the same Spoke"
+      // means the same `(spokeHubId, spokeId)` — never a local id that another Hub also declares.
+      if (spoke.key === nominatedKey) continue;
       for (const alias of spoke.hostAliases) {
         if (hostnames.includes(alias)) {
           throw new Error(
-            `FOUNDATION-MULTISITE-M23: the additional hostname claim "${alias}" of Spoke "${spoke.id}" is ` +
-              "also an INSPECTION hostname of this Installation, which selects Spoke " +
-              `"${resolved.inspectionSpoke}". One hostname may never route to two Spokes — remove the ` +
-              "claim or the inspection alias.",
+            `FOUNDATION-MULTISITE-M23: the additional hostname claim "${alias}" of ${spoke.subject} is ` +
+              `also an INSPECTION hostname of this Installation, which selects ${nominatedSubject}. One ` +
+              "hostname may never route to two Spokes — remove the claim or the inspection alias.",
           );
         }
       }
@@ -367,43 +480,56 @@ export function hostRoutingForInstallation(installationRoot) {
   // Installation itself would send that hostname to the MEMBER the option names — so the build answers that
   // question with the SAME decision the request boundary makes (authored claims first, then the inspection
   // policy) and refuses an option that would land somewhere else, or nowhere. THIS IS THE HUB MEMBERSHIP
-  // BOUNDARY MECHANICALLY ENFORCED: one Installation is one Hub, its declared Spokes are its members, and an
-  // unrelated organization's hostname is refused here because it is not a routing claim of the member the
-  // option names (no organization registry, no hostname-suffix rule, no `hubId` is consulted or needed).
-  const authoredSwitcher = resolved.spokeSwitcher;
-  /** @type {{ options: { spokeId: string, label: string, href: string }[] } | null} */
-  let spokeSwitcher = null;
-  if (authoredSwitcher !== null) {
-    /** @type {Map<string, string>} */
-    const claimOwner = new Map();
-    for (const spoke of spokes) {
-      const canonical = canonicalHostnames.get(spoke.id);
-      if (canonical !== undefined && canonical !== null) claimOwner.set(canonical, spoke.id);
-      for (const alias of spoke.hostAliases) claimOwner.set(alias, spoke.id);
-    }
+  // BOUNDARY MECHANICALLY ENFORCED: a Hub's declared Spokes are its members, and an unrelated organization's
+  // hostname is refused here because it is not a routing claim of the member the option names (no
+  // organization registry, no hostname-suffix rule, no second registry is consulted or needed).
+  //
+  // The SAME rule serves BOTH forms: a flat Installation has ONE implicit Hub whose members are its declared
+  // Spokes (`resolved.spokeSwitcher`), while an identified one has one list PER Hub
+  // (`spokeHubs[].spokeSwitcher`), each proved against ITS OWN members' keys.
+  /** @type {Map<string, string>} */
+  const claimOwnerKey = new Map();
+  /** @type {Map<string, string>} */
+  const subjectByKey = new Map();
+  for (const spoke of spokes) {
+    subjectByKey.set(spoke.key, spoke.subject);
+    const canonical = canonicalHostnames.get(spoke.key);
+    if (canonical !== undefined && canonical !== null) claimOwnerKey.set(canonical, spoke.key);
+    for (const alias of spoke.hostAliases) claimOwnerKey.set(alias, spoke.key);
+  }
 
+  /**
+   * ONE authored switcher, proved routable against the members it offers — or an itemised refusal.
+   *
+   * @param {{ options: { spokeId: string, label: string, href: string }[] }} authored the authored switcher
+   * @param {Map<string, string>} keyBySpokeId each OFFERABLE member's local id → its routing KEY
+   * @param {string} where how this switcher is named in a diagnostic
+   * @returns {{ options: { spokeId: string, label: string, href: string }[] }}
+   */
+  const provedSwitcherOptions = (authored, keyBySpokeId, where) => {
     /** @type {{ spokeId: string, label: string, href: string }[]} */
     const options = [];
-    for (const [index, option] of authoredSwitcher.options.entries()) {
+    for (const [index, option] of authored.options.entries()) {
       const destination = switcherDestination(option.href);
       if (destination === null) {
         throw new Error(
-          `FOUNDATION-MULTISITE-M23: spokeSwitcher.options[${index}] ("${option.label}") carries ` +
+          `FOUNDATION-MULTISITE-M23: ${where}[${index}] ("${option.label}") carries ` +
             `"${option.href}", which is not an absolute HTTPS origin.`,
         );
       }
-      const owner =
-        claimOwner.get(destination.hostname) ??
-        (hostnames.includes(destination.hostname) ? resolved.inspectionSpoke : null);
-      if (owner !== option.spokeId) {
+      const optionKey = keyBySpokeId.get(option.spokeId) ?? null;
+      const ownerKey =
+        claimOwnerKey.get(destination.hostname) ??
+        (hostnames.includes(destination.hostname) ? nominatedKey : null);
+      if (ownerKey !== optionKey || optionKey === null) {
         throw new Error(
-          `FOUNDATION-MULTISITE-M23: spokeSwitcher.options[${index}] ("${option.label}") names Spoke ` +
+          `FOUNDATION-MULTISITE-M23: ${where}[${index}] ("${option.label}") names Spoke ` +
             `"${option.spokeId}", but its destination "${option.href}" would not route there: the ` +
             `hostname "${destination.hostname}" is ` +
-            (owner === null
+            (ownerKey === null
               ? "claimed by no Spoke and is not an accepted inspection hostname of this Installation, so " +
                 "a request for it would be REFUSED"
-              : `claimed by Spoke "${owner}"`) +
+              : `claimed by ${subjectByKey.get(ownerKey) ?? ownerKey}`) +
             ". A Hub-scoped switcher option may only offer a destination this Installation routes to the " +
             "MEMBER it names — that member's canonical origin, one of its additional claims, or an inspection " +
             "hostname the policy nominates for it. An unrelated organization's site belongs to a DIFFERENT " +
@@ -413,21 +539,82 @@ export function hostRoutingForInstallation(installationRoot) {
       options.push({ spokeId: option.spokeId, label: option.label, href: option.href });
     }
     // ORDER IS AUTHORED DATA: preserved exactly as written, never sorted, never derived from the manifest.
-    spokeSwitcher = { options };
-  }
+    return { options };
+  };
+
+  // THE FLAT FORM: ONE implicit Hub, and its declared Spokes are its members.
+  /** @type {Map<string, string>} */
+  const flatMemberKeys = new Map(spokes.map((spoke) => [spoke.id, spoke.key]));
+  const spokeSwitcher =
+    resolved.mode === "hubs"
+      ? null
+      : resolved.spokeSwitcher === null
+        ? null
+        : provedSwitcherOptions(resolved.spokeSwitcher, flatMemberKeys, "spokeSwitcher.options");
+
+  // THE IDENTIFIED FORM: ONE SWITCHER PER HUB, each proved against ITS OWN members — so a Hub's list can
+  // only ever offer Spokes its own Hub declares, and a local id that another Hub also declares is offered
+  // under the key of the member THIS Hub owns (never the other Hub's Spoke).
+  const spokeHubSwitchers =
+    resolved.mode === "hubs"
+      ? resolved.hubs
+          .filter((hub) => hub.spokeSwitcher !== null)
+          .map((hub) => ({
+            spokeHubId: hub.id,
+            options: provedSwitcherOptions(
+              hub.spokeSwitcher,
+              new Map(
+                hub.spokes.map((spoke) => [
+                  spoke.id,
+                  runtimeSegmentForIdentifiedSpokeRef({
+                    spokeHubId: hub.id,
+                    spokeId: spoke.id,
+                  }),
+                ]),
+              ),
+              `spokeHubs["${hub.id}"].spokeSwitcher.options`,
+            ).options,
+          }))
+      : undefined;
 
   return {
     mode,
-    spokes,
-    inspection:
-      resolved.inspectionSpoke === null
-        ? null
+    // THE PUBLISHED ENTRIES carry exactly the routing facts the request boundary needs: identity, segment and
+    // claims — plus the owning Hub, and ONLY for an identified Installation, so a flat/legacy description
+    // keeps exactly the keys it always had.
+    spokes: spokes.map((spoke) =>
+      spoke.spokeHubId === undefined
+        ? {
+            id: spoke.id,
+            segment: spoke.segment,
+            canonicalOrigin: spoke.canonicalOrigin,
+            hostAliases: spoke.hostAliases,
+          }
         : {
-            spokeId: resolved.inspectionSpoke,
-            hostnames,
-            platformHostnames,
-            authoredHostnames,
+            id: spoke.id,
+            segment: spoke.segment,
+            canonicalOrigin: spoke.canonicalOrigin,
+            hostAliases: spoke.hostAliases,
+            spokeHubId: spoke.spokeHubId,
           },
+    ),
+    inspection:
+      nomination === null
+        ? null
+        : nomination.spokeHubId === undefined
+          ? // A FLAT nomination is the Spoke's local id, exactly as it always was.
+            { spokeId: nomination, hostnames, platformHostnames, authoredHostnames }
+          : // AN IDENTIFIED nomination is COMPOSITE: both halves travel, so the runtime never has to guess.
+            {
+              spokeHubId: nomination.spokeHubId,
+              spokeId: nomination.spokeId,
+              hostnames,
+              platformHostnames,
+              authoredHostnames,
+            },
     spokeSwitcher,
+    // Present ONLY for an identified Installation — Phase 2's reader treats an absent key as "this build
+    // publishes no per-Hub switchers", which is exactly what every flat/legacy build means.
+    ...(spokeHubSwitchers === undefined ? {} : { spokeHubSwitchers }),
   };
 }

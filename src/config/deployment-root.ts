@@ -75,8 +75,20 @@ import type { RuntimeAssetInventory } from "./runtime-asset-catalog";
 /** Which layout the deployment root resolved to. */
 export type DeploymentLayout = "capsule" | "repository" | "override";
 
-/** How the INSTALLATION is authored: a legacy implicit Spoke, or an explicit declared collection. */
-export type InstallationAuthoringMode = "legacy" | "explicit" | "multi";
+/** How the INSTALLATION is authored: a legacy implicit Spoke, a flat declared collection, or identified Hubs. */
+export type InstallationAuthoringMode = "legacy" | "explicit" | "multi" | "hubs";
+
+/**
+ * Does this authoring mode DISPATCH BY HOSTNAME? (`FOUNDATION-ID-M3-P3 §6`)
+ *
+ * Two modes do, and for the same reason: a flat Installation declaring several Spokes has no single
+ * deployment to activate, and an Installation authored with IDENTIFIED Spoke Hubs dispatches by exact
+ * hostname ALWAYS — even when it declares one Hub and one Spoke. Only `legacy` and a ONE-Spoke flat
+ * Installation take the permissive single-Spoke path, and `explicit` means exactly that.
+ */
+export function dispatchesByHostname(mode: InstallationAuthoringMode): boolean {
+  return mode === "multi" || mode === "hubs";
+}
 
 /**
  * ONE generated runtime asset namespace (FOUNDATION-MULTISITE-S3E1C).
@@ -213,7 +225,7 @@ export function deploymentLayout(): DeploymentLayout {
  */
 export function deploymentMode(): InstallationAuthoringMode {
   const mode = process.env[MODE_ENV];
-  if (mode === "explicit" || mode === "multi") return mode;
+  if (mode === "explicit" || mode === "multi" || mode === "hubs") return mode;
   return "legacy";
 }
 
@@ -226,11 +238,12 @@ export function deploymentMode(): InstallationAuthoringMode {
  * The value is validated ONCE by `parseSiteConfig` in `./loader`.
  */
 export function readDeploymentConfig(): unknown {
-  // M16 — a MULTI-Spoke Installation has NO single configuration: the build inlines none, because
-  // selecting one Spoke's configuration would be exactly the "default Spoke" this runtime refuses to
-  // have. Every consumer must select a Spoke CONTEXT instead (`./spoke-request`,
+  // M16/M3-P3 — a DISPATCHING Installation has NO single configuration: the build inlines none, because
+  // selecting one Spoke's configuration would be exactly the "default Spoke" this runtime refuses to have
+  // — and an Installation authored with identified Spoke Hubs dispatches ALWAYS, even when it declares one
+  // Hub and one Spoke. Every consumer must select a Spoke CONTEXT instead (`./spoke-request`,
   // `./installation-runtime`), so the compatibility answer fails LOUDLY rather than guessing.
-  if (deploymentMode() === "multi") {
+  if (dispatchesByHostname(deploymentMode())) {
     throw new Error(
       "FOUNDATION-MULTISITE-M16: this Installation declares SEVERAL Spokes, so there is no single " +
         "deployment configuration to read. Select a Spoke context (hostname dispatch or the internal " +
@@ -283,11 +296,15 @@ export function deploymentPaths(): DeploymentRoot {
         "sole Spoke's root; nothing is guessed here.",
     );
   }
-  const resourceRoot = mode === "multi" ? null : mode === "explicit" ? `${root}/${spokeRelativeRoot}` : root;
+  const resourceRoot = dispatchesByHostname(mode)
+    ? null
+    : mode === "explicit"
+      ? `${root}/${spokeRelativeRoot}`
+      : root;
 
-  // M16 — an API whose meaning requires "the selected Spoke" cannot answer in a multi-Spoke Installation.
-  // The single-Spoke-only locations below are therefore GETTERS that fail loudly when read, naming what is
-  // absent, rather than silently answering with one of several Spokes.
+  // M16/M3-P3 — an API whose meaning requires "the selected Spoke" cannot answer in a dispatching
+  // Installation. The single-Spoke-only locations below are therefore GETTERS that fail loudly when read,
+  // naming what is absent, rather than silently answering with one of several Spokes.
   const selectedSpokeOnly = (what: string): string => {
     throw new Error(
       `FOUNDATION-MULTISITE-M16: this Installation declares SEVERAL Spokes, so there is no ${what}. ` +
@@ -311,8 +328,9 @@ export function deploymentPaths(): DeploymentRoot {
     );
   }
   const publicAssetsDirectory = `${repositoryRoot}/public/assets`;
-  const declaredSegments =
-    mode === "multi" ? hostRoutingForBuild().spokes.map((spoke) => spoke.runtimeSegment) : [];
+  const declaredSegments = dispatchesByHostname(mode)
+    ? hostRoutingForBuild().spokes.map((spoke) => spoke.runtimeSegment)
+    : [];
   const runtimeAssetNamespaces: readonly RuntimeAssetNamespace[] = [
     // Platform first: a Spoke may not shadow a platform-owned asset (A2).
     { directory: publicAssetsDirectory, urlBase: "/assets" },

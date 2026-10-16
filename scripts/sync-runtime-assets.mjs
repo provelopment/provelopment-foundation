@@ -242,17 +242,34 @@ export function runtimeNamespaces(deploymentRoot = selectedDeploymentRoot()) {
       spokeId: null,
     },
   ];
-  if (authoring.mode === "explicit") {
+  // EVERY declared Spoke that owns a namespace of its own: a flat/explicit Installation's Spokes, and the
+  // members of an IDENTIFIED collection — where the segment is COMPOSITE, so two Hubs' Spokes called `docs`
+  // occupy two directories and can never mirror onto one another (FOUNDATION-ID-M3-P3 §7).
+  if (authoring.mode !== "legacy") {
     for (const spoke of authoring.spokes) {
       namespaces.push({
-        key: `spoke:${spoke.id}`,
+        key: spokeNamespaceKey(spoke),
         directory: spokeRuntimeAssetNamespacePath(spoke.segment),
         urlBase: spokeRuntimeAssetUrlBase(spoke.segment),
-        spokeId: spoke.id,
+        spokeId: spoke.spokeHubId === undefined ? spoke.id : `${spoke.spokeHubId}/${spoke.id}`,
       });
     }
   }
   return namespaces;
+}
+
+/**
+ * THE KEY that ties ONE Spoke's plan rows to its namespace — the ONE spelling both `buildPlan` and
+ * `runtimeNamespaces` use, so a row can never install into another Spoke's directory.
+ *
+ * For a flat/legacy Spoke it is `spoke:<id>`, exactly as it has always been. For an IDENTIFIED collection it
+ * is `spoke:<segment>` (the COMPOSITE encoding), because a local id alone may name a Spoke in either Hub.
+ *
+ * @param {{ id: string, segment: string, spokeHubId?: string }} spoke a declared Spoke
+ * @returns {string}
+ */
+function spokeNamespaceKey(spoke) {
+  return `spoke:${spoke.spokeHubId === undefined ? spoke.id : spoke.segment}`;
 }
 
 /**
@@ -455,7 +472,7 @@ export function buildPlan(deploymentRoot = selectedDeploymentRoot()) {
   }
 
   for (const spoke of authoring.spokes) {
-    const namespace = `spoke:${spoke.id}`;
+    const namespace = spokeNamespaceKey(spoke);
 
     // This Spoke's OWN replaceable role artwork → its own namespace.
     for (const { from, to, note } of MIRRORED) {

@@ -18,6 +18,7 @@
 // foundation scope. It writes only where the harness owns writes: OS temp (its Installation) and the
 // GENERATED member namespaces it materialises — from the CANONICAL asset plan, never by inventing files —
 // and then removes exactly what it created.
+import { existsSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { setTimeout as sleep } from "node:timers/promises";
 import path from "node:path";
@@ -128,32 +129,99 @@ function hostOf(member, port) {
 }
 
 /**
+ * THE PLATFORM ENVIRONMENT IS BORROWED, NEVER OWNED (M3-R §3C).
+ *
+ * The hosting platform's own build variables are exactly what a Vercel build is given, so the inspection proof
+ * exports them for its servers. The ORIGINAL state — including a variable that was ABSENT — is captured before
+ * anything is touched and restored on every exit path, so this scenario never leaves the environment of the
+ * process (or of a later scenario) changed.
+ */
+const PLATFORM_VARIABLES = ["VERCEL_URL", "VERCEL_BRANCH_URL"];
+
+function capturePlatformEnvironment() {
+  return PLATFORM_VARIABLES.map((name) => ({ name, value: process.env[name] }));
+}
+
+function restorePlatformEnvironment(snapshot) {
+  for (const { name, value } of snapshot) {
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  }
+}
+
+/** The generated namespace directory ONE member would occupy. */
+function namespaceDirectory(harness, member) {
+  return path.join(harness.repositoryRoot, "public", "spokes", member.segment);
+}
+
+/**
+ * The members whose generated namespace ALREADY EXISTS — another execution's or another Installation's output.
+ *
+ * Reported and then refused: the scenario claims each namespace it writes (M3-R §3B), so it must never adopt,
+ * overwrite or delete output it did not create.
+ */
+function namespaceCollisions(harness, members) {
+  return members.map((member) => namespaceDirectory(harness, member)).filter((directory) => existsSync(directory));
+}
+
+/**
+ * THE GENERATED NAMESPACES THIS SCENARIO CREATED (M3-R §3B).
+ *
+ * A generated namespace is shared, generated state (`public/spokes/<composite segment>/**`), so it is
+ * materialised — and removed — under OWNERSHIP: each target is claimed before anything is written to it, a
+ * target that already exists is a COLLISION that stops the run (another execution's or another Installation's
+ * output is never overwritten and never deleted to make this proof run), and only the directories this
+ * scenario actually created are removed afterwards.
+ */
+function ownedNamespaces() {
+  return [];
+}
+
+/**
  * The GENERATED namespace files ONE member needs, written through the harness's own guarded writers.
  *
  * The FILES are the canonical plan's own rows for this member's namespace (`multiHubNamespacePlan`), so the
  * scenario installs exactly what `assets:sync` would install and what the build-time catalog publishes — and
  * nothing is invented here. BEFORE writing, the PUBLISHED catalog is judged against this Installation's
  * canonical plan, so a stale inventory stops the run with a diagnostic instead of leaving the failure to a
- * page that cannot compose.
+ * page that cannot compose, and the TARGET is claimed: an existing directory or file is reported as a
+ * collision rather than overwritten.
  */
-async function materializeNamespace(harness, installation, member) {
+async function materializeNamespace(harness, owned, installation, member) {
   assertMultiHubNamespaceAgreesWithCatalog(installation.root, member.segment);
-  const directory = path.join(harness.repositoryRoot, "public", "spokes", member.segment, "assets");
-  await harness.mkdir(directory, { recursive: true });
+
+  const directory = path.join(harness.repositoryRoot, "public", "spokes", member.segment);
+  if (existsSync(directory)) {
+    throw new Error(
+      `the generated namespace "${directory}" already exists, so it belongs to another execution or another ` +
+        `Installation. This proof never overwrites or deletes generated output it did not create — remove that ` +
+        `output (or the process holding it) and run again.`,
+    );
+  }
+
+  const assets = path.join(directory, "assets");
+  await harness.mkdir(assets, { recursive: true });
+  // CLAIMED only once the directory is this scenario's: from here on cleanup owns exactly this path.
+  owned.push(directory);
+
   for (const { from, to } of multiHubNamespacePlan(installation.root, member.segment)) {
-    harness.cpSync(from, path.join(directory, to), { recursive: false });
+    const target = path.join(assets, to);
+    if (existsSync(target)) {
+      throw new Error(
+        `the generated file "${target}" already exists inside the namespace this scenario just created — ` +
+          `refusing to overwrite it.`,
+      );
+    }
+    harness.cpSync(from, target, { recursive: false });
   }
 }
 
-/** Removes exactly the namespaces this scenario created — the generated composite segments. */
-function removeNamespaces(harness, installation) {
-  if (installation === null) return;
-  for (const member of installation.spokes) {
-    harness.rmSync(path.join(harness.repositoryRoot, "public", "spokes", member.segment), {
-      recursive: true,
-      force: true,
-    });
+/** Removes exactly the namespaces this scenario CREATED — never a directory it found already present. */
+function removeNamespaces(harness, owned) {
+  for (const directory of owned) {
+    harness.rmSync(directory, { recursive: true, force: true });
   }
+  owned.length = 0;
 }
 
 /** Waits until the dev server answers ANYTHING (a dev server compiles on the first request). */
@@ -804,6 +872,11 @@ async function runMetadataProof(harness, rows, port, installation) {
  * Every rendered `<img>` of one document, and whether each one LOADED (no broken image), plus the facts a
  * browser alone can report: the address bar, the rendered text, every URL-bearing attribute and the switcher.
  *
+ * IMAGE STATE IS NEVER ASSUMED (M3-R §3A). An image is counted as LOADED only when it is `complete` AND has
+ * `naturalWidth > 0`; an image that has not finished is reported as `pending` separately, so "not loaded yet"
+ * can never be mistaken for "loaded successfully". `settleImages` waits for the browser to finish — including
+ * the lazy-loading a visitor's scroll triggers — before any of that is judged.
+ *
  * `text` is the RENDERED text (`innerText`), so it omits what a visitor cannot see — including the RSC flight
  * payload in inline `<script>` tags, which carries page DATA rather than anything DISPLAYED. A cross-member
  * leak in that payload is therefore not mistaken for a leak on the page, and `html` is still read where a
@@ -812,9 +885,13 @@ async function runMetadataProof(harness, rows, port, installation) {
 const IMAGE_PROBE = `(() => {
   const images = [...document.querySelectorAll("img")];
   return {
-    count: images.length,
-    broken: images.filter((image) => image.complete && image.naturalWidth === 0).map((image) => image.getAttribute("src") || ""),
-    sources: [...new Set(images.map((image) => image.getAttribute("src") || ""))],
+    images: {
+      count: images.length,
+      pending: images.filter((image) => !image.complete).map((image) => image.getAttribute("src") || ""),
+      broken: images.filter((image) => image.complete && image.naturalWidth === 0).map((image) => image.getAttribute("src") || ""),
+      loaded: images.filter((image) => image.complete && image.naturalWidth > 0).length,
+      sources: [...new Set(images.map((image) => image.getAttribute("src") || ""))],
+    },
     path: location.pathname,
     host: location.host,
     // RENDERED text only — see the note above this probe.
@@ -858,6 +935,33 @@ async function awaitMember(cdp, member, timeoutMs = 60000) {
 }
 
 /**
+ * WAITS FOR THE BROWSER TO FINISH LOADING, THEN REPORTS WHAT THE PAGE ACTUALLY HOLDS (M3-R §3A).
+ *
+ * Legitimate LAZY LOADING means some images legitimately have not STARTED when the document is first painted,
+ * so the page is scrolled through — exactly what a visitor does — and each image that is deferred is only
+ * requested then. The loop then waits (bounded) until NOTHING is pending, and the result is read once: the
+ * `pending` list it reports is the honest answer for images the browser never finished within that budget, so
+ * an unfinished image FAILS the load assertions rather than passing them by default.
+ */
+async function settleImages(cdp, timeoutMs = 45000) {
+  const scroll = `(() => {
+    const step = Math.max(400, Math.floor(window.innerHeight * 0.8));
+    for (let y = 0; y <= document.body.scrollHeight; y += step) window.scrollTo(0, y);
+    window.scrollTo(0, 0);
+    return document.querySelectorAll("img").length;
+  })()`;
+  await cdp.evaluate(scroll);
+
+  const end = Date.now() + timeoutMs;
+  let observed = await cdp.evaluate(IMAGE_PROBE);
+  while (Date.now() < end && observed !== null && observed.images.pending.length > 0) {
+    await sleep(500);
+    observed = await cdp.evaluate(IMAGE_PROBE);
+  }
+  return observed;
+}
+
+/**
  * ONE REAL BROWSER, EVERY MEMBER, AND THE FACTS ONLY A BROWSER CAN REPORT.
  *
  * Each member is visited at its OWN hostname (Chrome resolves `*.localhost` to loopback itself, so the
@@ -870,7 +974,8 @@ async function runBrowserProof(harness, rows, chrome, port, installation) {
     for (const member of installation.spokes) {
       const facts = factsOf(member);
       await cdp.navigate(`http://${member.hostname}:${port}/ww/en/about`);
-      const observed = await awaitMember(cdp, member);
+      const arrived = await awaitMember(cdp, member);
+      const observed = (await settleImages(cdp)) ?? arrived;
 
       harness.check(
         rows,
@@ -893,20 +998,32 @@ async function runBrowserProof(harness, rows, chrome, port, installation) {
       );
       harness.check(
         rows,
-        `BROWSER ${member.hubId}/${member.id}: EVERY rendered image LOADED (no broken image)`,
-        observed !== null && observed.broken.length === 0,
+        `BROWSER ${member.hubId}/${member.id}: the page presents a nonzero image inventory`,
+        observed !== null && observed.images.count > 0,
+        observed === null ? "(no observation)" : `images=${observed.images.count}`,
+      );
+      harness.check(
+        rows,
+        `BROWSER ${member.hubId}/${member.id}: NO image is still pending after the browser settles`,
+        observed !== null && observed.images.pending.length === 0,
+        observed === null ? "(no observation)" : `pending=${observed.images.pending.join(",") || "(none)"}`,
+      );
+      harness.check(
+        rows,
+        `BROWSER ${member.hubId}/${member.id}: EVERY rendered image LOADED (complete and naturalWidth > 0)`,
+        observed !== null && observed.images.loaded === observed.images.count && observed.images.broken.length === 0,
         observed === null
           ? "(no observation)"
-          : `images=${observed.count} broken=${observed.broken.join(",") || "(none)"}`,
+          : `loaded=${observed.images.loaded}/${observed.images.count} broken=${observed.images.broken.join(",") || "(none)"}`,
       );
       harness.check(
         rows,
         `BROWSER ${member.hubId}/${member.id}: the images come from DECLARED namespaces only`,
         observed !== null &&
-          observed.sources.every(
+          observed.images.sources.every(
             (src) => src.startsWith(`/spokes/${facts.segment}/assets/`) || src.startsWith("/assets/"),
           ),
-        observed === null ? "(no observation)" : observed.sources.join(" "),
+        observed === null ? "(no observation)" : observed.images.sources.join(" "),
       );
       harness.check(
         rows,
@@ -1126,6 +1243,8 @@ async function runSingleIdentifiedProof(harness, rows, installation, port) {
  */
 export async function run(chrome, harness) {
   const rows = [];
+  const owned = ownedNamespaces();
+  const platformEnvironment = capturePlatformEnvironment();
   let installation = null;
   let solo = null;
   let server = null;
@@ -1135,8 +1254,32 @@ export async function run(chrome, harness) {
     installation = materializeMultiHubInstallation({ repositoryRoot: harness.repositoryRoot });
     solo = materializeSingleIdentifiedInstallation({ repositoryRoot: harness.repositoryRoot });
 
-    for (const member of installation.spokes) await materializeNamespace(harness, installation, member);
-    await materializeNamespace(harness, solo, solo.spokes[0]);
+    // OWNERSHIP FIRST (M3-R §3B): nothing is written until every generated namespace this scenario needs is
+    // proven FREE. A target that already exists belongs to another execution or Installation and is reported
+    // as a collision — never adopted, overwritten or deleted.
+    const members = [...installation.spokes, solo.spokes[0]];
+    const collisions = namespaceCollisions(harness, members);
+    harness.check(
+      rows,
+      "no generated namespace on disk already belongs to another execution or Installation",
+      collisions.length === 0,
+      collisions.join(", ") || "(none pre-existing)",
+    );
+    if (collisions.length > 0) {
+      throw new Error(
+        `refusing to materialise generated namespaces that already exist: ${collisions.join(", ")}. This proof ` +
+          `never overwrites or deletes output it did not create.`,
+      );
+    }
+
+    for (const member of installation.spokes) await materializeNamespace(harness, owned, installation, member);
+    await materializeNamespace(harness, owned, solo, solo.spokes[0]);
+    harness.check(
+      rows,
+      "the scenario created and now OWNS exactly the namespaces it materialised",
+      owned.length === members.length,
+      `owned=${owned.length}/${members.length}`,
+    );
 
     const started = await startServer(harness, installation, PORT_OFFSETS);
     server = started.server;
@@ -1155,6 +1298,8 @@ export async function run(chrome, harness) {
     await harness.stopServer(server);
     server = null;
 
+    // …and THAT server gets NEITHER platform variable (see `startServer`): an identified Installation handed
+    // platform hostnames with no nomination is refused at build time — correct behaviour, not a hostname proof.
     const soloStarted = await startServer(harness, solo, SOLO_PORT_OFFSETS, { platformIdentity: false });
     soloServer = soloStarted.server;
     await runSingleIdentifiedProof(harness, rows, solo, soloStarted.port);
@@ -1173,14 +1318,12 @@ export async function run(chrome, harness) {
         /* the server is already gone */
       }
     }
-    removeNamespaces(harness, installation);
-    removeNamespaces(harness, solo);
+    // ONLY the namespaces this scenario created are removed (M3-R §3B).
+    removeNamespaces(harness, owned);
     if (installation !== null) installation.cleanup();
     if (solo !== null) solo.cleanup();
-    // The platform identity was exported for this scenario's build alone; the harness's own environment is
-    // left exactly as it was found.
-    delete process.env["VERCEL_URL"];
-    delete process.env["VERCEL_BRANCH_URL"];
+    // …and the platform environment is put back EXACTLY as it was found, absent variables included (§3C).
+    restorePlatformEnvironment(platformEnvironment);
   }
 
   return rows;

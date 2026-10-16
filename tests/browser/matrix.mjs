@@ -4743,6 +4743,9 @@ async function runLayoutSwitcherScenario(chrome) {
       [390, 844],
       [360, 740],
       [320, 700],
+      // FOUNDATION-UI-R1D — the platform's supported minimum, where the rail and the page must coexist without a
+      // horizontal scrollbar and the drawer semantics are unchanged.
+      [280, 700],
     ];
     const settle = () => sleep(300);
     await cdp.setViewport(VIEWPORTS.desktop.width, VIEWPORTS.desktop.height);
@@ -4926,9 +4929,10 @@ async function runLayoutSwitcherScenario(chrome) {
       `rail=${desktopRail && desktopRail.railVisible} band=${desktopRail && desktopRail.presentedRailBand}`,
     );
     const constrained = {};
-    // NAV1D-V2 — the widths the closed-layout contract is proved at, including the wide ones: the
-    // rail must coexist with the page WITHOUT a horizontal scrollbar at every one of them (>= 320).
-    for (const [width, height] of [[1280, 900], [1024, 820], [900, 800], [768, 820], [767, 820], [390, 844], [360, 740], [320, 700]]) {
+    // NAV1D-V2 — the widths the closed-layout contract is proved at, including the wide ones and the platform's
+    // supported minimum (280, FOUNDATION-UI-R1D): the rail must coexist with the page WITHOUT a horizontal
+    // scrollbar at every one of them.
+    for (const [width, height] of [[1280, 900], [1024, 820], [900, 800], [768, 820], [767, 820], [390, 844], [360, 740], [320, 700], [280, 700]]) {
       await cdp.setViewport(width, height);
       await settle();
       constrained[width] = await cdp.evaluate(LAYOUT_PROBE);
@@ -5064,7 +5068,7 @@ async function runLayoutSwitcherScenario(chrome) {
     // keeping the accepted ~5–6px on its left exactly as on its right. The accepted internal padding
     // (6px / 6px minus the 1px border) is asserted, not the outer placement it used to be confused
     // with. The rail must also still fit the viewport's content box with no horizontal scrollbar.
-    for (const [width, height] of [[1280, 900], [900, 800], [768, 820], [767, 820], [390, 844], [320, 700]]) {
+    for (const [width, height] of [[1280, 900], [900, 800], [768, 820], [767, 820], [390, 844], [320, 700], [280, 700]]) {
       await cdp.setViewport(width, height);
       await settle();
       await closeVisibleRail(cdp);
@@ -5113,6 +5117,7 @@ async function runLayoutSwitcherScenario(chrome) {
       [767, 820, "overlay"],
       [390, 844, "overlay"],
       [320, 700, "overlay"],
+      [280, 700, "overlay"],
     ]) {
       await cdp.setViewport(width, height);
       await settle();
@@ -5255,11 +5260,12 @@ async function runLayoutSwitcherScenario(chrome) {
     await closeVisibleRail(cdp);
     await settle();
 
-    // ── NAV1D-V2 — BELOW THE SUPPORTED BOUNDARY (< 320) ─────────────────────────────────────────
-    // The layout keeps its deliberate 320px floor instead of deforming, and the VIEWPORT scrolls
-    // horizontally — the honest behaviour for a width this platform does not support. Opening the rail
+    // ── NAV1D-V2 — BELOW THE SUPPORTED BOUNDARY (< 280) ───────────────────────────────────────────
+    // The layout keeps its deliberate floor instead of deforming, and the VIEWPORT scrolls
+    // horizontally — the honest behaviour for a width this platform does not support. FOUNDATION-UI-R1D moved the
+    // floor here from 320 so that every SUPPORTED width (280 and up) fits its own content box; opening the rail
     // still adds no width of its own.
-    await cdp.setViewport(300, 700);
+    await cdp.setViewport(260, 700);
     await settle();
     await closeVisibleRail(cdp);
     await settle();
@@ -5270,7 +5276,7 @@ async function runLayoutSwitcherScenario(chrome) {
     check(
       rows,
       "nav1d.v2.belowBoundary.keepsTheMinimumLayout",
-      !!belowClosed && belowClosed.documentScrollWidth >= 320 && belowClosed.presentedRailWidth === 36,
+      !!belowClosed && belowClosed.documentScrollWidth >= 280 && belowClosed.presentedRailWidth === 36,
       `scrollW=${belowClosed && belowClosed.documentScrollWidth} rail=${belowClosed && belowClosed.presentedRailWidth}`,
     );
     check(

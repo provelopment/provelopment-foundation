@@ -319,7 +319,7 @@ so the destination is presented with the collapsed, sticky rail; the rail's own 
 control still closes it without navigating. Viewport width does not substitute
 a drawer or a header disclosure, so Sidebar mode composes no drawer, no `Show navigation` band and no
 header affordance at all. Nothing in the shell scrolls sideways at the supported widths: the layout
-has a deliberate **320px floor** (`--ui-shell-min-inline-size`), so every width from 320px up — rail
+has a deliberate **280px floor** (`--ui-shell-min-inline-size`), so every width from 280px up — rail
 closed or open — fits the viewport without a horizontal scrollbar, and a narrower window scrolls
 horizontally by design instead of deforming the layout. Menu Bar mode uses a full-width sticky
 bottom navigation at every viewport width: the top navigation is not part of Menu Bar mode. The

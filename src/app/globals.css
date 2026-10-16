@@ -911,18 +911,25 @@ html[data-ui-hero="showcase"] .home-hero {
 
 /* NAV1D-V2 — THE SUPPORTED MINIMUM LAYOUT WIDTH.
  *
- * The shell's page layout has a deliberate floor: the established 320px boundary. At and above it
- * nothing scrolls sideways — the rail, the content column and every region fit the viewport's own
- * content box (which is what keeps a 320px window free of a horizontal scrollbar: the vertical
- * scrollbar already takes part of that width). BELOW it the layout keeps that floor instead of
+ * The shell's page layout has a deliberate floor: the platform's supported minimum viewport width, now
+ * 280px. At and above it nothing scrolls sideways — the rail, the content column and every region fit the
+ * viewport's own content box (which is what keeps a 280px window free of a horizontal scrollbar: the
+ * vertical scrollbar already takes part of that width). BELOW it the layout keeps that floor instead of
  * deforming or shredding itself to fit an arbitrarily narrow window, and the VIEWPORT scrolls
  * horizontally — the honest behaviour for a width this platform does not support. Declared as a token
- * so a deployment can lower or raise its own floor without touching the shell's rules. */
+ * so a deployment can lower or raise its own floor without touching the shell's rules.
+ *
+ * WHY IT MOVED FROM 320 TO 280 (FOUNDATION-UI-R1D). The owner's responsiveness contract requires true
+ * operation from 280px, and a floor ABOVE a supported width is self-defeating: at 280 the frame was
+ * pinned to 320, so the header had a 288px content box there — WIDER than the 273px it gets at a 320px
+ * window — and the row therefore stayed on one line at 280 while wrapping at 320, with 55px of document
+ * overflow. The floor is now below the narrowest width the platform supports, so every supported width
+ * fits its own content box and the content-fit behaviour is monotone in the viewport. */
 :root {
-  --ui-shell-min-inline-size: 20rem;
+  --ui-shell-min-inline-size: 17.5rem;
 }
 
-@media (max-width: 19.99rem) {
+@media (max-width: 17.49rem) {
   .ui-shell-frame {
     min-inline-size: var(--ui-shell-min-inline-size);
   }
@@ -1655,9 +1662,15 @@ html[data-ui-shell-layout="menu-bar"] .ui-shell-sidebar:has([data-ui-shell-part=
 }
 
 .ui-site-header-controls {
-  /* The cluster never shrinks below its own controls (`flex: 0 0 auto`) and is pushed to the content's
-   * right edge by the auto margin — on the brand's line and on a line of its own alike. */
-  flex: 0 0 auto;
+  /* The cluster is pushed to the content's right edge by the auto margin — the SAME anchor on the brand's line and
+   * on a line of its own — and it may SHRINK (never grow): when the cluster has a line to itself and the controls
+   * it holds are together wider than that line, shrinking is what lets its own `flex-wrap` STACK them instead of
+   * the row overflowing the header. A `flex-shrink: 0` cluster could not wrap internally at all, which is how a
+   * Spoke switcher plus the mode selector overflowed the header at the platform's 280px supported minimum
+   * (FOUNDATION-UI-R1D). `min-width: 0` is required for the same reason: a flex item's automatic minimum size
+   * would otherwise pin the cluster to its content width however narrow the line is. */
+  flex: 0 1 auto;
+  min-width: 0;
   margin-inline-start: auto;
 }
 

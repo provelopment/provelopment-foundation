@@ -215,6 +215,7 @@ const PROBE = `(() => {
   const header = document.querySelector('.ui-site-header');
   const contextRow = document.querySelector('.ui-site-header-context');
   const main = document.querySelector('main');
+  const frame = document.querySelector('.ui-shell-frame');
   const shown = (el) => !!el && el.getClientRects().length > 0;
   const navigationSurfaces = () =>
     [
@@ -321,6 +322,10 @@ const PROBE = `(() => {
     layoutFloor,
     documentScrollWidth: document.documentElement.scrollWidth,
     documentClientWidth: document.documentElement.clientWidth,
+    // UI-R1D — THE SHELL FRAME ITSELF: its width and the computed 'min-inline-size' the floor rule would apply.
+    // At a SUPPORTED width the frame must simply BE the viewport's content box (no floor standing in for it).
+    frameWidth: frame ? Math.round(frame.getBoundingClientRect().width) : null,
+    frameMinInlineSize: frame ? getComputedStyle(frame).minInlineSize : null,
     documentOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     active: active && active !== document.body
       ? {
@@ -419,13 +424,105 @@ async function startServer(harness, basePort, pathname, { deploymentRoot = null,
  * centre — nothing covers it), and nothing may widen or scroll the document.
  */
 /**
- * THE HORIZONTAL LIMIT THE PAGE MAY NOT EXCEED: the viewport's own content box, or the platform's DECLARED layout
- * floor — whichever is greater. At and above the floor (320px at the shipped token) nothing scrolls sideways; below
- * it the page is exactly the floor wide and not one pixel more, which is the platform's documented behaviour for a
- * window it does not support AND proof that the row itself contributes no width.
+ * THE HORIZONTAL LIMIT AT A SUPPORTED WIDTH: the viewport's own content box, plus browser rounding.
+ *
+ * Every width the acceptance names is AT OR ABOVE the platform's supported minimum, so the shell's floor plays no
+ * part here on purpose: letting the floor stand in for the viewport would hide exactly the defect this corrects
+ * (a floor ABOVE a supported width made the page gain width as the window narrowed, and kept a 280px window on the
+ * one-line arrangement that the same content could not fit at 320px). The floor's own behaviour is proved
+ * separately, BELOW the supported minimum, by `proveBelowFloorFallback`.
  */
 function horizontalLimit(seen) {
-  return Math.max(seen.documentClientWidth, seen.layoutFloor) + 1;
+  return seen.documentClientWidth + 1;
+}
+
+/** True when no two of these boxes overlap: every pair is separated on the inline or the block axis. */
+function boxesAreDisjoint(boxes) {
+  for (let first = 0; first < boxes.length; first += 1) {
+    for (let second = first + 1; second < boxes.length; second += 1) {
+      const a = boxes[first];
+      const b = boxes[second];
+      if (!a || !b) continue;
+      const overlaps =
+        a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+      if (overlaps) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * UI-R1D — THE CONTENT-FIT BEHAVIOUR MUST BE PHYSICALLY CONSISTENT ACROSS THE CATEGORY BOUNDARIES.
+ *
+ * The one thing a minimum-width frame must never do is give a NARROWER window MORE usable space than a wider one:
+ * that is exactly how a 280px window ended up on the one-line arrangement the same content could not fit at 320px.
+ * The boundaries are therefore also checked in the row's own currency — the frame the row is laid out inside —
+ * allowing only the vertical scrollbar's own width (the one legitimate reason for a few pixels of inversion).
+ */
+const FRAME_CONSISTENCY_TOLERANCE = 16;
+
+function proveFrameConsistencyAcrossBoundaries(harness, rows, label, frameByWidth) {
+  for (const [narrow, wide] of CATEGORY_TRANSITIONS) {
+    const narrower = frameByWidth.get(narrow);
+    const wider = frameByWidth.get(wide);
+    harness.check(
+      rows,
+      `${label}.frame.consistent.${narrow}_${wide}`,
+      typeof narrower === "number" && typeof wider === "number" && narrower - wider <= FRAME_CONSISTENCY_TOLERANCE,
+      `frame(${narrow})=${narrower} frame(${wide})=${wider} — a narrower window may not hold more usable space than a wider one`,
+    );
+  }
+}
+
+/**
+ * THE DOCUMENTED FALLBACK BELOW THE SUPPORTED MINIMUM — a width this platform does not claim to support.
+ *
+ * The frame keeps the platform's DECLARED floor, the viewport scrolls horizontally instead of the layout deforming,
+ * and the row still holds its own contract. This is what "supported from 280px" has to mean: the floor must sit
+ * BELOW the supported minimum and never above it, and its value is READ FROM THE PAGE rather than restated here.
+ */
+async function proveBelowFloorFallback(harness, rows, cdp, label) {
+  const atTheMinimum = await readHeaderAt(cdp, 280);
+  const floor = atTheMinimum.layoutFloor;
+  harness.check(
+    rows,
+    `${label}.atTheSupportedMinimum.noOverflow`,
+    atTheMinimum.documentScrollWidth <= atTheMinimum.documentClientWidth + 1,
+    `scroll=${atTheMinimum.documentScrollWidth} client=${atTheMinimum.documentClientWidth}`,
+  );
+  harness.check(
+    rows,
+    `${label}.atTheSupportedMinimum.floorDoesNotApply`,
+    atTheMinimum.frameMinInlineSize === "auto" || /^0(px)?$/.test(String(atTheMinimum.frameMinInlineSize)),
+    `min-inline-size=${atTheMinimum.frameMinInlineSize} frame=${atTheMinimum.frameWidth}`,
+  );
+  const belowWidth = Math.max(200, floor - 20);
+  const below = await readHeaderAt(cdp, belowWidth);
+  harness.check(
+    rows,
+    `${label}.belowTheFloor.theLayoutKeepsItsDeclaredFloor`,
+    below.documentScrollWidth >= floor - 1 && below.documentScrollWidth <= floor + 1,
+    `scroll=${below.documentScrollWidth} floor=${floor} at=${belowWidth}`,
+  );
+  harness.check(
+    rows,
+    `${label}.belowTheFloor.theViewportScrollsInsteadOfTheLayoutDeforming`,
+    below.documentOverflow > 1,
+    `overflow=${below.documentOverflow} at=${belowWidth}`,
+  );
+  harness.check(
+    rows,
+    `${label}.belowTheFloor.theRowStillHoldsItsContract`,
+    below.overlaps === false &&
+      below.brand.present &&
+      below.row.scrollOverflow !== null &&
+      below.row.scrollOverflow <= 0 &&
+      (below.cluster.present || below.layoutControl === null),
+    `overlap=${below.overlaps} brand=${below.brand.present} cluster=${below.cluster.present} rowOverflow=${below.row.scrollOverflow}`,
+  );
+  console.log(
+    `[header-identity] ${label}.floor: declared=${floor} @280 scroll=${atTheMinimum.documentScrollWidth}/client=${atTheMinimum.documentClientWidth} ; @${belowWidth} scroll=${below.documentScrollWidth} overflow=${below.documentOverflow}`,
+  );
 }
 
 function assertRow(harness, rows, tag, seen, variant) {
@@ -506,6 +603,15 @@ function assertRow(harness, rows, tag, seen, variant) {
       ),
     JSON.stringify(seen.cluster.controls),
   );
+  // UI-R1D — THE CLUSTER'S OWN CONTROLS NEVER OVERLAP EACH OTHER. When the line the cluster holds is narrower than
+  // its controls together, they STACK (the cluster's own `flex-wrap`, which only works because the cluster may
+  // shrink); they are never squeezed onto one another and never pushed outside the cluster's own box.
+  harness.check(
+    rows,
+    `${tag}.${arrangement}.clusterControlsNeverOverlap`,
+    boxesAreDisjoint(seen.cluster.controls.map((control) => control && control.box)),
+    JSON.stringify(seen.cluster.controls.map((control) => control && control.box)),
+  );
   harness.check(rows, `${tag}.${arrangement}.identityAndSelectorBothVisible`, seen.brand.present && seen.cluster.present, `brand=${seen.brand.box.width} cluster=${seen.cluster.box.width}`);
   harness.check(rows, `${tag}.row.doesNotScroll`, seen.row.scrollOverflow !== null && seen.row.scrollOverflow <= 0, `rowOverflow=${seen.row.scrollOverflow}`);
   // NO HORIZONTAL PAGE OVERFLOW, judged against the viewport's own content box or the platform's declared floor.
@@ -515,6 +621,23 @@ function assertRow(harness, rows, tag, seen, variant) {
     `${tag}.noHorizontalOverflow`,
     seen.documentScrollWidth <= limit,
     `scrollWidth=${seen.documentScrollWidth} limit=${limit} (client=${seen.documentClientWidth} floor=${seen.layoutFloor})`,
+  );
+  // UI-R1D — THE SHELL FRAME AT A SUPPORTED WIDTH. The platform's floor must NOT be standing in for the viewport
+  // (its `min-inline-size` is not a fixed value here), and the frame must simply BE the viewport's content box.
+  // These two facts are what the 320→280 correction restored: with a floor ABOVE a supported width the frame was
+  // pinned wider than the window itself, which is also why a narrower window held MORE usable space than a wider
+  // one and stayed on an arrangement its content could not fit one step up.
+  harness.check(
+    rows,
+    `${tag}.frame.floorDoesNotStandInForTheViewport`,
+    seen.frameMinInlineSize === "auto" || /^0(px)?$/.test(String(seen.frameMinInlineSize)),
+    `min-inline-size=${seen.frameMinInlineSize} frame=${seen.frameWidth} client=${seen.documentClientWidth}`,
+  );
+  harness.check(
+    rows,
+    `${tag}.frame.isTheViewportsOwnContentBox`,
+    seen.frameWidth !== null && Math.abs(seen.frameWidth - seen.documentClientWidth) <= 1,
+    `frame=${seen.frameWidth} client=${seen.documentClientWidth}`,
   );
   // ── UI-R1C — THE ROW'S SURROUNDINGS ─────────────────────────────────────────────────────────────────
   // The brand is first in reading order; the secondary context row is still below the top row (not beside it or
@@ -910,10 +1033,12 @@ export async function run(chrome, harness) {
 
         // ── THE NINE VIEWPORT CATEGORIES, AT THEIR EXACT WIDTHS (the requested width is asserted) ────
         const arrangements = new Map();
+        const frameByWidth = new Map();
         for (const { width, category } of VIEWPORTS) {
           const seen = await readHeaderAt(cdp, width);
           arrangements.set(width, arrangementOf(seen));
           navigationByWidth.set(`${variant.id}|${width}`, seen.navigation.surfaces);
+          frameByWidth.set(width, seen.frameWidth);
           assertRow(harness, rows, `${variant.id}.${category}.w${width}`, seen, variant);
           harness.check(
             rows,
@@ -936,7 +1061,9 @@ export async function run(chrome, harness) {
 
         // ── THE CATEGORY BOUNDARIES AND THE SHELL'S OWN NAVIGATION BOUNDARIES ───────────────────────
         proveTransitions(harness, rows, variant.id, arrangements);
+        proveFrameConsistencyAcrossBoundaries(harness, rows, variant.id, frameByWidth);
         await proveNavigationBoundaries(harness, rows, cdp, variant.id);
+        await proveBelowFloorFallback(harness, rows, cdp, variant.id);
 
         // ── REPRESENTATIVE SHORT AND TALL HEIGHTS ───────────────────────────────────────────────────
         for (const [width, height] of HEIGHT_CASES) {
@@ -1161,9 +1288,11 @@ async function runHubIdentityPhase(harness, rows, chrome) {
       );
 
       const arrangements = new Map();
+      const frameByWidth = new Map();
       for (const { width, category } of VIEWPORTS) {
         const seen = await readHeaderAt(cdp, width);
         arrangements.set(width, arrangementOf(seen));
+        frameByWidth.set(width, seen.frameWidth);
         assertRow(harness, rows, `${member.id}.${category}.w${width}`, seen, { id: member.id, logo: member.role });
         harness.check(
           rows,
@@ -1204,7 +1333,9 @@ async function runHubIdentityPhase(harness, rows, chrome) {
         );
       }
       proveTransitions(harness, rows, member.id, arrangements);
+      proveFrameConsistencyAcrossBoundaries(harness, rows, member.id, frameByWidth);
       await proveNavigationBoundaries(harness, rows, cdp, member.id);
+      await proveBelowFloorFallback(harness, rows, cdp, member.id);
       for (const [width, height] of HEIGHT_CASES) {
         const seen = await readHeaderAt(cdp, width, height);
         assertRow(harness, rows, `${member.id}.height.w${width}x${height}`, seen, { id: member.id, logo: member.role });

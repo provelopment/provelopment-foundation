@@ -1744,11 +1744,13 @@ which exists so a deployment can demonstrate the same site in two presentations.
   closed rail, an open desktop/tablet rail and the mobile overlay alike; nothing about the rail's
   geometry, padding, divider or stacking changes, and an opened overlay can never let page content
   blend through its text.
-- **THE PAGE LAYOUT HAS A DELIBERATE MINIMUM WIDTH** (NAV1D-V2). `--ui-shell-min-inline-size`
-  (320px, the platform's established support boundary) is applied to the shell frame only BELOW that
+- **THE PAGE LAYOUT HAS A DELIBERATE MINIMUM WIDTH** (NAV1D-V2, FOUNDATION-UI-R1D). `--ui-shell-min-inline-size`
+  (280px, the platform's supported minimum viewport width) is applied to the shell frame only BELOW that
   boundary. At and above it the layout fits the viewport's own content box — no horizontal scrollbar,
   with the rail closed or open — and a narrower viewport scrolls horizontally instead of deforming the
-  layout.
+  layout. The floor must sit BELOW the supported minimum, never at it: a floor AT a supported width pins
+  the frame wider than the window itself, which made a 280px window hold a WIDER content box than a 320px
+  one (and therefore the arrangement its content could not fit one step up) while scrolling sideways.
 - **MENU BAR MEANS THE STICKY BOTTOM BAR AT EVERY WIDTH** (NAV1B). The top navigation bar
   presentation is no longer part of Menu Bar mode: the layout's preset also CLOSES its ≥md top
   menu (`topMenu: "closed"` — the shipped three-state menu contract), so no ≥md header

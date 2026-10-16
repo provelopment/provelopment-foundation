@@ -192,10 +192,12 @@ describe("NAV1B-V2 — the top row wraps by content, and the brand is never cove
     expect(identity).toContain("flex: 1 1 auto;");
     expect(identity).toContain("min-width: 0;");
 
-    // The cluster never shrinks below its controls, and the SAME right-edge anchor applies whether it shares
-    // the brand's line or has a line of its own.
+    // The cluster never grows beyond its controls, and it MAY shrink so that its own `flex-wrap` can stack them
+    // when the line it has is narrower than they are together (FOUNDATION-UI-R1D: with `flex-shrink: 0` a two-control
+    // cluster overflowed the header at 280px instead of stacking).
     const cluster = ruleBody(".ui-site-header-controls {");
-    expect(cluster).toContain("flex: 0 0 auto;");
+    expect(cluster).toContain("flex: 0 1 auto;");
+    expect(cluster).toContain("min-width: 0;");
     expect(cluster).toContain("margin-inline-start: auto;");
   });
 

@@ -45,11 +45,68 @@ import { Cdp } from "./cdp.mjs";
 /** The scenario's id, used as the report's label. */
 export const id = "header-identity";
 
-/** The viewport height every measurement uses (the row's geometry is what is under test, not the page). */
+/** The viewport height every measurement uses unless a case names its own. */
 const VIEWPORT_HEIGHT = 900;
 
-/** The widths the acceptance names, from the narrowest phone to desktop. */
-const WIDTHS = [320, 360, 390, 430, 480, 700, 1280];
+/** How long a VIEWPORT CHANGE is given to lay out before the row is measured again. */
+const RESIZE_SETTLE_MS = 120;
+
+/**
+ * THE OWNER'S NINE VIEWPORT CATEGORIES, at the exact CSS pixel widths they name.
+ *
+ * These are ACCEPTANCE CATEGORIES, not layout inputs: the row keeps wrapping according to the CONTENT available to
+ * it, and deliberately no media query exists to match this table. The requested width is ALSO asserted against
+ * `window.innerWidth`, so a width that silently failed to apply can never be read as a pass.
+ */
+const VIEWPORT_BANDS = [
+  { category: "veryNarrowMobile", widths: [280, 320, 359] },
+  { category: "standardAndroid", widths: [360, 375, 389] },
+  { category: "mediumLargeSmartphone", widths: [390, 412, 429] },
+  { category: "extraWideSmartphone", widths: [430, 480, 599] },
+  { category: "smallTabletOrFolded", widths: [600, 700, 767] },
+  { category: "standardTablet", widths: [768, 900, 1023] },
+  { category: "largeTabletOrSmallLaptop", widths: [1024, 1152, 1279] },
+  { category: "laptopDesktop", widths: [1280, 1366, 1439] },
+  { category: "largeDesktop", widths: [1440, 1600, 1920] },
+];
+
+/** The 27 widths of the matrix, each with the category that named it. */
+const VIEWPORTS = VIEWPORT_BANDS.flatMap((band) =>
+  band.widths.map((width) => ({ width, category: band.category })),
+);
+const WIDTHS = VIEWPORTS.map((entry) => entry.width);
+
+/** The category boundaries as ADJACENT PAIRS: both sides are measured, and the transition itself is asserted. */
+const CATEGORY_TRANSITIONS = [
+  [359, 360],
+  [389, 390],
+  [429, 430],
+  [599, 600],
+  [767, 768],
+  [1023, 1024],
+  [1279, 1280],
+  [1439, 1440],
+];
+
+/**
+ * The two boundaries where the SHELL's OWN navigation presentation bands change (md = 768, lg = 1024), so the
+ * navigation surfaces are read on both sides of each rather than only at the header's own widths.
+ */
+const NAVIGATION_TRANSITIONS = [
+  [767, 768],
+  [1023, 1024],
+];
+
+/** REPRESENTATIVE SHORT AND TALL HEIGHTS at the measured widths, so "widths only" cannot hide a height defect. */
+const HEIGHT_CASES = [
+  [320, 568],
+  [390, 844],
+  [600, 800],
+  [768, 1024],
+  [1024, 768],
+  [1440, 900],
+  [1920, 1080],
+];
 
 /**
  * The narrow candidate widths the ACTUAL content-fit boundary is searched over. Deliberately BELOW the narrowest
@@ -144,12 +201,51 @@ const PROBE = `(() => {
       box: boxOf(el),
       visible: r.width > 0 && r.height > 0,
       insideContent: insideContent(boxOf(el)),
+      // A REAL pointer target: big enough to be aimed at in both dimensions, and reachable at its own centre.
+      hitTargetBigEnough: r.width >= 16 && r.height >= 16,
       hittableAtItsCentre: !!hit && (el === hit || el.contains(hit)),
       value: typeof el.value === 'string' ? el.value : null,
       options: el.tagName === 'SELECT' ? [...el.options].map((option) => option.textContent) : [],
       ariaLabel: el.getAttribute('aria-label'),
     };
   };
+  // UI-R1C — WHAT SURROUNDS THE ROW, so "the header does not disturb navigation or page content" is measured:
+  // the secondary context row below it, the header's own bottom edge, the page content, and the shell's own
+  // navigation surfaces (the rail, a top nav, the bottom bar and the constrained-width drawer).
+  const header = document.querySelector('.ui-site-header');
+  const contextRow = document.querySelector('.ui-site-header-context');
+  const main = document.querySelector('main');
+  const shown = (el) => !!el && el.getClientRects().length > 0;
+  const navigationSurfaces = () =>
+    [
+      ['rail', document.querySelector('[data-ui-shell-part="rail"]')],
+      ['top-nav', document.querySelector('[data-ui-shell-part="top-nav"]')],
+      ['bottom-bar', document.querySelector('.ui-shell-bottom-bar')],
+      ['drawer', document.querySelector('[data-ui-shell-part="mobile-drawer"]')],
+    ]
+      .filter(([, el]) => shown(el))
+      .map(([name]) => name);
+  const navigationBoxes = () =>
+    ['.ui-shell-bottom-bar', '[data-ui-shell-part="rail"]', '[data-ui-shell-part="top-nav"]', '[data-ui-shell-part="mobile-drawer"]']
+      .flatMap((selector) => [...document.querySelectorAll(selector)])
+      .filter(shown)
+      .map(boxOf);
+  // UI-R1C — THE PLATFORM'S OWN LAYOUT FLOOR, read from the token the shell declares (NAV1D-V2,
+  // '--ui-shell-min-inline-size', 20rem): BELOW it the layout keeps that width and the viewport scrolls
+  // horizontally BY DESIGN, so "no horizontal overflow" is judged against the greater of the viewport's own
+  // content box and this declared floor — never against a width restated in the test.
+  const layoutFloor = (() => {
+    const token = getComputedStyle(document.documentElement)
+      .getPropertyValue('--ui-shell-min-inline-size')
+      .trim();
+    const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    // NOTE: this probe is a TEMPLATE LITERAL, where an escaped digit class would degrade — the character classes
+    // below are written without escapes on purpose.
+    const rem = /^([0-9.]+)rem$/.exec(token);
+    if (rem) return Math.round(Number(rem[1]) * rootPx);
+    const px = /^([0-9.]+)px$/.exec(token);
+    return px ? Math.round(Number(px[1])) : 0;
+  })();
   const active = document.activeElement;
   const activeCs = active && active !== document.body ? getComputedStyle(active) : null;
   return {
@@ -190,7 +286,41 @@ const PROBE = `(() => {
           objectFit: getComputedStyle(logo).objectFit,
         }
       : null,
+    // ── UI-R1C — THE ROW'S SURROUNDINGS, MEASURED ──────────────────────────────────────────────────
+    brandIsFirstInReadingOrder: !!brand && !!row && row.firstElementChild === brand,
+    topRowBottom: row ? Math.round(row.getBoundingClientRect().bottom) : null,
+    contextRow: {
+      present: !!contextRow,
+      top: contextRow ? Math.round(contextRow.getBoundingClientRect().top) : null,
+      belowTheTopRow:
+        !!contextRow && !!row
+          ? contextRow.getBoundingClientRect().top >= row.getBoundingClientRect().bottom - 1
+          : null,
+      rows: contextRow
+        ? new Set(
+            [...contextRow.children].map((child) => Math.round(child.getBoundingClientRect().top)),
+          ).size
+        : 0,
+    },
+    page: {
+      mainPresent: !!main,
+      contentStartsBelowTheHeader:
+        !!main && !!header
+          ? main.getBoundingClientRect().top >= header.getBoundingClientRect().bottom - 1
+          : null,
+      contentInsideTheViewport: main
+        ? main.getBoundingClientRect().right <= Math.max(window.innerWidth, layoutFloor) + 1
+        : null,
+    },
+    navigation: {
+      surfaces: navigationSurfaces(),
+      drawerTriggerPresent: !!document.querySelector('.ui-shell-mobile-nav-trigger'),
+      intersectsTheTopRow: navigationBoxes().some((box) => overlaps(box, row ? boxOf(row) : null)),
+    },
     layoutControl: control(layout),
+    layoutFloor,
+    documentScrollWidth: document.documentElement.scrollWidth,
+    documentClientWidth: document.documentElement.clientWidth,
     documentOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     active: active && active !== document.body
       ? {
@@ -227,6 +357,16 @@ const SHELL_STATE = `(() => ({
 async function readHeader(harness, cdp) {
   await harness.waitReady(cdp);
   await new Promise((resolve) => setTimeout(resolve, 200));
+  return cdp.evaluate(PROBE);
+}
+
+/**
+ * The header as the probe reads it at ONE VIEWPORT, changed rather than navigated to: no readiness wait is needed
+ * (the document is already there), only the time the browser needs to lay the new width out.
+ */
+async function readHeaderAt(cdp, width, height = VIEWPORT_HEIGHT) {
+  await cdp.setViewport(width, height);
+  await new Promise((resolve) => setTimeout(resolve, RESIZE_SETTLE_MS));
   return cdp.evaluate(PROBE);
 }
 
@@ -278,6 +418,16 @@ async function startServer(harness, basePort, pathname, { deploymentRoot = null,
  * the cluster holds must be visible, inside the content box and unobstructed (it wins the hit test at its own
  * centre — nothing covers it), and nothing may widen or scroll the document.
  */
+/**
+ * THE HORIZONTAL LIMIT THE PAGE MAY NOT EXCEED: the viewport's own content box, or the platform's DECLARED layout
+ * floor — whichever is greater. At and above the floor (320px at the shipped token) nothing scrolls sideways; below
+ * it the page is exactly the floor wide and not one pixel more, which is the platform's documented behaviour for a
+ * window it does not support AND proof that the row itself contributes no width.
+ */
+function horizontalLimit(seen) {
+  return Math.max(seen.documentClientWidth, seen.layoutFloor) + 1;
+}
+
 function assertRow(harness, rows, tag, seen, variant) {
   harness.check(rows, `${tag}.row.present`, !!seen.row.present, JSON.stringify(seen.row));
   harness.check(
@@ -310,7 +460,13 @@ function assertRow(harness, rows, tag, seen, variant) {
       `controls=${seen.cluster.controls.length}`,
     );
     harness.check(rows, `${tag}.row.doesNotScroll`, seen.row.scrollOverflow !== null && seen.row.scrollOverflow <= 0, `rowOverflow=${seen.row.scrollOverflow}`);
-    harness.check(rows, `${tag}.noHorizontalOverflow`, seen.documentOverflow <= 1, `overflow=${seen.documentOverflow}`);
+    const noSelectorLimit = horizontalLimit(seen);
+    harness.check(
+      rows,
+      `${tag}.noHorizontalOverflow`,
+      seen.documentScrollWidth <= noSelectorLimit,
+      `scrollWidth=${seen.documentScrollWidth} limit=${noSelectorLimit} (client=${seen.documentClientWidth} floor=${seen.layoutFloor})`,
+    );
     return;
   }
 
@@ -352,7 +508,110 @@ function assertRow(harness, rows, tag, seen, variant) {
   );
   harness.check(rows, `${tag}.${arrangement}.identityAndSelectorBothVisible`, seen.brand.present && seen.cluster.present, `brand=${seen.brand.box.width} cluster=${seen.cluster.box.width}`);
   harness.check(rows, `${tag}.row.doesNotScroll`, seen.row.scrollOverflow !== null && seen.row.scrollOverflow <= 0, `rowOverflow=${seen.row.scrollOverflow}`);
-  harness.check(rows, `${tag}.noHorizontalOverflow`, seen.documentOverflow <= 1, `overflow=${seen.documentOverflow}`);
+  // NO HORIZONTAL PAGE OVERFLOW, judged against the viewport's own content box or the platform's declared floor.
+  const limit = horizontalLimit(seen);
+  harness.check(
+    rows,
+    `${tag}.noHorizontalOverflow`,
+    seen.documentScrollWidth <= limit,
+    `scrollWidth=${seen.documentScrollWidth} limit=${limit} (client=${seen.documentClientWidth} floor=${seen.layoutFloor})`,
+  );
+  // ── UI-R1C — THE ROW'S SURROUNDINGS ─────────────────────────────────────────────────────────────────
+  // The brand is first in reading order; the secondary context row is still below the top row (not beside it or
+  // moved up); the page content still starts below the header; the shell still presents a navigation affordance
+  // and none of its surfaces is overlapped by the row; and every control the cluster holds is a real pointer target.
+  harness.check(
+    rows,
+    `${tag}.brand.isFirstInReadingOrder`,
+    seen.brandIsFirstInReadingOrder === true,
+    `brandIsFirst=${seen.brandIsFirstInReadingOrder}`,
+  );
+  harness.check(
+    rows,
+    `${tag}.contextRow.stillBelowTheTopRow`,
+    seen.contextRow.present ? seen.contextRow.belowTheTopRow === true : true,
+    `context=${JSON.stringify(seen.contextRow)} topRowBottom=${seen.topRowBottom}`,
+  );
+  harness.check(
+    rows,
+    `${tag}.page.contentStartsBelowTheHeader`,
+    seen.page.mainPresent ? seen.page.contentStartsBelowTheHeader === true : true,
+    `main=${JSON.stringify(seen.page)}`,
+  );
+  harness.check(rows, `${tag}.page.contentInsideTheViewport`, seen.page.contentInsideTheViewport !== false, JSON.stringify(seen.page));
+  harness.check(
+    rows,
+    `${tag}.navigation.notIntersectedByTheRow`,
+    seen.navigation.intersectsTheTopRow === false,
+    `surfaces=${JSON.stringify(seen.navigation.surfaces)} intersects=${seen.navigation.intersectsTheTopRow}`,
+  );
+  harness.check(
+    rows,
+    `${tag}.controls.haveUsablePointerHitTargets`,
+    seen.cluster.controls.every((control) => control !== null && control.hitTargetBigEnough === true),
+    JSON.stringify(seen.cluster.controls),
+  );
+}
+
+/**
+ * UI-R1C — THE CATEGORY BOUNDARIES, AND THE ONE INVARIANT THAT MUST NEVER BREAK ACROSS THEM.
+ *
+ * Every pair is two ADJACENT widths from the nine categories, both of them measured above. No width is declared to
+ * be one-line or two-line (the CONTENT decides that), but the two sides may not contradict physics: a wider content
+ * box can never need MORE rows than a narrower one, so "one line at the narrower width, cluster below at the wider
+ * one" is impossible — asserted impossible at every boundary.
+ */
+function proveTransitions(harness, rows, label, arrangements) {
+  for (const [narrow, wide] of CATEGORY_TRANSITIONS) {
+    harness.check(
+      rows,
+      `${label}.transition.${narrow}_${wide}.bothSidesMeasured`,
+      arrangements.has(narrow) && arrangements.has(wide),
+      `narrow=${arrangements.get(narrow)} wide=${arrangements.get(wide)}`,
+    );
+    harness.check(
+      rows,
+      `${label}.transition.${narrow}_${wide}.neverWrapsWiderWhereThereIsMoreRoom`,
+      !(arrangements.get(narrow) === "one-line" && arrangements.get(wide) === "cluster-below"),
+      `${narrow}=${arrangements.get(narrow)} ${wide}=${arrangements.get(wide)}`,
+    );
+  }
+}
+
+/**
+ * THE NAVIGATION BOUNDARIES (767/768 and 1023/1024), where the SHELL's own presentation bands change.
+ *
+ * On both sides of each: a navigation affordance is still presented (a surface, or the constrained-width drawer's
+ * own trigger), the row does not overlap any surface, and the page content still starts below the header. The
+ * surfaces that ARE presented are recorded on both sides as evidence, so a band change is visible in the report
+ * rather than assumed.
+ */
+async function proveNavigationBoundaries(harness, rows, cdp, label) {
+  for (const [narrow, wide] of NAVIGATION_TRANSITIONS) {
+    const before = await readHeaderAt(cdp, narrow);
+    const after = await readHeaderAt(cdp, wide);
+    harness.check(
+      rows,
+      `${label}.navigationTransition.${narrow}_${wide}.atMostOneLandmarkOnEitherSide`,
+      before.navigation.surfaces.length <= 1 && after.navigation.surfaces.length <= 1,
+      `w${narrow}=${JSON.stringify(before.navigation.surfaces)} | w${wide}=${JSON.stringify(after.navigation.surfaces)}`,
+    );
+    harness.check(
+      rows,
+      `${label}.navigationTransition.${narrow}_${wide}.rowNeverOverlapsANavigationSurface`,
+      before.navigation.intersectsTheTopRow === false && after.navigation.intersectsTheTopRow === false,
+      `w${narrow}=${before.navigation.intersectsTheTopRow} w${wide}=${after.navigation.intersectsTheTopRow}`,
+    );
+    harness.check(
+      rows,
+      `${label}.navigationTransition.${narrow}_${wide}.contentStaysBelowTheHeader`,
+      before.page.contentStartsBelowTheHeader !== false && after.page.contentStartsBelowTheHeader !== false,
+      `w${narrow}=${before.page.contentStartsBelowTheHeader} w${wide}=${after.page.contentStartsBelowTheHeader}`,
+    );
+    console.log(
+      `[header-identity] ${label}.navigation ${narrow}->${wide}: ${JSON.stringify(before.navigation.surfaces)} drawer=${before.navigation.drawerTriggerPresent} -> ${JSON.stringify(after.navigation.surfaces)} drawer=${after.navigation.drawerTriggerPresent}`,
+    );
+  }
 }
 
 /** Where the keyboard is, and whether the focused control presents the one global focus ring. */
@@ -531,14 +790,17 @@ async function proveBoundary(harness, rows, cdp, variant, widest, high) {
  * shell (the active presentation changes), it is reversible, and the page's own route does not move. The row's
  * layout must not cost the control any of its behaviour, its options or its semantics.
  */
-async function proveInteraction(harness, rows, cdp, variant, pathname) {
+async function proveInteraction(harness, rows, cdp, variant, pathname, width) {
+  const tag = `${variant.id}.selector.w${width}`;
+  await cdp.setViewport(width, VIEWPORT_HEIGHT);
+  await new Promise((resolve) => setTimeout(resolve, RESIZE_SETTLE_MS));
   const before = await cdp.evaluate(SHELL_STATE);
   const options = await cdp.evaluate(
     `(() => { const control = document.querySelector('[data-ui-layout-switcher]'); return control ? { label: control.getAttribute('aria-label'), options: [...control.options].map((option) => option.textContent) } : null; })()`,
   );
   harness.check(
     rows,
-    `${variant.id}.selector.keepsItsLabelAndOptions`,
+    `${tag}.keepsItsLabelAndOptions`,
     !!options && typeof options.label === "string" && options.label.trim().length > 0 && options.options.length === 2,
     JSON.stringify(options),
   );
@@ -547,13 +809,13 @@ async function proveInteraction(harness, rows, cdp, variant, pathname) {
   const after = await cdp.evaluate(SHELL_STATE);
   harness.check(
     rows,
-    `${variant.id}.selector.appliesTheChoice`,
+    `${tag}.appliesTheChoice`,
     !!chosen && chosen.value === OTHER_LAYOUT && after.active === OTHER_LAYOUT,
     `chosen=${JSON.stringify(chosen)} before=${JSON.stringify(before)} after=${JSON.stringify(after)}`,
   );
   harness.check(
     rows,
-    `${variant.id}.selector.keepsThePage`,
+    `${tag}.keepsThePage`,
     (await cdp.evaluate("location.pathname")) === pathname,
     `path=${await cdp.evaluate("location.pathname")}`,
   );
@@ -562,46 +824,49 @@ async function proveInteraction(harness, rows, cdp, variant, pathname) {
   const restored = await cdp.evaluate(SHELL_STATE);
   harness.check(
     rows,
-    `${variant.id}.selector.isReversible`,
+    `${tag}.isReversible`,
     !!back && restored.active === DEFAULT_LAYOUT && restored.rail === before.rail,
     `restored=${JSON.stringify(restored)} before=${JSON.stringify(before)}`,
   );
 }
 
 /**
- * KEYBOARD REACHABILITY, in the arrangement the variant is in at the widest measured width.
+ * KEYBOARD REACHABILITY, at ONE viewport of the matrix (both ends are proved: the widest and the narrowest).
  *
  * REAL Tab keys are dispatched, so it is Chromium's KEYBOARD modality that moves the focus and its
  * `:focus-visible` heuristic that decides the ring: the brand link must be reachable from the top of the document,
  * the cluster's control must be the next row stop, and the focused control must PRESENT the one global focus ring.
- * That is what "still keyboard-accessible" means for a visitor who never touches a pointer.
+ * That is what "still keyboard-accessible" means for a visitor who never touches a pointer — and it must stay true
+ * whether the row is on one line or wrapped.
  */
-async function proveKeyboard(harness, rows, cdp, variant, url) {
+async function proveKeyboard(harness, rows, cdp, variant, url, width) {
+  const tag = `${variant.id}.keyboard.w${width}`;
+  await cdp.setViewport(width, VIEWPORT_HEIGHT);
   await cdp.navigate(url);
   await readHeader(harness, cdp);
   const brand = await tabUntil(cdp, (active) => active.isBrandLink);
   harness.check(
     rows,
-    `${variant.id}.keyboard.brandLinkIsReachable`,
+    `${tag}.brandLinkIsReachable`,
     !!brand && brand.isBrandLink === true,
     JSON.stringify(brand),
   );
   if (!variant.layoutSwitcher) {
     // NO TOP-RIGHT SELECTOR: the next stop is not a control in this row — nothing was invented to replace it.
     const next = await tabUntil(cdp, (active) => !active.isBrandLink, 1);
-    harness.check(rows, `${variant.id}.keyboard.rowHasNoSecondStop`, !!next && next.isLayoutControl === false, JSON.stringify(next));
+    harness.check(rows, `${tag}.rowHasNoSecondStop`, !!next && next.isLayoutControl === false, JSON.stringify(next));
     return;
   }
   const control = await tabUntil(cdp, (active) => active.isLayoutControl);
   harness.check(
     rows,
-    `${variant.id}.keyboard.selectorIsReachable`,
+    `${tag}.selectorIsReachable`,
     !!control && control.isLayoutControl === true,
     JSON.stringify(control),
   );
   harness.check(
     rows,
-    `${variant.id}.keyboard.selectorShowsTheFocusRing`,
+    `${tag}.selectorShowsTheFocusRing`,
     !!control && control.focusVisible === true && control.outlineStyle !== "none" && control.outlineWidth !== "0px",
     JSON.stringify(control),
   );
@@ -618,6 +883,8 @@ export async function run(chrome, harness) {
   const original = await readFile(harness.configFile, "utf8");
 
   try {
+    /** The navigation surface(s) the shell presents, per variant and width, for the identity-independence proof. */
+    const navigationByWidth = new Map();
     for (const variant of VARIANTS) {
       await harness.writeFile(harness.configFile, configurationFor(original, variant), "utf8");
       const { server, port } = await startServer(harness, harness.basePort, pathname);
@@ -641,29 +908,78 @@ export async function run(chrome, harness) {
           `${variant.label}: logo=${JSON.stringify(opened.logo)}`,
         );
 
-        // ── THE NAMED WIDTHS ─────────────────────────────────────────────────────────────────────────
-        const arrangements = [];
-        for (const width of WIDTHS) {
-          await cdp.setViewport(width, VIEWPORT_HEIGHT);
-          const seen = await readHeader(harness, cdp);
-          arrangements.push(`w${width}=${arrangementOf(seen)}`);
-          assertRow(harness, rows, `${variant.id}.w${width}`, seen, variant);
+        // ── THE NINE VIEWPORT CATEGORIES, AT THEIR EXACT WIDTHS (the requested width is asserted) ────
+        const arrangements = new Map();
+        for (const { width, category } of VIEWPORTS) {
+          const seen = await readHeaderAt(cdp, width);
+          arrangements.set(width, arrangementOf(seen));
+          navigationByWidth.set(`${variant.id}|${width}`, seen.navigation.surfaces);
+          assertRow(harness, rows, `${variant.id}.${category}.w${width}`, seen, variant);
+          harness.check(
+            rows,
+            `${variant.id}.${category}.w${width}.viewport.applied`,
+            seen.viewportWidth === width,
+            `requested=${width} innerWidth=${seen.viewportWidth}`,
+          );
         }
-        console.log(`[header-identity] ${variant.id}: ${arrangements.join(" ")}`);
+        for (const { category, widths } of VIEWPORT_BANDS) {
+          console.log(
+            `[header-identity] ${variant.id}.${category}: ${widths.map((width) => `w${width}=${arrangements.get(width)}`).join(" ")}`,
+          );
+          harness.check(
+            rows,
+            `${variant.id}.${category}.measuredEveryNamedWidth`,
+            widths.every((width) => arrangements.has(width)),
+            `widths=${widths.join(",")}`,
+          );
+        }
 
-        // ── THE ACTUAL CONTENT-FIT BOUNDARY, AND THE SELECTOR'S BEHAVIOUR ─────────────────────────────
-        await cdp.setViewport(WIDTHS[WIDTHS.length - 1], VIEWPORT_HEIGHT);
-        const widest = await readHeader(harness, cdp);
+        // ── THE CATEGORY BOUNDARIES AND THE SHELL'S OWN NAVIGATION BOUNDARIES ───────────────────────
+        proveTransitions(harness, rows, variant.id, arrangements);
+        await proveNavigationBoundaries(harness, rows, cdp, variant.id);
+
+        // ── REPRESENTATIVE SHORT AND TALL HEIGHTS ───────────────────────────────────────────────────
+        for (const [width, height] of HEIGHT_CASES) {
+          const seen = await readHeaderAt(cdp, width, height);
+          assertRow(harness, rows, `${variant.id}.height.w${width}x${height}`, seen, variant);
+          harness.check(
+            rows,
+            `${variant.id}.height.w${width}x${height}.viewport.applied`,
+            seen.viewportWidth === width,
+            `requested=${width} innerWidth=${seen.viewportWidth}`,
+          );
+        }
+
+        // ── THE ACTUAL CONTENT-FIT BOUNDARY, AND THE SELECTOR AT BOTH ENDS OF THE MATRIX ────────────
+        const widest = await readHeaderAt(cdp, WIDTHS[WIDTHS.length - 1]);
         await proveBoundary(harness, rows, cdp, variant, widest, WIDTHS[WIDTHS.length - 1]);
         if (variant.layoutSwitcher) {
-          await cdp.setViewport(WIDTHS[WIDTHS.length - 1], VIEWPORT_HEIGHT);
-          await proveInteraction(harness, rows, cdp, variant, pathname);
+          await proveInteraction(harness, rows, cdp, variant, pathname, WIDTHS[WIDTHS.length - 1]);
+          await proveInteraction(harness, rows, cdp, variant, pathname, WIDTHS[0]);
         }
-        await proveKeyboard(harness, rows, cdp, variant, url);
+        await proveKeyboard(harness, rows, cdp, variant, url, WIDTHS[WIDTHS.length - 1]);
+        await proveKeyboard(harness, rows, cdp, variant, url, WIDTHS[0]);
       } finally {
         if (cdp !== null) await cdp.close();
         await harness.stopServer(server);
       }
+    }
+
+    // ── UI-R1C — THE HEADER IDENTITY CANNOT CHANGE THE NAVIGATION PRESENTATION ────────────────────
+    // `textFallback` and `compactGraphic` carry the SAME configuration and differ ONLY in the header identity
+    // (a text brand versus a configured graphic), so whatever navigation surface the shell presents at a width
+    // must be the same surface for both: the corrected row may not add, remove or displace a navigation landmark
+    // at ANY of the twenty-seven widths — which is what "navigation retains its existing responsive behaviour"
+    // means for the surface this change touches.
+    for (const { width, category } of VIEWPORTS) {
+      const text = navigationByWidth.get(`textFallback|${width}`);
+      const graphic = navigationByWidth.get(`compactGraphic|${width}`);
+      harness.check(
+        rows,
+        `navigation.identityDoesNotChangePresentation.${category}.w${width}`,
+        !!text && !!graphic && text.join(",") === graphic.join(","),
+        `text=${JSON.stringify(text)} graphic=${JSON.stringify(graphic)}`,
+      );
     }
 
     // ── THE HUB ENVIRONMENT: the lockup and the exceptionally wide lockup, where they can be served ──
@@ -844,37 +1160,59 @@ async function runHubIdentityPhase(harness, rows, chrome) {
         `layoutControl=${JSON.stringify(opened.layoutControl)}`,
       );
 
-      const arrangements = [];
-      for (const width of WIDTHS) {
-        await cdp.setViewport(width, VIEWPORT_HEIGHT);
-        const seen = await readHeader(harness, cdp);
-        arrangements.push(`w${width}=${arrangementOf(seen)}`);
-        assertRow(harness, rows, `${member.id}.w${width}`, seen, { id: member.id, logo: member.role });
-      }
-      console.log(`[header-identity] ${member.id}: ${arrangements.join(" ")}`);
-
-      // THE PROPORTIONAL CLAMP, at EVERY named width: this artwork is wider than the header's own content box
-      // wherever it is measured, so the clamp — not the artwork's natural width — is what the row renders.
-      if (member.role !== WIDE_LOCKUP_ROLE) continue;
-      for (const width of WIDTHS) {
-        await cdp.setViewport(width, VIEWPORT_HEIGHT);
-        const seen = await readHeader(harness, cdp);
+      const arrangements = new Map();
+      for (const { width, category } of VIEWPORTS) {
+        const seen = await readHeaderAt(cdp, width);
+        arrangements.set(width, arrangementOf(seen));
+        assertRow(harness, rows, `${member.id}.${category}.w${width}`, seen, { id: member.id, logo: member.role });
+        harness.check(
+          rows,
+          `${member.id}.${category}.w${width}.viewport.applied`,
+          seen.viewportWidth === width,
+          `requested=${width} innerWidth=${seen.viewportWidth}`,
+        );
+        // THE PROPORTIONAL CLAMP, wherever the artwork is wider than the header itself: the row renders the clamped
+        // width, never the artwork's natural width, and never a distorted or cropped version of it.
+        if (member.role !== WIDE_LOCKUP_ROLE) continue;
         const naturalAtLockupHeight = seen.logo
           ? Math.round((seen.logo.naturalWidth / seen.logo.naturalHeight) * seen.logo.box.height)
           : 0;
         harness.check(
           rows,
-          `${member.id}.w${width}.clamp.artworkIsWiderThanTheHeaderItself`,
+          `${member.id}.${category}.w${width}.clamp.artworkIsWiderThanTheHeaderItself`,
           !!seen.logo && seen.content.width < naturalAtLockupHeight,
           `content=${seen.content.width} naturalAtLockupHeight=${naturalAtLockupHeight}`,
         );
         harness.check(
           rows,
-          `${member.id}.w${width}.clamp.artworkIsClampedToTheContentWidth`,
+          `${member.id}.${category}.w${width}.clamp.artworkIsClampedToTheContentWidth`,
           !!seen.logo &&
             seen.logo.box.width >= seen.content.width - 2 &&
             seen.logo.box.width <= seen.content.width + 1,
           `width=${seen.logo && seen.logo.box.width} content=${seen.content.width}`,
+        );
+      }
+      for (const { category, widths } of VIEWPORT_BANDS) {
+        console.log(
+          `[header-identity] ${member.id}.${category}: ${widths.map((width) => `w${width}=${arrangements.get(width)}`).join(" ")}`,
+        );
+        harness.check(
+          rows,
+          `${member.id}.${category}.measuredEveryNamedWidth`,
+          widths.every((width) => arrangements.has(width)),
+          `widths=${widths.join(",")}`,
+        );
+      }
+      proveTransitions(harness, rows, member.id, arrangements);
+      await proveNavigationBoundaries(harness, rows, cdp, member.id);
+      for (const [width, height] of HEIGHT_CASES) {
+        const seen = await readHeaderAt(cdp, width, height);
+        assertRow(harness, rows, `${member.id}.height.w${width}x${height}`, seen, { id: member.id, logo: member.role });
+        harness.check(
+          rows,
+          `${member.id}.height.w${width}x${height}.viewport.applied`,
+          seen.viewportWidth === width,
+          `requested=${width} innerWidth=${seen.viewportWidth}`,
         );
       }
     }

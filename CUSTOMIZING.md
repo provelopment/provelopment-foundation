@@ -1392,7 +1392,7 @@ configurable through the validated `site.assets.*` block:
 
 | Asset | Default file | Configuration (`site.assets.*`) |
 | --- | --- | --- |
-| Brand logo — the `logo-header` role (JSON-LD **and** the rendered header mark) | `logo-header.svg` in the role namespace (BRAND_ASSETS.md §1.1) | `site.assets.logo` |
+| Brand logo — the `logo-header` role (JSON-LD **and** the rendered header mark) | `logo-header.svg` in the role namespace (BRAND_ASSETS.md §1.1) | `site.assets.logo` — rendered inside the shared display size **and** the header's own maximum inline size (280px by default, `--ui-site-header-logo-max-inline-size`); an exceptionally wide or intricate mark may be better served by artwork designed for that size, or by the text-brand fallback (omit `site.assets.logo`) |
 | Open Graph / social share image — the `ogImage` role (ONE **global** image serving `og:image` **and** `twitter:image`; the generated per-locale route is the fallback) | `og-image.png` in the role namespace (BRAND_ASSETS.md §1.1) (the approved 1200 × 630 replacement for the generated route, used when a deployment configures the role) | `site.assets.ogImage` |
 | Browser favicon — the `favicon` role (the **browser tab / bookmark icon** only; it is **not** an installable-app icon) | `favicon.svg` in the role namespace (BRAND_ASSETS.md §1.1) (the single authoritative browser-icon route) | `site.assets.favicon` |
 | Footer logo — the `logo-footer` role | `logo-footer.svg` in the role namespace (BRAND_ASSETS.md §1.1) | `site.assets.logoFooter` |

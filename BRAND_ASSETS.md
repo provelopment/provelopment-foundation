@@ -486,7 +486,7 @@ artwork; it documents only the file/rendering contract and the substitution path
 | Recommended production master | the approved Foundation living master (`logos/lockup-horizontal.svg` geometry: `viewBox="0 0 646.75 158"`, ratio ≈ 4.09:1). **RECOMMENDED only** |
 | Required SVG viewBox | none — any viewBox renders. Set `viewBox` so the mark scales predictably |
 | Transparency requirement | **RECOMMENDED:** transparent background. The header surface colour varies by theme, so an opaque canvas shows as a rectangle |
-| Runtime sizing | **HARD:** rendered at `height: 2rem` (32px) with `width: auto`, `max-width: 100%`, `object-fit: contain` → aspect ratio preserved, never distorted, never cropped |
+| Runtime sizing | **HARD (FOUNDATION-UI-R1E):** rendered inside BOTH maxima — the header's own maximum inline size `--ui-site-header-logo-max-inline-size` (280px by default) and the shared display size `--ui-logo-display-size` (32px) as its height maximum — with the width actually available to the mark always the stronger limit, `inline-size`/`block-size: auto`, `object-fit: contain` → aspect ratio preserved, never distorted, never cropped, and never enlarged when the file is already smaller than both limits. The maximums are RENDERING limits: the source artwork may be any size (a 4000px-wide master simply renders smaller) |
 | Runtime crop behaviour | **HARD: never cropped.** There is no `cover` and no clipping in this path |
 | Position / anchor | in flow, at the start of the header's left brand slot, inside the brand `<a href="/{locale}">` |
 | Repetition | once per page |
@@ -511,8 +511,17 @@ artwork; it documents only the file/rendering contract and the substitution path
 | Recommended production master | **the SAME coloured source as the header** — `content/assets/branding/logos/lockup-horizontal.svg`, mirrored into `logo-footer.svg` (owner ruling, 2026-09 closure pass: the footer uses the coloured lockup, not the monochrome one). **RECOMMENDED only**; the monochrome `lockup-mono.svg` remains a retained optional source asset |
 | Required SVG viewBox | none |
 | Transparency requirement | **RECOMMENDED:** transparent. The mark sits beside the copyright line on the footer surface |
-| Runtime sizing | **HARD:** `height: var(--ui-logo-display-size)` = `2rem` (32px), `width: auto`, `max-width: 100%` → **the SAME displayed size as the header logo** (owner ruling, 2026-09) with the aspect ratio preserved; never cropped. ONE token governs both logo roles |
+| Runtime sizing | **HARD:** `height: var(--ui-logo-display-size)` = `2rem` (32px), `width: auto`, `max-width: 100%` → the SAME display size the header mark is capped at (owner ruling, 2026-09) with the aspect ratio preserved; never cropped. The ONE display-size token governs both logo roles; the HEADER additionally carries its own maximum inline size (FOUNDATION-UI-R1E), and this role is deliberately unchanged by it — its display size is exact, not a maximum |
 | Runtime crop behaviour | **HARD: never cropped** |
+
+> **FOUNDATION-UI-R1E — EXCEPTIONALLY WIDE OR INTRICATE ARTWORK.** The header mark is bounded by a
+> maximum inline size (280px by default) as well as by the display size, so a very wide lockup is
+> scaled down rather than given the header's whole width. Where the permitted width of the mark and
+> the header's controls cannot coexist, the controls move to the next line beneath it. Artwork that
+> becomes illegible at that size — an extremely wide or highly detailed lockup — is an ARTWORK choice,
+> not a framework limitation: the author may supply a mark designed for the small display size or use
+> the text-brand fallback instead (omit `site.assets.logo`), and the mark's own source dimensions are
+> otherwise unrestricted (a 4000px-wide master is perfectly acceptable).
 | Position / anchor | inline, immediately before the `© <year> <site name>` line |
 | Repetition | once per page |
 | Engine recolouring | **HARD: none** |

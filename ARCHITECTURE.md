@@ -1792,14 +1792,22 @@ which exists so a deployment can demonstrate the same site in two presentations.
   disclosure is composed by the ENGINE at the SIDEBAR BOUNDARY (`sidebarLead`, above the content
   row) for exactly that reason: inside the header it migrated between the rows as the visitor
   controls changed width, which is the reported defect.
-- **A GRAPHIC IDENTITY UNDERLAYS THE SELECTOR — IT DOES NOT REFLOW AROUND IT** (NAV1B-V1). The
-  owner's rule distinguishes the two identity kinds, and so does the shell: a text identity wraps
-  inside its own column, while a configured logo keeps the row's ONE track (so its clamp is the
-  header's content width — never a narrow column, never shrunk, never distorted) and may continue
-  beneath the selector's occupied area, the selector staying right-aligned in the same cell and
-  painting ABOVE it (`.ui-site-header-top--graphic` in the stylesheet). Nothing becomes
-  interactive: the graphic keeps its existing identity semantics and the selector keeps every
-  pointer event inside its own box.
+- **A GRAPHIC IDENTITY IS BOUNDED, AND THE CONTROL CLUSTER MOVES — IT IS NEVER COVERED** (NAV1B-V2,
+  FOUNDATION-UI-R1E). The owner's rule distinguishes the two identity kinds, and the row expresses
+  both WITHOUT any overlap: the TOP row is a WRAPPING flex row, so the arrangement follows CONTENT
+  versus the available width rather than a viewport breakpoint. A text identity wraps inside its own
+  column; a configured logo is bounded in BOTH dimensions — the header's own maximum inline size
+  (`--ui-site-header-logo-max-inline-size`, 280px by default) and the shared display size
+  (`--ui-logo-display-size`, 32px) as its height maximum — with the width actually available to it
+  always the stronger limit, its intrinsic aspect ratio always preserved, and never an enlargement of
+  a mark that is already smaller than both limits. The logo is NOT reduced merely to preserve a shared
+  row: where its permitted width and the cluster's controls cannot coexist, the ENTIRE cluster moves to
+  the next line, right-aligned beneath the brand. There is no `z-index`, no positioning, no opaque
+  surface and no shared cell in this row, so the brand can never be covered and the selector keeps
+  every pointer event inside its own box. The maximums are RENDERING limits and say nothing about the
+  authored artwork's SOURCE dimensions; exceptionally wide or intricate artwork may still be better
+  served by a more suitable logo or by the text-brand fallback (`site.assets.logo` absent). The FOOTER
+  mark keeps its own unchanged contract (a fixed display size, natural width, never cropped).
 - **One exposed navigation, by construction.** The shell composes the structures of both
   layouts and marks each one with the layouts it is the active navigation for
   (`data-ui-shell-part="rail" | "top-nav" | "bottom-bar" | "mobile-drawer"` +

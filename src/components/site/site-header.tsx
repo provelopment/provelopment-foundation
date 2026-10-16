@@ -255,7 +255,7 @@ export function SiteHeader({
                     <div
                         className={
                             headerLogoSrc
-                                ? "ui-site-header-identity"
+                                ? "ui-site-header-identity ui-site-header-identity--graphic"
                                 : "ui-site-header-identity break-words"
                         }
                     >
@@ -269,11 +269,18 @@ export function SiteHeader({
                                 // "go home" target is comfortably tappable.
                                 className="ui-site-header-brand inline-flex min-h-11 min-w-11 items-center"
                             >
+                                {/* FOUNDATION-UI-R1E — the mark's DISPLAY contract lives in ONE place: the
+                                    stylesheet's `.ui-site-header-logo` rule (a maximum inline size of 280px
+                                    by default, the shared display size as its height maximum, and the
+                                    available container width, whichever is smallest — with the aspect ratio
+                                    always preserved and never enlarged). No utility class pins a dimension
+                                    here, because a forced height would stretch a naturally smaller mark and
+                                    defeat both maxima. */}
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
                                     src={headerLogoSrc}
                                     alt={siteConfig.name}
-                                    className="ui-site-header-logo h-8 w-auto"
+                                    className="ui-site-header-logo"
                                 />
                             </Link>
                         ) : (

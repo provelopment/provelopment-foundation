@@ -192,6 +192,14 @@ describe("NAV1B-V2 — the top row wraps by content, and the brand is never cove
     expect(identity).toContain("flex: 1 1 auto;");
     expect(identity).toContain("min-width: 0;");
 
+    // FOUNDATION-UI-R1E — a GRAPHIC identity carries the header's own display maximum too, because the row plans
+    // its arrangement from flex BASE sizes: without a definite cap the row would plan around the artwork's natural
+    // width (2048px for a 64:1 lockup that renders 280px) and keep the cluster below the brand on every desktop,
+    // where the permitted widths plainly fit side by side. The TEXT fallback does not carry the modifier.
+    const graphicIdentity = ruleBody(".ui-site-header-identity--graphic {");
+    expect(graphicIdentity).toContain("max-inline-size: var(--ui-site-header-logo-max-inline-size);");
+    expect(HEADER_SOURCE).toContain('"ui-site-header-identity ui-site-header-identity--graphic"');
+
     // The cluster never grows beyond its controls, and it MAY shrink so that its own `flex-wrap` can stack them
     // when the line it has is narrower than they are together (FOUNDATION-UI-R1D: with `flex-shrink: 0` a two-control
     // cluster overflowed the header at 280px instead of stacking).
@@ -212,15 +220,29 @@ describe("NAV1B-V2 — the top row wraps by content, and the brand is never cove
     expect(GLOBALS_SOURCE).not.toContain("ui-site-header-top--graphic");
   });
 
-  it("keeps the graphic's proportions: a fixed lockup height, a natural width and a proportional clamp", () => {
-    const logo = ruleBody(".ui-site-header-logo,");
-    expect(logo).toContain("height: var(--ui-logo-display-size);");
-    expect(logo).toContain("width: auto;");
-    expect(logo).toContain("max-width: 100%;");
+  it("bounds the header graphic in BOTH dimensions and preserves its proportions", () => {
+    // FOUNDATION-UI-R1E — the mark's display size is a MAXIMUM (never a forced height), joined by the header's own
+    // inline maximum and by the available container width; neither dimension is forced, so the intrinsic ratio is
+    // preserved and a naturally smaller mark is never enlarged.
+    const logo = ruleBody(".ui-site-header-logo {");
+    expect(logo).toContain("inline-size: auto;");
+    expect(logo).toContain("block-size: auto;");
+    expect(logo).toContain("max-inline-size: min(var(--ui-site-header-logo-max-inline-size), 100%);");
+    expect(logo).toContain("max-block-size: var(--ui-logo-display-size);");
     expect(logo).toContain("object-fit: contain;");
-    // The rendered lockup keeps the accepted 2rem height, and the brand link stays lockup-sized rather than
-    // row-wide (so its hit area follows the artwork).
-    expect(HEADER_SOURCE).toContain("ui-site-header-logo h-8 w-auto");
+    // The ONE header-specific maximum-width token, 280px by default (the platform's supported minimum viewport
+    // width), so an exceptionally wide lockup can never widen the page or the header.
+    const token = /--ui-site-header-logo-max-inline-size:\s*([\d.]+)rem/.exec(GLOBALS_SOURCE)?.[1];
+    expect(token).toBe("17.5");
+    expect(Number(token) * 16).toBe(280);
+    // The FOOTER mark's own contract is untouched by the header's (its display size is exact, never a maximum).
+    const footer = ruleBody(".ui-site-footer-logo {");
+    expect(footer).toContain("height: var(--ui-logo-display-size);");
+    expect(footer).toContain("width: auto;");
+    expect(footer).toContain("max-width: 100%;");
+    // The rendered lockup keeps the accepted 2rem height as its ceiling, and the brand link stays lockup-sized
+    // rather than row-wide (so its hit area follows the artwork).
+    expect(HEADER_SOURCE).toContain('className="ui-site-header-logo"');
     const brand = ruleBody(".ui-site-header-brand {");
     expect(brand).toContain("width: max-content;");
     expect(brand).toContain("max-width: 100%;");

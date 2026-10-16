@@ -152,6 +152,15 @@ const VARIANTS = [
     layoutSwitcher: true,
     label: "a compact configured graphical logo",
   },
+  {
+    // FOUNDATION-UI-R1E — A NATURALLY SMALL SQUARE MARK: the platform namespace's own 24x24 icon, smaller than BOTH
+    // display limits, so it is the case that proves a mark is never ENLARGED merely to fill the area it is allowed
+    // (a forced lockup height used to stretch it to the shared display size).
+    id: "smallSquareMark",
+    logo: "https://synthetic.example.test/assets/icon-globe.svg",
+    layoutSwitcher: true,
+    label: "a naturally small square mark (24x24) beside the mode selector",
+  },
 ];
 
 /**
@@ -249,6 +258,16 @@ const PROBE = `(() => {
   })();
   const active = document.activeElement;
   const activeCs = active && active !== document.body ? getComputedStyle(active) : null;
+  // UI-R1E — THE MARK'S DISPLAY LIMITS, read from the tokens the stylesheet declares (never restated here): the
+  // header's own maximum inline size and the shared display size that is the mark's block maximum.
+  const tokenPx = (name) => {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    const inRem = /^([0-9.]+)rem$/.exec(raw);
+    if (inRem) return Math.round(Number(inRem[1]) * rootPx);
+    const inPx = /^([0-9.]+)px$/.exec(raw);
+    return inPx ? Math.round(Number(inPx[1])) : 0;
+  };
   return {
     viewportWidth: window.innerWidth,
     path: location.pathname,
@@ -273,6 +292,9 @@ const PROBE = `(() => {
       rightInset: clusterBox && contentRight !== null ? contentRight - clusterBox.right : null,
       belowBrand: !!brandBox && !!clusterBox && clusterBox.top >= brandBox.bottom - 1,
       insideContent: insideContent(clusterBox),
+      // UI-R1E — the cluster's MAX-CONTENT width: what the row must find room for beside the brand when the two
+      // share a line (its own width where it was never squeezed, its widest line where it wrapped internally).
+      maxContentWidth: cluster ? Math.max(cluster.scrollWidth, clusterBox ? clusterBox.width : 0) : null,
       controls: [...(cluster ? cluster.querySelectorAll('select, a, button') : [])].map(control),
     },
     content: { left: contentLeft, right: contentRight, width: contentRight - contentLeft },
@@ -284,6 +306,13 @@ const PROBE = `(() => {
           naturalWidth: logo.naturalWidth,
           naturalHeight: logo.naturalHeight,
           box: logoBox,
+          // UI-R1E — the RENDERED size at sub-pixel precision. The integer box above is right for placement and
+          // overlap maths, but a 64:1 mark is only ~4.4px tall, so rounding it to whole pixels would misstate its
+          // aspect ratio by a tenth and fail a correct mark. Size and ratio are therefore judged on THESE numbers.
+          size: (() => {
+            const r = logo.getBoundingClientRect();
+            return { width: Math.round(r.width * 100) / 100, height: Math.round(r.height * 100) / 100 };
+          })(),
           objectFit: getComputedStyle(logo).objectFit,
         }
       : null,
@@ -320,6 +349,11 @@ const PROBE = `(() => {
     },
     layoutControl: control(layout),
     layoutFloor,
+    // UI-R1E — the mark's two display limits, as the page declares them (the header token and the display size).
+    logoLimits: {
+      inline: tokenPx('--ui-site-header-logo-max-inline-size'),
+      block: tokenPx('--ui-logo-display-size'),
+    },
     documentScrollWidth: document.documentElement.scrollWidth,
     documentClientWidth: document.documentElement.clientWidth,
     // UI-R1D — THE SHELL FRAME ITSELF: its width and the computed 'min-inline-size' the floor rule would apply.
@@ -547,6 +581,7 @@ function assertRow(harness, rows, tag, seen, variant) {
   );
   harness.check(rows, `${tag}.brandInsideTheContentBox`, !!seen.brandInsideContent, JSON.stringify(seen.brand.box));
   assertLogo(harness, rows, tag, seen, variant);
+  proveFitRule(harness, rows, tag, seen, variant);
 
   if (!seen.cluster.present) {
     // NO TOP-RIGHT SELECTOR: the row has one occupant, so there is nothing to anchor and nothing to reserve.
@@ -1131,15 +1166,20 @@ export default { id, run };
  *
  * A Spoke-namespaced asset is served only for the Spokes an Installation DECLARES (M3: runtime asset namespaces
  * are per-Spoke, and the platform namespace is shared), so a generic single-Spoke run cannot serve artwork from
- * `public/spokes/**` at all. The two identity kinds the generic environment cannot express are therefore measured
- * on a TEST-OWNED Hub — the four-Spoke fixture the Spoke switcher is already proved with:
+ * `public/spokes/**` at all. The artwork classes the generic environment cannot express are therefore measured on a
+ * TEST-OWNED Hub — the four-Spoke fixture the Spoke switcher is already proved with:
  *
- *   · a LOCKUP (several times a mark's width at the accepted lockup height), and
- *   · an EXCEPTIONALLY WIDE lockup (wider than the header's own content box at EVERY measured width, which is
- *     what makes the proportional clamp the binding constraint rather than an accident of one narrow viewport),
+ *   · a CONVENTIONAL HORIZONTAL LOCKUP (the shape a configured lockup really has),
+ *   · a HEADER BAND several times the header's own display maximum, where the WIDTH cap alone binds, and
+ *   · an EXCEPTIONALLY WIDE 64:1 lockup (wider than the header's own content box at EVERY measured width),
  *
- * and the same members give the cluster both of its conditions: the Spoke switcher ALONE (`primary`), the Spoke
- * switcher AND the Layout selector (`docs`), and the text fallback with the switcher alone (`catalog`).
+ * and the same members give the cluster both of its conditions: the Spoke switcher ALONE (`primary`, `support`), the
+ * Spoke switcher AND the Layout selector (`docs`), and the text fallback with the switcher alone (`catalog`).
+ *
+ * FOUNDATION-UI-R1E — WHAT CHANGED FOR THE WIDE ARTWORK. The header mark is bounded by a maximum INLINE size as well
+ * as by the shared display size (`--ui-site-header-logo-max-inline-size`, 280px by default), so exceptionally wide
+ * artwork is no longer rendered at the header's whole content width: it is capped, the cluster therefore shares the
+ * line wherever the permitted widths fit, and the mark is never squeezed to keep it there.
  *
  * The artwork is AUTHORED HERE, for this scenario's own members, and installed into the generated namespace each
  * member owns under OWNERSHIP: a namespace or file that already exists belongs to another execution or another
@@ -1149,23 +1189,38 @@ export default { id, run };
  */
 const LOCKUP_ROLE = "ui-r1-lockup.svg";
 const WIDE_LOCKUP_ROLE = "ui-r1-wide-lockup.svg";
+const HEADER_BAND_ROLE = "ui-r1-header-band.svg";
 
 const HUB_IDENTITIES = [
   {
     id: "hubSpokeAlone",
     spokeId: "primary",
     role: LOCKUP_ROLE,
-    // 480x128 — 3.75:1: 120px wide at the accepted 2rem lockup height, the shape a configured lockup really has.
+    // 480x128 — 3.75:1, a conventional horizontal lockup: 120px wide at the shared display size, and its NATURAL
+    // width (480) is already wider than the header's display maximum, so the HEIGHT cap is the binding limit here.
     svg: '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="128" viewBox="0 0 480 128" role="presentation"><rect x="0" y="52" width="480" height="24" rx="12" fill="#0f172a"/></svg>\n',
-    label: "a configured graphical lockup beside the Spoke switcher alone",
+    widerThanTheDisplayMaximum: true,
+    label: "a conventional horizontal lockup beside the Spoke switcher alone",
+  },
+  {
+    id: "hubHeaderBandLockup",
+    spokeId: "support",
+    role: HEADER_BAND_ROLE,
+    // 1024x64 — 16:1: a header band several times the display maximum. At the maximum width its height (17.5px) is
+    // still well inside the shared display size, so the WIDTH cap ALONE decides its rendered size.
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="64" viewBox="0 0 1024 64" role="presentation"><rect x="0" y="24" width="1024" height="16" fill="#1d4ed8"/></svg>\n',
+    widerThanTheDisplayMaximum: true,
+    label: "a header band wider than the display maximum, beside the Spoke switcher alone",
   },
   {
     id: "hubLongLockup",
     spokeId: "docs",
     role: WIDE_LOCKUP_ROLE,
-    // 2048x32 — 64:1: 2048px wide at the accepted lockup height, wider than the header's content box everywhere.
+    // 2048x32 — 64:1: wider than the header's own content box at every measured width, so the display maximum is the
+    // binding constraint everywhere rather than an accident of one narrow viewport.
     svg: '<svg xmlns="http://www.w3.org/2000/svg" width="2048" height="32" viewBox="0 0 2048 32" role="presentation"><rect x="0" y="12" width="2048" height="8" fill="#0f172a"/></svg>\n',
-    label: "an exceptionally wide lockup beside the Spoke switcher AND the Layout selector",
+    widerThanTheDisplayMaximum: true,
+    label: "an exceptionally wide 64:1 lockup beside the Spoke switcher AND the Layout selector",
   },
   {
     id: "hubTextFallback",
@@ -1300,25 +1355,26 @@ async function runHubIdentityPhase(harness, rows, chrome) {
           seen.viewportWidth === width,
           `requested=${width} innerWidth=${seen.viewportWidth}`,
         );
-        // THE PROPORTIONAL CLAMP, wherever the artwork is wider than the header itself: the row renders the clamped
-        // width, never the artwork's natural width, and never a distorted or cropped version of it.
-        if (member.role !== WIDE_LOCKUP_ROLE) continue;
-        const naturalAtLockupHeight = seen.logo
-          ? Math.round((seen.logo.naturalWidth / seen.logo.naturalHeight) * seen.logo.box.height)
-          : 0;
+        // ── FOUNDATION-UI-R1E — THE DISPLAY MAXIMUM, WHEREVER THE ARTWORK IS WIDER THAN IT ────────────────
+        // The case is what it claims to be (the artwork's NATURAL width exceeds the header's display maximum), and
+        // where the controls share the mark's line the mark no longer occupies the header's WHOLE content width:
+        // that is the owner's corrected expectation for exceptionally wide artwork, and it is exactly what lets the
+        // cluster sit beside it instead of being pushed below on a wide desktop. The rendered size itself is asserted
+        // by `assertRow` (never wider than the permitted maximum, never enlarged, never distorted) and the arrangement
+        // by the fit rule, so nothing is restated here.
+        if (member.widerThanTheDisplayMaximum !== true) continue;
         harness.check(
           rows,
-          `${member.id}.${category}.w${width}.clamp.artworkIsWiderThanTheHeaderItself`,
-          !!seen.logo && seen.content.width < naturalAtLockupHeight,
-          `content=${seen.content.width} naturalAtLockupHeight=${naturalAtLockupHeight}`,
+          `${member.id}.${category}.w${width}.displayMaximum.theArtworkIsWiderThanTheDisplayMaximum`,
+          !!seen.logo && seen.logo.naturalWidth > seen.logoLimits.inline,
+          `natural=${seen.logo && seen.logo.naturalWidth} maximum=${seen.logoLimits.inline}`,
         );
         harness.check(
           rows,
-          `${member.id}.${category}.w${width}.clamp.artworkIsClampedToTheContentWidth`,
+          `${member.id}.${category}.w${width}.displayMaximum.doesNotOccupyTheWholeHeaderWhereTheControlsShare`,
           !!seen.logo &&
-            seen.logo.box.width >= seen.content.width - 2 &&
-            seen.logo.box.width <= seen.content.width + 1,
-          `width=${seen.logo && seen.logo.box.width} content=${seen.content.width}`,
+            (arrangementOf(seen) !== "one-line" || seen.logo.size.width <= seen.content.width - 1),
+          `width=${seen.logo && seen.logo.size.width} content=${seen.content.width} arrangement=${arrangementOf(seen)}`,
         );
       }
       for (const { category, widths } of VIEWPORT_BANDS) {
@@ -1363,12 +1419,46 @@ async function runHubIdentityPhase(harness, rows, chrome) {
 
 
 /**
- * THE GRAPHIC'S PROPORTIONS — or, for the text fallback, that there is no graphic at all.
+ * THE FIT RULE (FOUNDATION-UI-R1E): the CLUSTER moves, the MARK is never squeezed to keep a shared row.
  *
- * `contain` plus a fixed lockup height is what makes a clamp proportional: the box may be narrower than the
- * artwork's natural width, and the artwork inside is then scaled (never stretched, never cropped). The brand's own
- * link is what carries the rendered width, so "it keeps its natural width when that fits" is asserted against the
- * ratio the FILE declares rather than against a number written down here.
+ * Both directions are decided by the widths the row must find room for — the brand's PERMITTED width (the width the
+ * mark is entitled to render at, computed from the page's own limits) and the cluster's MAX-CONTENT width — never by
+ * the widths they happened to end up with. Where those two fit together they share the line; where they cannot
+ * coexist, the cluster is ENTIRELY below the brand. A ±1px band is deliberately ambiguous: at an exact boundary a
+ * browser may resolve either way, and a pass must never depend on which way it went.
+ *
+ * A graphic identity is the case this ruling is about, so only it is asserted here: the TEXT fallback may break
+ * inside itself, and its own wrapping contract is proved by the boundary bisection and the transitions.
+ */
+function proveFitRule(harness, rows, tag, seen, variant) {
+  if (variant.logo === null || !seen.logo || !seen.cluster.present || seen.cluster.maxContentWidth === null) return;
+  const { naturalWidth, naturalHeight } = seen.logo;
+  if (!(naturalWidth > 0 && naturalHeight > 0)) return;
+  const scale = Math.min(1, seen.logoLimits.inline / naturalWidth, seen.logoLimits.block / naturalHeight);
+  // The brand carries at least the mark's permitted width; its LINK also owns the >= 44px hit-area contract, so the
+  // MEASURED link is the floor of the brand's permitted width (a restated 44 here would be a second authority).
+  const permittedBrand = Math.max(seen.brand.linkBox ? seen.brand.linkBox.width : 0, naturalWidth * scale);
+  const room = permittedBrand + (seen.row.columnGap ?? 0) + seen.cluster.maxContentWidth;
+  const fits = room <= seen.content.width + 1;
+  const cannotCoexist = room > seen.content.width - 1;
+  const arrangement = arrangementOf(seen);
+  harness.check(
+    rows,
+    `${tag}.fit.theClusterSharesTheLineOnlyWhenThePermittedWidthsFit`,
+    (fits && cannotCoexist) || (fits ? arrangement === "one-line" : arrangement === "cluster-below"),
+    `room=${Math.round(room)} content=${seen.content.width} arrangement=${arrangement} brand=${Math.round(permittedBrand)} cluster=${seen.cluster.maxContentWidth} gap=${seen.row.columnGap}`,
+  );
+}
+
+/**
+ * THE MARK'S DISPLAY CONTRACT (FOUNDATION-UI-R1E) — or, for the text fallback, that there is no graphic at all.
+ *
+ * The ruling is expressed in the row's OWN currency, with every limit read from the page: the permitted maximum
+ * inline size is the SMALLER of the header's own token and the width available to the mark, and the permitted
+ * maximum block size is the shared display token. An image whose intrinsic size is already smaller than both limits
+ * renders at its own size — never enlarged to fill the permitted area — and both limits are asserted against the
+ * RENDERED rectangle, as is the intrinsic ratio (a stretched or cropped mark fails the ratio and the expected-size
+ * comparison even where a width-only assertion would pass). Nothing here is restated from the stylesheet.
  */
 function assertLogo(harness, rows, tag, seen, variant) {
   if (variant.logo === null) {
@@ -1384,20 +1474,50 @@ function assertLogo(harness, rows, tag, seen, variant) {
   const loaded = !!logo && logo.complete === true && logo.naturalWidth > 0 && logo.naturalHeight > 0;
   harness.check(rows, `${tag}.logo.loaded`, loaded, JSON.stringify(logo));
   if (!loaded) return;
-  const naturalWidthAtLockupHeight = Math.round((logo.naturalWidth / logo.naturalHeight) * logo.box.height);
-  const entitled = Math.min(naturalWidthAtLockupHeight, seen.content.width);
-  harness.check(rows, `${tag}.logo.keepsItsLockupHeight`, logo.box.height === 32, `height=${logo.box.height}`);
+
+  const permittedWidth = Math.min(seen.logoLimits.inline, seen.content.width);
+  const permittedHeight = seen.logoLimits.block;
+  const scale = Math.min(1, permittedWidth / logo.naturalWidth, permittedHeight / logo.naturalHeight);
+  const expectedWidth = logo.naturalWidth * scale;
+  const expectedHeight = logo.naturalHeight * scale;
+  const renderedRatio = logo.size.height > 0 ? logo.size.width / logo.size.height : 0;
+  const naturalRatio = logo.naturalWidth / logo.naturalHeight;
+
   harness.check(
     rows,
-    `${tag}.logo.keepsItsIntrinsicProportions`,
-    logo.objectFit === "contain",
-    `object-fit=${logo.objectFit}`,
+    `${tag}.logo.widthNeverExceedsItsPermittedMaximum`,
+    logo.size.width <= permittedWidth + 1,
+    `width=${logo.size.width} permitted=${permittedWidth} (token=${seen.logoLimits.inline} content=${seen.content.width})`,
   );
   harness.check(
     rows,
-    `${tag}.logo.naturalWidthUnlessItCannotFit`,
-    logo.box.width >= entitled - 2 && logo.box.width <= seen.content.width + 1,
-    `width=${logo.box.width} entitled=${entitled} natural=${logo.naturalWidth}x${logo.naturalHeight} content=${seen.content.width}`,
+    `${tag}.logo.heightNeverExceedsTheAcceptedLimit`,
+    logo.size.height <= permittedHeight + 1,
+    `height=${logo.size.height} permitted=${permittedHeight}`,
+  );
+  harness.check(
+    rows,
+    `${tag}.logo.neverEnlargedBeyondItsNaturalSize`,
+    logo.size.width <= logo.naturalWidth + 1 && logo.size.height <= logo.naturalHeight + 1,
+    `rendered=${logo.size.width}x${logo.size.height} natural=${logo.naturalWidth}x${logo.naturalHeight}`,
+  );
+  harness.check(
+    rows,
+    `${tag}.logo.scaledToFitNeverCroppedOrStretched`,
+    Math.abs(logo.size.width - expectedWidth) <= 1.5 && Math.abs(logo.size.height - expectedHeight) <= 1.5,
+    `rendered=${logo.size.width}x${logo.size.height} expected=${Math.round(expectedWidth * 100) / 100}x${Math.round(expectedHeight * 100) / 100} scale=${scale.toFixed(4)}`,
+  );
+  harness.check(
+    rows,
+    `${tag}.logo.preservesItsIntrinsicAspectRatio`,
+    renderedRatio > 0 && Math.abs(renderedRatio - naturalRatio) <= Math.max(0.02 * naturalRatio, 0.05),
+    `rendered=${renderedRatio.toFixed(3)} natural=${naturalRatio.toFixed(3)}`,
+  );
+  harness.check(
+    rows,
+    `${tag}.logo.rendersContainRatherThanCrop`,
+    logo.objectFit === "contain",
+    `object-fit=${logo.objectFit}`,
   );
   harness.check(
     rows,

@@ -365,6 +365,18 @@ tree stays clean.
   into the text column, reaches BENEATH the selector's occupied area at narrow widths, and the
   selector WINS the hit test at its own centre — with no page overflow in either case. Long
   contextual labels wrap INSIDE the row below, which never lets a control jump into the top row.
+- **header identity across the nine viewport categories** (`header-identity` scenario,
+  NAV1B-V2/FOUNDATION-UI-R1C/R1D/R1E): every identity kind × all 27 named widths × 9 categories, with
+  the requested width itself asserted. The row wraps by CONTENT (no breakpoint decides it), the cluster
+  is entirely below the brand exactly when their permitted widths cannot coexist, and nothing overlaps.
+  The mark's DISPLAY contract is measured as real rendered geometry: never wider than the header's own
+  maximum (`--ui-site-header-logo-max-inline-size`, 280px) or than the width available to it, never
+  taller than the shared display size, never enlarged when the file is smaller than both, scaled to fit
+  rather than cropped or stretched, and its intrinsic ratio preserved — for a compact square mark, a
+  naturally small 24×24 mark, a conventional horizontal lockup, a header band wider than the maximum
+  and an exceptionally wide 64:1 lockup. No document overflow at any supported width (and a documented
+  below-280 fallback), unchanged behaviour at tablet and desktop widths, and the rail, drawer, bottom
+  bar, selectors and keyboard/pointer interactions protected throughout.
 - **bottom navigation layout** (`bottom-nav-wrap` scenario, NAV1A): the sticky bar's rows
   are the `<li>` children of its `<ul>`, so the LIST owns their flow and wrapping. Proven
   with test-owned navigation fixtures on the disposable copy: SHORT labels share ONE row at

@@ -1605,60 +1605,67 @@ html[data-ui-shell-layout="menu-bar"] .ui-shell-sidebar:has([data-ui-shell-part=
   object-fit: contain;
 }
 
-/* ── NAV1B-V1 — THE GRAPHIC IDENTITY PASSES BENEATH THE FIXED TOP-RIGHT SELECTOR ───────────────
+/* ── NAV1B-V2 — THE TOP ROW WRAPS BY CONTENT, AND NOTHING EVER OVERLAPS ────────────────────────
  *
- * The owner's rule for a GRAPHIC page/site identity is NOT the text rule. A text identity wraps
- * inside its own column and never goes under the navigation-MODE selector (`.ui-site-header-top`
- * grid: two tracks, text in the flexible first one). A GRAPHIC identity has no reason to reflow
- * around a control: it begins in its normal left-hand identity position, keeps its natural aspect,
- * and MAY continue geometrically beneath the selector's occupied area — the selector stays fixed at
- * the top-right and paints ABOVE it, hiding whatever lies underneath.
+ * ONE rule for BOTH identity kinds — a configured graphic lockup and the text-brand fallback — and
+ * it is the correction of the former NAV1B-V1 arrangement, which gave the identity and the control
+ * cluster the SAME grid cell (`grid-area: 1 / 1`) and painted the cluster above the artwork
+ * (`z-index` + an opaque `background-color`). That is a control COVERING the brand: as soon as a
+ * lockup was wide enough to reach the selector, the visitor lost part of the identity. The owner's
+ * rule is the opposite one — the selector must never cover, overlap, obscure or displace the brand —
+ * so the row does not overlap at all, in either direction:
  *
- * THE MECHANICS, and why they are what they are:
- *  - the row keeps ONE track, so the graphic's clamp (`max-width`) is the header's own CONTENT box
- *    (the page-edge inset) rather than a narrow first column: the graphic is never shrunk into a
- *    column and never distorted (`object-fit: contain` above);
- *  - the identity and the selector occupy the SAME cell, the selector right-aligned and stacked
- *    above (`z-index`), which is what makes an overlap an OVERLAY instead of a collision;
- *  - the brand link is sized to the graphic (`max-content`, capped by the cell), so it remains a
- *    lockup-sized "go home" target instead of a row-wide one;
- *  - the selector keeps an opaque surface of the header's own background behind it, so the graphic
- *    beneath it is obscured rather than showing through the control.
+ *  - the row is a WRAPPING FLEX ROW: the arrangement follows CONTENT versus the available width, so
+ *    no viewport breakpoint (and no device detection) decides it;
+ *  - the brand is FIRST and takes the free space (`flex: 1 1 auto` with `min-width: 0`), so a text
+ *    brand may break inside itself and a graphic may be clamped by its own `max-width` rather than
+ *    pushing the page wider;
+ *  - the control cluster follows it and is anchored at the RIGHT edge of the padded header content by
+ *    `margin-inline-start: auto` — the SAME anchor whether it shares the brand's line or has a line of
+ *    its own, so it is never left hanging mid-row;
+ *  - when the two cannot share a line the cluster WRAPS to the next line, ENTIRELY BELOW the brand
+ *    (the row's `row-gap` separates them) and right-aligned. There is no `z-index`, no `position`, no
+ *    opaque surface and no shared cell in this row, so nothing can hide behind or on top of anything:
+ *    the brand keeps the left-hand identity position and the cluster keeps its normal control sizing;
+ *  - THE GRAPHIC KEEPS ITS INTRINSIC PROPORTIONS. It is never distorted, cropped, hidden or
+ *    artificially shrunk to keep the selector on the first row (see `.ui-site-header-logo`: a fixed
+ *    2rem lockup height with `width: auto` and `object-fit: contain`); if an exceptionally wide lockup
+ *    exceeds the header's content width BY ITSELF, `max-width: 100%` clamps it PROPORTIONALLY to that
+ *    width instead — the artwork is scaled, never stretched or cut;
+ *  - the SECOND row (`.ui-site-header-context`) is untouched: this row owns the identity and the
+ *    right-hand chrome cluster only.
  *
- * The graphic is decorative/identity content that already had no interactivity: nothing here makes
- * it interactive, and the selector keeps every pointer event inside its own box.
+ * The row is also keyboard- and pointer-neutral: it introduces no element, no overlay, no stacking
+ * context and no focusable surrogate, so the brand link and the cluster's controls keep exactly the
+ * hit areas and tab order they had.
  */
-.ui-site-header-top--graphic {
-  grid-template-columns: minmax(0, 1fr);
+.ui-site-header-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  column-gap: 1rem;
+  row-gap: 0.5rem;
 }
 
-.ui-site-header-top--graphic .ui-site-header-identity {
-  grid-area: 1 / 1;
+.ui-site-header-identity {
+  /* The brand yields WIDTH, never position: it may break/clamp inside itself, and it is always the
+   * first occupant of the row. */
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
-.ui-site-header-top--graphic .ui-site-header-brand {
+.ui-site-header-controls {
+  /* The cluster never shrinks below its own controls (`flex: 0 0 auto`) and is pushed to the content's
+   * right edge by the auto margin — on the brand's line and on a line of its own alike. */
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+}
+
+/* The brand link is sized to its own content, so a lockup stays a lockup-sized "go home" target rather
+ * than a row-wide one (capped by the row it lives in). */
+.ui-site-header-brand {
   width: max-content;
   max-width: 100%;
-}
-
-.ui-site-header-top--graphic .ui-site-header-controls {
-  grid-area: 1 / 1;
-  justify-self: end;
-  align-self: start;
-  position: relative;
-  z-index: 10;
-  padding-inline-start: 0.75rem;
-  background-color: var(--background);
-}
-
-.ui-site-header-top--graphic .ui-site-header-mode {
-  grid-area: 1 / 1;
-  justify-self: end;
-  align-self: start;
-  position: relative;
-  z-index: 10;
-  padding-inline-start: 0.75rem;
-  background-color: var(--background);
 }
 
 /* The page banner (P6-3B; P6-3C scaling contract). ALWAYS centered, never

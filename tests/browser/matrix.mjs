@@ -4234,11 +4234,22 @@ const LAYOUT_PROBE = `(() => {
   const barContent = bar ? bar.querySelector(':scope > div') : null;
   const barFirstLink = barLinks[0] || null;
   const barLastLink = barLinks[barLinks.length - 1] || null;
-  // NAV1B-V1 - the graphic identity (a configured logo) and the selector's own box, for the overlay
-  // and hit-test proofs.
+  // NAV1B-V2 (UI-R1) - the graphic identity (a configured logo), the navigation-MODE selector's own box, and the
+  // row's WRAPPING contract: the brand and the right-hand CONTROL CLUSTER as boxes, so "they share one line without
+  // overlapping" and "the cluster sits entirely below the brand" are claims about rendered pixels rather than
+  // about a class string. There is no overlay to prove any more - the row does not stack.
   const logo = document.querySelector('.ui-site-header-logo');
   const modeBox = document.querySelector('.ui-site-header-mode');
+  const cluster = document.querySelector('.ui-site-header-controls');
   const controlRect = control ? control.getBoundingClientRect() : null;
+  const boxOf = (el) => {
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { left: Math.round(r.left), top: Math.round(r.top), right: Math.round(r.right), bottom: Math.round(r.bottom), width: Math.round(r.width), height: Math.round(r.height) };
+  };
+  const identityBox = boxOf(headerTop ? headerTop.firstElementChild : null);
+  const clusterBox = boxOf(cluster);
+  const brandLinkBox = boxOf(headerTop ? headerTop.querySelector('.ui-site-header-identity a') : null);
   // The ACCEPTED desktop navigation disclosure (the rail's own toggle): the constrained-width
   // disclosure must present the SAME control scale, so both are measured.
   const railToggle = [...document.querySelectorAll('.ui-sidebar-toggle')].find(shown) || null;
@@ -4307,6 +4318,22 @@ const LAYOUT_PROBE = `(() => {
       : null,
     barContentWidth: barContent ? Math.round(barContent.getBoundingClientRect().width) : null,
     headerContentWidth: headerInner ? Math.round(headerInner.getBoundingClientRect().width) : null,
+    // NAV1B-V2 — the header's own CONTENT box (the padded content the row is laid out inside). "The brand keeps
+    // the whole content width" and "the cluster is inside the content box" are claims about THAT box, not about
+    // the enclosing div's border box (which includes the page-edge padding).
+    headerContentRight: headerInner
+      ? Math.round(
+          headerInner.getBoundingClientRect().right -
+            (parseFloat(getComputedStyle(headerInner).paddingRight) || 0),
+        )
+      : null,
+    headerContentBoxWidth: headerInner
+      ? Math.round(
+          headerInner.getBoundingClientRect().width -
+            (parseFloat(getComputedStyle(headerInner).paddingLeft) || 0) -
+            (parseFloat(getComputedStyle(headerInner).paddingRight) || 0),
+        )
+      : null,
     headerContentLeft: headerInner
       ? Math.round(
           headerInner.getBoundingClientRect().left +
@@ -4478,6 +4505,48 @@ const LAYOUT_PROBE = `(() => {
     barRegionBox: barRegionRect ? [Math.round(barRegionRect.left), Math.round(barRegionRect.right)] : null,
     barSurfaceWidth: barSurfaceRect ? Math.round(barSurfaceRect.width) : null,
     barRegionWidth: barRegionRect ? Math.round(barRegionRect.width) : null,
+    // NAV1B-V2 (UI-R1) — THE TOP ROW'S WRAPPING CONTRACT, MEASURED. The row wraps by content (a flex row), the
+    // brand is its first occupant, and the cluster either shares the brand's line or sits ENTIRELY BELOW it -
+    // right-anchored in both cases, never overlapping, never wider than the header's own content box.
+    headerRowDisplay: headerTop ? getComputedStyle(headerTop).display : null,
+    headerRowWrap: headerTop ? getComputedStyle(headerTop).flexWrap : null,
+    headerRowOverflow: headerTop ? headerTop.scrollWidth - headerTop.clientWidth : null,
+    brandBox: identityBox,
+    brandLinkBox,
+    clusterBox,
+    clusterPresent: !!clusterBox && clusterBox.width > 0,
+    clusterBelowBrand: identityBox && clusterBox ? clusterBox.top >= identityBox.bottom - 1 : null,
+    clusterRightInset:
+      clusterBox && headerInner
+        ? Math.round(
+            headerInner.getBoundingClientRect().right -
+              (parseFloat(getComputedStyle(headerInner).paddingRight) || 0) -
+              clusterBox.right,
+          )
+        : null,
+    brandClusterOverlap:
+      identityBox && clusterBox
+        ? identityBox.left < clusterBox.right - 1 &&
+          clusterBox.left < identityBox.right - 1 &&
+          identityBox.top < clusterBox.bottom - 1 &&
+          clusterBox.top < identityBox.bottom - 1
+        : false,
+    clusterControlsVisible:
+      !!cluster &&
+      [...cluster.querySelectorAll('select, a, button')].every((el) => {
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      }),
+    clusterControlsUnobstructed:
+      !!cluster &&
+      [...cluster.querySelectorAll('select, a, button')].every((el) => {
+        const r = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return !!hit && (el === hit || el.contains(hit));
+      }),
+    logoObjectFit: logo ? getComputedStyle(logo).objectFit : null,
+    logoNaturalWidth: logo ? logo.naturalWidth : null,
+    logoNaturalHeight: logo ? logo.naturalHeight : null,
   };
 })()`;
 
@@ -5497,6 +5566,18 @@ async function runBottomNavWrapScenario(chrome) {
 const GRAPHIC_FIXTURE_LOGO_URL = "https://example.com/assets/github.svg";
 
 /**
+ * UI-R1 — WHERE THE WIDE-ARTWORK CASES ARE PROVED.
+ *
+ * A LOCKUP (several times a mark's width at the accepted lockup height) and an EXCEPTIONALLY WIDE lockup (wider
+ * than the header's own content box, which makes the proportional clamp binding) cannot be expressed in THIS
+ * environment. The generic installation here is a single Spoke, so the only artwork it may be pointed at is the
+ * shared PLATFORM namespace (`/assets/**`), whose files are all compact marks — a Spoke-namespaced file is served
+ * for the Spokes an Installation DECLARES, and this one declares none. Those two identities are therefore
+ * measured on a test-owned Hub by `tests/browser/header-identity.scenario.mjs`, at the same widths, under the same
+ * row contract asserted here.
+ */
+
+/**
  * NAV1B — THE HEADER'S FIXED SEMANTIC ROWS UNDER PRESSURE (own servers + TEST-OWNED fixtures).
  *
  * Two pressures the reported defect was about, neither of which the reference deployment can exert:
@@ -5510,6 +5591,89 @@ const GRAPHIC_FIXTURE_LOGO_URL = "https://example.com/assets/github.svg";
  * The fixtures are config-only (labels and the site name) and are written to the DISPOSABLE copy and
  * restored in `finally`, so no authored deployment content is manufactured.
  */
+/**
+ * NAV1B-V2 (FOUNDATION-UI-R1) — ONE MEASURED ARRANGEMENT OF THE TOP ROW, HELD TO THE WRAPPING CONTRACT.
+ *
+ * The contract the row owes its visitors, in BOTH arrangements and with no breakpoint anywhere in it: the row wraps
+ * by content; the brand is its first occupant, at the padded left edge, and it is never covered; the control
+ * cluster is right-anchored in whatever line it occupies, inside the header's own content box, with every control
+ * it holds visible and unobstructed; and nothing widens the row or the document. The ARRANGEMENT is then named in
+ * the check names AND held to the fact that distinguishes it: when the cluster has dropped, the brand keeps the
+ * row's WHOLE content width (the brand is never squeezed to keep a control beside it), and when they share the line
+ * the brand really is to the LEFT of the cluster.
+ *
+ * @returns {"one-line" | "cluster-below" | "no-selector"} the arrangement that was measured
+ */
+function checkRowContract(rows, tag, probe, { expectCluster = true } = {}) {
+  check(
+    rows,
+    `${tag}.row.wrapsByContent`,
+    !!probe && probe.headerRowDisplay === "flex" && probe.headerRowWrap === "wrap",
+    `display=${probe && probe.headerRowDisplay} wrap=${probe && probe.headerRowWrap}`,
+  );
+  check(
+    rows,
+    `${tag}.brand.isFirstAndAtThePaddedLeftEdge`,
+    !!probe && !!probe.brandBox && Math.abs(probe.brandBox.left - probe.headerContentLeft) <= 1,
+    `brand=${probe && JSON.stringify(probe.brandBox)} contentLeft=${probe && probe.headerContentLeft}`,
+  );
+  check(
+    rows,
+    `${tag}.row.doesNotScroll`,
+    !!probe && probe.headerRowOverflow !== null && probe.headerRowOverflow <= 0,
+    `rowOverflow=${probe && probe.headerRowOverflow}`,
+  );
+  if (!expectCluster) {
+    check(rows, `${tag}.noTopRightSelector`, !!probe && probe.clusterPresent === false, `cluster=${probe && JSON.stringify(probe.clusterBox)}`);
+    return "no-selector";
+  }
+  const arrangement = probe && probe.clusterPresent && probe.clusterBelowBrand ? "cluster-below" : "one-line";
+  check(
+    rows,
+    `${tag}.neverOverlapsTheBrand`,
+    !!probe && probe.brandClusterOverlap === false,
+    `brand=${probe && JSON.stringify(probe.brandBox)} cluster=${probe && JSON.stringify(probe.clusterBox)}`,
+  );
+  check(
+    rows,
+    `${tag}.${arrangement}.clusterIsRightAnchored`,
+    !!probe && probe.clusterRightInset !== null && Math.abs(probe.clusterRightInset) <= 1,
+    `rightInset=${probe && probe.clusterRightInset}`,
+  );
+  check(
+    rows,
+    `${tag}.${arrangement}.clusterInsideTheContentBox`,
+    !!probe &&
+      !!probe.clusterBox &&
+      probe.clusterBox.left >= probe.headerContentLeft - 1 &&
+      probe.clusterBox.right <= probe.headerContentRight + 1,
+    `cluster=${probe && JSON.stringify(probe.clusterBox)} content=${probe && JSON.stringify({ left: probe.headerContentLeft, right: probe.headerContentRight })}`,
+  );
+  check(
+    rows,
+    `${tag}.${arrangement}.controlsVisibleAndUnobstructed`,
+    !!probe && probe.clusterControlsVisible === true && probe.clusterControlsUnobstructed === true,
+    `visible=${probe && probe.clusterControlsVisible} unobstructed=${probe && probe.clusterControlsUnobstructed}`,
+  );
+  if (arrangement === "cluster-below") {
+    // THE BRAND KEEPS THE ROW: the cluster moved away instead of the brand being squeezed to make it fit.
+    check(
+      rows,
+      `${tag}.clusterBelow.brandKeepsTheRowsWholeContentWidth`,
+      !!probe && !!probe.brandBox && probe.brandBox.width >= probe.headerContentBoxWidth - 1,
+      `brandWidth=${probe && probe.brandBox.width} contentBox=${probe && probe.headerContentBoxWidth}`,
+    );
+  } else {
+    check(
+      rows,
+      `${tag}.oneLine.brandIsToTheLeftOfTheCluster`,
+      !!probe && !!probe.brandBox && !!probe.clusterBox && probe.brandBox.right <= probe.clusterBox.left + 1,
+      `brand=${probe && JSON.stringify(probe.brandBox)} cluster=${probe && JSON.stringify(probe.clusterBox)}`,
+    );
+  }
+  return arrangement;
+}
+
 async function runHeaderRowsScenario(chrome) {
   const original = await readFile(CONFIG_PATH, "utf8");
   const rows = [];
@@ -5567,37 +5731,33 @@ async function runHeaderRowsScenario(chrome) {
       const tag = `nav1b.title.w${width}`;
       check(rows, `${tag}.selectorStaysTopRight`, !!probe && probe.selectorInTopRow === true && Math.abs(probe.selectorRightInset) <= 1, `topRow=${probe && probe.selectorInTopRow} rightInset=${probe && probe.selectorRightInset}`);
       check(rows, `${tag}.selectorNeverInControlRow`, !!probe && probe.selectorInControlRow === false);
-      // NAV1B-V1 — the TEXT contract: the identity BEGINS ON THE SELECTOR'S OWN FIRST LINE (never a
-      // selector-only first row), at the padded left edge, and wraps inside its own left column.
-      check(
-        rows,
-        `${tag}.textBeginsOnTheSelectorsFirstLine`,
-        !!probe &&
-          probe.identityTop !== null &&
-          probe.selectorTop !== null &&
-          Math.abs(probe.identityTop - probe.selectorTop) <= 8,
-        `identityTop=${probe && probe.identityTop} selectorTop=${probe && probe.selectorTop}`,
-      );
-      check(
-        rows,
-        `${tag}.textStartsAtThePaddedLeftEdge`,
-        !!probe &&
-          probe.identityLeft !== null &&
-          probe.headerContentLeft !== null &&
-          Math.abs(probe.identityLeft - probe.headerContentLeft) <= 1,
-        `identityLeft=${probe && probe.identityLeft} contentLeft=${probe && probe.headerContentLeft}`,
-      );
-      check(rows, `${tag}.titleNeverOverlapsSelector`, !!probe && probe.identityRight <= probe.selectorLeft + 1, `identityRight=${probe && probe.identityRight} selectorLeft=${probe && probe.selectorLeft}`);
+      // NAV1B-V2 (UI-R1) — THE SAME ROW CONTRACT AS FOR A GRAPHIC IDENTITY, MEASURED: a long TEXT brand may break
+      // inside itself, but it is never covered by the cluster and never pushes it off the row: the cluster shares
+      // the brand's line or drops ENTIRELY below it, right-anchored either way, with the brand keeping the left
+      // edge. (The replaced NAV1B-V1 text rule required the selector to stay on the brand's FIRST line at every
+      // width, which is only achievable by squeezing the brand into a column — the strategy UI-R1 replaces.)
+      checkRowContract(rows, tag, probe);
       check(rows, `${tag}.controlRowStillBelow`, !!probe && (probe.contextRowPresent ? probe.contextRowTop >= probe.topRowBottom : true), `topBottom=${probe && probe.topRowBottom} contextTop=${probe && probe.contextRowTop}`);
       check(rows, `${tag}.noGraphicIsComposed`, !!probe && probe.logoPresent === false, `logo=${probe && probe.logoPresent}`);
       check(rows, `${tag}.noHorizontalOverflow`, !!probe && probe.documentOverflow <= 1, `overflow=${probe && probe.documentOverflow}`);
     }
+    // …and the NARROWEST width shows the correction itself: with a brand THIS long there is no room beside it, so
+    // the cluster is BELOW the brand and the brand keeps the row — it is never squeezed into a column to keep the
+    // selector on its line (the arrangement the replaced rule required at every width).
     const phone = longTitle.measured[longTitle.measured.length - 1].probe;
     check(
       rows,
-      "nav1b.title.wrapsBelowTheSelector",
-      !!phone && phone.identityBottom > phone.selectorBottom,
-      `identityBottom=${phone && phone.identityBottom} selectorBottom=${phone && phone.selectorBottom}`,
+      "nav1b.title.narrowest.clusterDropsBelowTheBrand",
+      !!phone && phone.clusterPresent === true && phone.clusterBelowBrand === true && phone.brandClusterOverlap === false,
+      `brand=${phone && JSON.stringify(phone.brandBox)} cluster=${phone && JSON.stringify(phone.clusterBox)}`,
+    );
+    // …while at the WIDEST measured width the same row fits on ONE line, brand left and cluster right.
+    const desktop = longTitle.measured[0].probe;
+    check(
+      rows,
+      "nav1b.title.widest.clusterSharesTheLine",
+      !!desktop && desktop.clusterPresent === true && desktop.clusterBelowBrand === false && desktop.brandClusterOverlap === false,
+      `brand=${desktop && JSON.stringify(desktop.brandBox)} cluster=${desktop && JSON.stringify(desktop.clusterBox)}`,
     );
 
     const longLabels = await phase(
@@ -5649,9 +5809,8 @@ async function runHeaderRowsScenario(chrome) {
       const tag = `nav1b.graphic.w${width}`;
       check(rows, `${tag}.graphicIsTheIdentity`, !!probe && probe.logoPresent === true, `present=${probe && probe.logoPresent}`);
       // The graphic REALLY LOADED — proved by a natural size, never by a particular artwork's pixels
-      // (M21 §15: an owner may replace an allowed graphic without failing a scenario about the shell).
-      // The layout contracts around it (its accepted lockup height, its left edge, never shrunk into one
-      // column) are asserted below and are what this scenario is about.
+      // (M21 §15: an owner may replace an allowed graphic without failing a scenario about the shell). The layout
+      // contracts around it are what this scenario is about, and they are asserted below.
       check(
         rows,
         `${tag}.graphicIsTheShippedFixture`,
@@ -5661,11 +5820,12 @@ async function runHeaderRowsScenario(chrome) {
       // The graphic starts in its normal left-hand identity position, at its accepted lockup height.
       check(rows, `${tag}.graphicStartsAtThePaddedLeftEdge`, !!probe && probe.logoLeft !== null && probe.headerContentLeft !== null && Math.abs(probe.logoLeft - probe.headerContentLeft) <= 1, `left=${probe && probe.logoLeft} contentLeft=${probe && probe.headerContentLeft}`);
       check(rows, `${tag}.graphicKeepsItsAcceptedHeight`, !!probe && probe.logoHeight === 32, `height=${probe && probe.logoHeight}`);
-      // Never shrunk into one column: it renders at its natural width when that fits the header's
-      // content box, and at the full content width when it does not.
+      // NEVER shrunk to keep the selector on the first row: it renders at its natural width when that fits the
+      // header's content box and is clamped PROPORTIONALLY to that width when it does not. NAV1B-V2 makes the ROW
+      // move the cluster instead, so the graphic keeps its proportions and never widens the page.
       check(
         rows,
-        `${tag}.graphicIsNeverShrunkIntoOneColumn`,
+        `${tag}.graphicKeepsItsNaturalWidthUnlessItCannotFit`,
         !!probe &&
           probe.logoPresent === true &&
           probe.logoWidth !== null &&
@@ -5677,39 +5837,38 @@ async function runHeaderRowsScenario(chrome) {
           })(),
         `width=${probe && probe.logoWidth} natural=${probe && probe.logoNaturalBox} content=${probe && probe.headerContentWidth}`,
       );
-      // The selector never moves, and never widens the row: both hold at every width.
+      check(rows, `${tag}.graphicKeepsItsProportions`, !!probe && probe.logoObjectFit === "contain", `object-fit=${probe && probe.logoObjectFit}`);
+      // THE ROW CONTRACT, MEASURED (the arrangement is named in the check names: `one-line` or `cluster-below`).
+      checkRowContract(rows, tag, probe);
+      // The selector never covers the brand, and never migrates into the control row: both hold at every width.
       check(rows, `${tag}.selectorStaysTopRight`, !!probe && probe.selectorInTopRow === true && probe.selectorInControlRow === false && Math.abs(probe.selectorRightInset) <= 1, `topRow=${probe && probe.selectorInTopRow} rightInset=${probe && probe.selectorRightInset}`);
+      check(
+        rows,
+        `${tag}.selectorNeverCoversTheBrand`,
+        !!probe && probe.brandClusterOverlap === false && probe.logoIntersectsSelector === false && probe.graphicInterceptsSelector === false,
+        `overlap=${probe && probe.brandClusterOverlap} logoIntersects=${probe && probe.logoIntersectsSelector} intercepts=${probe && probe.graphicInterceptsSelector}`,
+      );
+      check(rows, `${tag}.selectorStillAnswersAtItsOwnCentre`, !!probe && probe.selectorHitAtItsOwnCentre === true, `hitInMode=${probe && probe.selectorHitAtItsOwnCentre}`);
       check(rows, `${tag}.controlRowStillBelow`, !!probe && (probe.contextRowPresent ? probe.contextRowTop >= probe.topRowBottom : true), `contextTop=${probe && probe.contextRowTop} topBottom=${probe && probe.topRowBottom}`);
       check(rows, `${tag}.noHorizontalOverflow`, !!probe && probe.documentOverflow <= 1, `overflow=${probe && probe.documentOverflow}`);
     }
-    // At a narrow width the graphic must reach BENEATH the selector's occupied area…
+    // ── THE CORRECTION, AT THE NARROWEST GRAPHIC WIDTH ─────────────────────────────────────────────
     //
-    // S3F1B — "passes beneath" is a Z-ORDER claim, and it needs the two boxes to actually OVERLAP. The
-    // overlap is GEOMETRY OF THE ARTWORK (a wide logo role), so it is a claim about the installation that
-    // ships such artwork: the generic synthetic installation now ships a shared platform mark, which is
-    // narrower than the identity column and cannot reach the selector at all. The honest contract for that
-    // installation is that the graphic never covers the selector and the selector still answers at its own
-    // centre — asserted in the non-overlapping branch, with the overlapping branch kept for a deployment
-    // that ships a wide logo role (its own scope).
+    // The artwork is NEVER covered. NAV1B-V1 asserted the opposite here: a graphic wide enough to reach the
+    // selector continued BENEATH it, and the raised, opaque cluster hid whatever it covered. The corrected row
+    // cannot express that — the cluster leaves the brand's line instead of stacking over it — so at EVERY width the
+    // two boxes do not overlap, the graphic never intercepts the control, and the control still answers at its own
+    // centre (which is what a visitor's pointer needs).
     const narrowGraphic = graphic.measured[graphic.measured.length - 1].probe;
     check(
       rows,
-      "nav1b.graphic.graphicPassesBeneathTheSelector",
+      "nav1b.graphic.narrowest.graphicIsNeverCoveredByTheSelector",
       !!narrowGraphic &&
-        (narrowGraphic.logoIntersectsSelector === true
-          ? narrowGraphic.logoRight > narrowGraphic.selectorLeft + 1
-          : narrowGraphic.graphicInterceptsSelector === false &&
-            narrowGraphic.selectorHitAtItsOwnCentre === true),
-      `logoRight=${narrowGraphic && narrowGraphic.logoRight} selectorLeft=${narrowGraphic && narrowGraphic.selectorLeft} intersects=${narrowGraphic && narrowGraphic.logoIntersectsSelector} intercepts=${narrowGraphic && narrowGraphic.graphicInterceptsSelector}`,
-    );
-    // …while the selector WINS the hit test at its own centre, and never leaves the page content box.
-    check(
-      rows,
-      "nav1b.graphic.selectorPaintsAboveTheGraphic",
-      !!narrowGraphic &&
-        narrowGraphic.selectorHitAtItsOwnCentre === true &&
-        narrowGraphic.graphicInterceptsSelector === false,
-      `hitInMode=${narrowGraphic && narrowGraphic.selectorHitAtItsOwnCentre} hitInLogo=${narrowGraphic && narrowGraphic.graphicInterceptsSelector}`,
+        narrowGraphic.brandClusterOverlap === false &&
+        narrowGraphic.logoIntersectsSelector === false &&
+        narrowGraphic.graphicInterceptsSelector === false &&
+        narrowGraphic.selectorHitAtItsOwnCentre === true,
+      `overlap=${narrowGraphic && narrowGraphic.brandClusterOverlap} logoIntersects=${narrowGraphic && narrowGraphic.logoIntersectsSelector} intercepts=${narrowGraphic && narrowGraphic.graphicInterceptsSelector} hitInSelector=${narrowGraphic && narrowGraphic.selectorHitAtItsOwnCentre}`,
     );
     check(
       rows,
@@ -5717,6 +5876,45 @@ async function runHeaderRowsScenario(chrome) {
       !!narrowGraphic && narrowGraphic.logoRight <= narrowGraphic.innerWidth - 8,
       `logoRight=${narrowGraphic && narrowGraphic.logoRight} inner=${narrowGraphic && narrowGraphic.innerWidth}`,
     );
+    check(
+      rows,
+      "nav1b.graphic.narrowest.compactMarkStillSharesTheLine",
+      !!narrowGraphic &&
+        narrowGraphic.clusterPresent === true &&
+        narrowGraphic.clusterBelowBrand === false &&
+        narrowGraphic.brandClusterOverlap === false,
+      `brand=${narrowGraphic && JSON.stringify(narrowGraphic.brandBox)} cluster=${narrowGraphic && JSON.stringify(narrowGraphic.clusterBox)}`,
+    );
+
+    // ── THE WIDE-ARTWORK IDENTITIES LIVE IN THE header-identity SCENARIO ───────────────────────────
+    //
+    // See the note above `GRAPHIC_FIXTURE_LOGO_URL`: this environment can only serve the platform namespace's
+    // compact marks, so the lockup and the exceptionally wide lockup (and the proportional clamp they make
+    // binding) are measured on a test-owned Hub instead — same widths, same row contract.
+
+    // ── THE HEADER WITH NO TOP-RIGHT SELECTOR (UI-R1) ───────────────────────────────────────────────
+    //
+    // The row's single-occupant state: a brand with nothing beside it. No control, no spacer and no empty line may
+    // be invented for it, and the brand keeps the padded left edge.
+    const noSelector = await phase(
+      "noSelector",
+      (config) => {
+        config.ui = { ...(config.ui ?? {}), layoutSwitcher: { enabled: false } };
+      },
+      [
+        [1280, 900],
+        [390, 844],
+        [320, 700],
+      ],
+      4,
+    );
+    for (const { width, probe } of noSelector.measured) {
+      const tag = `nav1b.noSelector.w${width}`;
+      check(rows, `${tag}.brandIsTheRowsOnlyOccupant`, !!probe && !!probe.brandBox && probe.brandBox.width > 0, `brand=${probe && JSON.stringify(probe.brandBox)}`);
+      checkRowContract(rows, tag, probe, { expectCluster: false });
+      check(rows, `${tag}.controlRowStillBelow`, !!probe && (probe.contextRowPresent ? probe.contextRowTop >= probe.topRowBottom : true), `contextTop=${probe && probe.contextRowTop} topBottom=${probe && probe.topRowBottom}`);
+      check(rows, `${tag}.noHorizontalOverflow`, !!probe && probe.documentOverflow <= 1, `overflow=${probe && probe.documentOverflow}`);
+    }
   } catch (error) {
     check(rows, "headerRows.scenario.error", false, String(error));
   } finally {

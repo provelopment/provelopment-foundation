@@ -240,30 +240,23 @@ export function SiteHeader({
         <ClientRoutingProvider routing={clientRouting}>
         <header className="ui-site-header border-b border-border" {...headerGraphicBandProps(headerGraphic)}>
             <div className="mx-auto max-w-page px-4 py-4">
-                {/* ── TOP SEMANTIC ROW — IDENTITY + THE NAVIGATION-MODE SELECTOR ────────
-                    NAV1B — this row owns exactly two things, at EVERY width: the identity,
-                    and the Sidebar/Menu-bar selector anchored to the right edge of the padded
-                    header content. The selector keeps its normal control sizing, never
-                    stretches across the row, and never moves into the control row below. The
-                    identity takes the remaining space; when the two cannot share one line the
-                    identity wraps BELOW the selector (never over it, never moving it). */}
-                <div
-                    className={
-                        headerLogoSrc
-                            ? // NAV1B-V1 — A GRAPHIC IDENTITY IS NOT A WRAPPING TEXT COLUMN. The row
-                              // keeps ONE track, so the graphic's clamp is the header's own CONTENT
-                              // width (never a narrow column), the selector stays in the same cell at
-                              // its right edge, and the stylesheet stacks it ABOVE the graphic it
-                              // overlaps. The TEXT case below is untouched.
-                              "ui-site-header-top ui-site-header-top--graphic grid items-start"
-                            : "ui-site-header-top grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-2"
-                    }
-                >
+                {/* ── TOP SEMANTIC ROW — THE BRAND IDENTITY + THE RIGHT-HAND CONTROL CLUSTER ─────
+                    NAV1B-V2 (FOUNDATION-UI-R1) — ONE row, TWO occupants, ONE rule for BOTH identity
+                    kinds: the brand is FIRST, the control cluster follows it, and the row WRAPS BY
+                    CONTENT (a wrapping flex row — never a viewport breakpoint). While the two fit on
+                    one line the brand keeps the left edge and the cluster is anchored at the right
+                    edge of the padded header content; when they cannot share a line the cluster moves
+                    ENTIRELY BENEATH the brand and stays right-aligned. The row never overlaps, never
+                    stacks and never paints one occupant over the other: the brand may therefore keep
+                    its own width (a text brand breaking inside itself, a graphic lockup keeping its
+                    intrinsic aspect ratio) instead of being covered by the selector. The stylesheet
+                    owns the arrangement — `globals.css`, NAV1B-V2 — so both kinds share it verbatim. */}
+                <div className="ui-site-header-top">
                     <div
                         className={
                             headerLogoSrc
-                                ? "ui-site-header-identity min-w-0"
-                                : "ui-site-header-identity min-w-0 break-words"
+                                ? "ui-site-header-identity"
+                                : "ui-site-header-identity break-words"
                         }
                     >
                         {headerLogoSrc ? (
@@ -297,19 +290,22 @@ export function SiteHeader({
                     </div>
 
                     {/* ── THE HEADER'S RIGHT-HAND CONTROL CLUSTER (R1) ─────────────────────
-                        NAV1B keeps this row's ownership: the identity plus the controls that choose the
+                        NAV1B-V2 keeps this row's ownership: the identity plus the controls that choose the
                         CHROME a visitor is reading in — the cross-Spoke switcher (when the Installation
                         authors one) and the navigation-MODE selector (when the adopter enables it). Both
-                        keep their normal control sizing, stay anchored at the padded right edge, and wrap
-                        inside this cell when the width demands it, so neither can push the identity off the
-                        row nor migrate into the control row below.
+                        keep their normal control sizing and sit at the right edge of the padded header
+                        content, on the brand's own line while the two fit together and ENTIRELY BELOW the
+                        brand when they do not (the row wraps by content — no overlay, no stacking, so the
+                        cluster can never cover the identity). The cluster is itself a wrapping flex row, so
+                        two controls that cannot share ITS line wrap inside it rather than disappear or
+                        push the row wider.
 
                         WHY THE SPOKE SWITCHER LIVES HERE. It must remain visible on a Spoke that has ONE
                         Site, ONE language and NO Locations — the row below is composed only when such
                         controls exist, so a switcher placed there would vanish exactly where an Installation
                         that switches Spokes needs it most. */}
                     {spokeSwitch !== undefined || resolved.layoutSwitcher.enabled ? (
-                        <div className="ui-site-header-controls justify-self-end flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
+                        <div className="ui-site-header-controls flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
                             {spokeSwitch !== undefined ? (
                                 <SpokeSwitcher
                                     current={spokeSwitch.current}

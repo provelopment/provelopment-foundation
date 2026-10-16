@@ -956,7 +956,3 @@ function assertLogo(harness, rows, tag, seen, variant) {
     JSON.stringify(logo.box),
   );
 }
-
-
-
-

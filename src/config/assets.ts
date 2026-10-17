@@ -337,8 +337,19 @@ function originOf(url: string | undefined): string | undefined {
   }
 }
 
+/** The LONGEST declared base the pathname addresses (`/spokes/a/assets/x.svg` → `/spokes/a/assets`), or `undefined`. */
+function namespaceBaseNamedBy(pathname: string, declaredBases: readonly string[]): string | undefined {
+  let named: string | undefined;
+  for (const base of declaredBases) {
+    if (base === "" || !pathname.startsWith(`${base}/`)) continue;
+    if (named === undefined || base.length > named.length) named = base;
+  }
+  return named;
+}
+
 /**
  * FOUNDATION-UI-R1F — THE COMPACT HEADER LOGO'S BUILD-TIME RULE.
+ * FOUNDATION-UI-R1G — THE ORIGIN AND NAMESPACE CONTRACT, CLOSED HERE.
  *
  * `site.assets.logoCompact` is the ONE optional header-presentation ALTERNATIVE to the primary brand logo: the
  * browser selects it natively below 600 CSS pixels and the primary artwork at and above that width. It is not a
@@ -346,25 +357,40 @@ function originOf(url: string | undefined): string | undefined {
  * question worth failing a build over is whether the artwork the compact leaf names can actually be SERVED by
  * the context doing the asking.
  *
- * THE RULE, as narrow as it can be and still be useful:
+ * THE RULE, as narrow as it can be and still be useful. R1G closed the two incoherences an independent review
+ * found in the first cut of it: a value on ANOTHER ORIGIN was accepted even though the render delivers its
+ * pathname from THIS origin, and a per-Spoke path was judged by BASENAME alone, so a context holding that
+ * basename could serve its own file for a path that named a different namespace.
  *
  *   · absent (or deliberately empty) → nothing to prove: the compact role is optional, and its absence is the
  *     shipped state — the template ships no compact artwork and configures none;
- *   · a value that addresses artwork the ENGINE GENERATES — SAME-ORIGIN as the deployment's own `site.url`, and
- *     either under a runtime namespace this context declares (`/assets/**`, `/spokes/<segment>/assets/**`) or
- *     anywhere inside the per-Spoke namespace container (`/spokes/**`, which exists ONLY as generated artwork) →
- *     the basename MUST be owned by THIS resolver's namespaces, or the build fails. That is precisely what the
- *     leaf means: artwork authored under `content/assets/**` is mirrored into the owning Spoke's namespace, so a
- *     URL that names it while no namespace this context may serve holds it is a typo, artwork that was never
- *     installed, or a path pointing at ANOTHER Spoke's private namespace — each of which would otherwise become
- *     a broken responsive image at (or below) the boundary, or silently serve another Spoke's mark;
- *   · anything else — another origin (a CDN or a third-party host), or a same-origin path OUTSIDE the generated
- *     namespace space (`/uploads/logo-compact.svg`) → nothing to prove here, exactly as the primary logo's
- *     external URLs are left alone: the engine does not own that file and cannot know whether it exists.
+ *   · THE ORIGIN CONTRACT. Runtime image DELIVERY is always THIS deployment's own origin: a configured absolute
+ *     URL is canonical SOURCE IDENTITY, and the browser fetches its PATHNAME from the current origin, whatever
+ *     host the value names (BRAND_ASSETS.md §3). A value naming another origin can therefore never be delivered
+ *     as authored, so it is REFUSED — naming both origins and the fix — instead of silently becoming a
+ *     same-origin request for artwork the author hosts elsewhere (or quietly resolving to a local file that
+ *     merely shares the basename). A same-origin PATH, and a value on the deployment's own origin, are
+ *     unaffected;
+ *   · THE NAMESPACE CONTRACT. Where the value addresses GENERATED artwork — a path that names a runtime
+ *     namespace base (`/assets/**`, `/spokes/<segment>/assets/**`), or that lies anywhere inside the per-Spoke
+ *     container, which exists ONLY as generated artwork — the path must name a namespace THIS context may serve,
+ *     must address one of that namespace's files FLAT exactly as the mirror installs them, and the file must be
+ *     held by the namespace the path NAMES: never another Spoke's, never a different namespace's file
+ *     substituted for the one a path explicitly names, and never nothing at all. The SHARED platform namespace
+ *     keeps its established ownership rule — availability by basename, so a Spoke's own artwork for a role is
+ *     served from that Spoke's namespace;
+ *   · anything else — a same-origin path OUTSIDE the generated namespace space (`/uploads/logo-compact.svg`) →
+ *     nothing to prove here, exactly as the primary logo's external URLs are left alone: the engine does not own
+ *     that file and cannot know whether it exists.
  *
- * The resolver is built from the context's OWN namespaces, so a context can only ever be judged by the artwork
- * it may serve: "one Spoke can never load another Spoke's private compact logo" is enforced by construction,
- * never by a second, weaker check.
+ * The resolver is built from the context's OWN namespaces, and the namespace a path NAMES is asked of that same
+ * resolver through the SAME ownership predicate — no second resolver, no weaker check. A context can therefore
+ * only ever be judged by the artwork it may serve, and "one Spoke can never load another Spoke's private compact
+ * logo" is enforced by construction.
+ *
+ * Note the deliberate ASYMMETRY with every other `site.assets.*` role: only this leaf refuses a value whose
+ * origin is not the deployment's own, because only this leaf promises that the artwork it names WILL be shown at
+ * the widths it exists for. `runtimeAssetUrl`, the origin policy and the primary logo are untouched.
  *
  * The companion rule — a compact logo is valid only beside a primary logo — belongs to the SCHEMA
  * (`./schema`, `siteAssetsSchema`), which already refuses the combination with an actionable message; it is
@@ -378,24 +404,100 @@ export function assertConfiguredCompactLogoAvailableFor(
   if (!configured || configured === "") return;
   const pathname = resolver.assetPathFromUrl(configured);
   if (pathname === undefined || pathname === "") return;
+
+  // ── 1. THE ORIGIN CONTRACT (R1G) ─────────────────────────────────────────────────────────────────────────
+  // The value must be deliverable FROM THIS DEPLOYMENT'S OWN ORIGIN: an absolute URL on that origin, or a
+  // same-origin path. Anything else is refused, because the render delivers a PATHNAME FROM THIS ORIGIN whatever
+  // host the value names — so accepting it would silently request a path this deployment does not serve (or a
+  // local file that merely shares the basename) instead of the artwork the adopter authored.
+  const siteOrigin = originOf(json.url);
+  const configuredOrigin = originOf(configured);
+  if (configuredOrigin !== undefined && configuredOrigin !== siteOrigin) {
+    throw new Error(
+      "Invalid site configuration: the configured compact header logo is not deliverable by this context:\n" +
+        `  - site.assets.logoCompact: "${configured}" names the origin "${configuredOrigin}", but runtime artwork ` +
+        "is always delivered from this deployment's own origin" +
+        (siteOrigin === undefined
+          ? ', and this context states no "site.url" to compare the configured origin with.\n'
+          : ` ("${siteOrigin}").\n`) +
+        "    A configured origin is the artwork's canonical SOURCE identity, never a delivery instruction " +
+        "(BRAND_ASSETS.md §3): the browser requests this value's pathname from this deployment, so artwork " +
+        "hosted elsewhere would never appear.\n" +
+        "Author the compact artwork in THIS deployment's content/assets/ and let the asset mirror install it (or " +
+        "point the leaf at this deployment's own origin), or omit \"site.assets.logoCompact\" so the primary " +
+        "logo is used at every width.",
+    );
+  }
+  if (configuredOrigin === undefined && !(configured.startsWith("/") && !configured.startsWith("//"))) {
+    throw new Error(
+      "Invalid site configuration: the configured compact header logo is not deliverable by this context:\n" +
+        `  - site.assets.logoCompact: "${configured}" is neither an absolute URL nor a same-origin path, so no ` +
+        "origin can be confirmed for it.\n" +
+        "Runtime artwork is always delivered from THIS deployment's own origin: configure an absolute URL on that " +
+        'origin ("site.url", which the schema requires) or a same-origin path this deployment serves.',
+    );
+  }
+
   const name = pathname.split("/").pop() ?? "";
   if (name === "") return;
 
-  // OWNERSHIP IS ASKED ONLY WHERE THE ENGINE TRULY OWNS THE ANSWER: artwork it GENERATED for this deployment.
-  // A same-origin path into a declared namespace base — or anywhere inside the per-Spoke container, which is
-  // generated artwork by definition — must resolve; any other value (another origin, a hand-served path) is left
-  // exactly as configured, the latitude every role's absolute URL has always had.
+  // ── 2. THE NAMESPACE CONTRACT (R1G) ──────────────────────────────────────────────────────────────────────
+  // OWNERSHIP IS ASKED ONLY WHERE THE ENGINE TRULY OWNS THE ANSWER: artwork it GENERATED for this deployment —
+  // a path that NAMES a runtime namespace base this context declares, or that lies inside the per-Spoke
+  // container, which exists ONLY as generated artwork. A hand-served same-origin path outside that address space
+  // is left exactly as configured, the latitude every role's absolute URL has always had.
   const declaredBases = resolver.namespaces.map((namespace) => namespace.urlBase);
-  const underADeclaredBase = declaredBases.some((base) => pathname.startsWith(`${base}/`));
+  const platformBase = resolver.namespaces[0]?.urlBase;
+  const namedBase = namespaceBaseNamedBy(pathname, declaredBases);
   const insideTheSpokeNamespaceContainer = pathname.startsWith(`/${SPOKE_RUNTIME_CONTAINER}/`);
-  const siteOrigin = originOf(json.url);
-  const sameOrigin = siteOrigin !== undefined && originOf(configured) === siteOrigin;
-  const engineOwned = sameOrigin
-    ? underADeclaredBase || insideTheSpokeNamespaceContainer
-    : // With no comparable `site.url` the declared bases are the only generated address space this context can
-      // speak for, so that narrower test is the whole rule — a partial configuration is never failed on a guess.
-      siteOrigin === undefined && underADeclaredBase;
-  if (!engineOwned) return;
+  if (namedBase === undefined && !insideTheSpokeNamespaceContainer) return;
+
+  // 2a. THE PATH MUST NAME A NAMESPACE THIS CONTEXT MAY SERVE, AND ONE FILE THAT NAMESPACE REALLY INSTALLS.
+  if (namedBase === undefined) {
+    throw new Error(
+      "Invalid site configuration: the configured compact header logo cannot be served in this context:\n" +
+        `  - site.assets.logoCompact: "${configured}" names the path "${pathname}", which is not the address of ` +
+        `a runtime asset namespace this context may serve (declared: ${declaredBases.join(", ") || "none"}).\n` +
+        "Each Spoke's generated artwork is served from its OWN namespace only: author the artwork under this " +
+        "Spoke's content/assets/ and let the asset mirror install it (BRAND_ASSETS.md — the logo-compact role), " +
+        "or reference the shared platform namespace (/assets/<file>). Artwork belonging to ANOTHER Spoke's " +
+        "namespace is deliberately not served here.",
+    );
+  }
+  if (pathname !== `${namedBase}/${name}`) {
+    throw new Error(
+      "Invalid site configuration: the configured compact header logo cannot be served in this context:\n" +
+        `  - site.assets.logoCompact: "${configured}" names the path "${pathname}", but "${namedBase}" publishes ` +
+        `its files FLAT — the asset mirror installs every role by its basename, so "${namedBase}/${name}" is the ` +
+        "only path it ever serves.\n" +
+        "Reference that path (or author the artwork in the namespace's own source tree under the basename the " +
+        'leaf must name), or omit "site.assets.logoCompact" so the primary logo is used at every width.',
+    );
+  }
+
+  // 2b. THE FILE MUST BE HELD BY THE NAMESPACE THE PATH NAMES.
+  // The SHARED platform namespace keeps its established ownership rule: a basename a declared namespace holds is
+  // served from that namespace (BASENAME decides — the accepted swap contract). A path that names a PER-SPOKE
+  // namespace is stricter, because the render keeps that very pathname: substituting another namespace's file
+  // for it would serve artwork the value does not name, and a file the named namespace does not hold is a path
+  // nothing can serve.
+  if (namedBase !== platformBase) {
+    const named = resolver.namespaces.find((namespace) => namespace.urlBase === namedBase);
+    if (named !== undefined && owningNamespaceIn(name, [named]) !== null) return;
+    const holder = resolver.namespaceOwning(name);
+    throw new Error(
+      "Invalid site configuration: the configured compact header logo cannot be served in this context:\n" +
+        `  - site.assets.logoCompact: "${configured}" names the file "${name}" in "${namedBase}", and that ` +
+        "namespace does not hold it — nothing would be served at the path the value names.\n" +
+        "    A namespace is never substituted for the one a path names:\n" +
+        (holder === null
+          ? `      "${name}" is held by no namespace this context may serve (searched: ${declaredBases.join(", ")}).\n`
+          : `      "${name}" is held by "${holder.urlBase}" — a DIFFERENT namespace.\n`) +
+        `Author the artwork under the Spoke that owns "${namedBase}" (BRAND_ASSETS.md — the logo-compact role), ` +
+        "reference the shared platform namespace (/assets/<file>), or omit \"site.assets.logoCompact\" so the " +
+        "primary logo is used at every width.",
+    );
+  }
 
   // OWNERSHIP, asked of THIS context's resolver: the basename must be held by the platform namespace or by a
   // Spoke namespace this context declares — never by another Spoke's, and never by nothing at all.

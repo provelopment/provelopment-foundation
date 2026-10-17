@@ -1815,9 +1815,14 @@ which exists so a deployment can demonstrate the same site in two presentations.
   and ONE `<img>` whose `src` is the primary logo, so the BROWSER performs the selection in its own source-selection
   step: no client state, no resize listener, no hydration-dependent switching and no CSS-hidden duplicate image, and
   the answer is the same on the first paint as after any resize. The artwork is authored through the established
-  `content/assets/**` source tree and served from the runtime namespace that owns it; a compact value that addresses
-  generated artwork this context cannot serve (including another Spoke's private namespace) fails the BUILD, which is
-  the one deliberate exception to the shared "missing file renders nothing" rule. Both kinds obey the display
+  `content/assets/**` source tree and served from the runtime namespace that owns it. Runtime artwork is always
+  DELIVERED from the deployment's own origin — a configured absolute URL is canonical SOURCE identity, never a
+  delivery instruction — so a compact value on another origin is refused, and a value that addresses generated
+  artwork this context cannot serve fails the BUILD: not only a file no namespace holds, but a path naming
+  ANOTHER Spoke's namespace, a per-Spoke namespace that does not hold the named file, or a nested path the flat
+  mirror never installs (the rule validates the referenced NAMESPACE, not just the basename — FOUNDATION-UI-R1G).
+  That build refusal is the one deliberate exception to the shared "missing file renders nothing" rule. Both kinds
+  obey the display
   contract above verbatim, and the compact leaf is a HEADER PRESENTATION input only — `site.assets.logo` remains the
   authority for JSON-LD and every other consumer. The shipped capsule configures neither leaf, so it is unchanged.
 - **One exposed navigation, by construction.** The shell composes the structures of both

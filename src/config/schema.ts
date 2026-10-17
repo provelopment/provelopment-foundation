@@ -217,8 +217,11 @@ export const siteAssetsSchema = z.object({
    * Artwork is authored and installed exactly like every other role (see BRAND_ASSETS.md): the file lives in
    * `content/assets/**` and is served from the runtime namespace that owns it, so a configured compact asset
    * that cannot be served fails the build (`src/config/assets.ts`,
-   * `assertConfiguredCompactLogoAvailableFor`) instead of becoming a broken responsive image. The template
-   * itself ships no compact artwork and configures none — the role is absent by default.
+   * `assertConfiguredCompactLogoAvailableFor`) instead of becoming a broken responsive image. FOUNDATION-UI-R1G
+   * makes that rule complete: runtime artwork is always DELIVERED from this deployment's own origin (a configured
+   * origin is canonical source identity, never a delivery instruction), so the value must be on that origin, and a
+   * path that addresses generated artwork must name a namespace this context may serve and a file THAT namespace
+   * holds. The template itself ships no compact artwork and configures none — the role is absent by default.
    */
   logoCompact: z
     .url("must be an absolute URL including protocol, e.g. https://example.com/assets/logo-compact.svg")

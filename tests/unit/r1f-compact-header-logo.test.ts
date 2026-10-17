@@ -306,19 +306,50 @@ describe("R1F CASE 3 - the compact logo must be SERVABLE (build-time rule)", () 
     ).not.toThrow();
   });
 
-  it("leaves a genuinely EXTERNAL compact URL alone (the engine does not own it)", () => {
+  it("REFUSES a compact value on another ORIGIN: delivery is always this deployment's own (R1G)", () => {
+    // THE FIRST DISCREPANCY R1G CLOSED: a value on a foreign origin used to be accepted while the render
+    // delivered its PATHNAME from THIS origin — a request for artwork hosted elsewhere, which can never appear.
     for (const external of [
       "https://cdn.example.com/brand/logo-compact.svg",
-      "https://alpha.example.test/uploads/logo-compact.svg",
       "https://another-site.example.test/assets/logo-compact.svg",
     ]) {
-      expect(() =>
+      const attempt = () =>
         assertConfiguredCompactLogoAvailableFor(forAlpha, {
           url,
           assets: { logo: primary, logoCompact: external },
-        }),
-      ).not.toThrow();
+        });
+      expect(attempt, `${external} must be refused`).toThrow(/site\.assets\.logoCompact/);
+      expect(attempt, `${external} must be refused`).toThrow(/origin/);
     }
+  });
+
+  it("REFUSES a foreign-origin path a LOCAL file of the same basename would silently have answered (R1G)", () => {
+    // The worst form of the first discrepancy: the value names beta's namespace on BETA'S ORIGIN, while alpha's
+    // own namespace holds a file with that very basename — so the render would have served LOCAL artwork for a
+    // value that names something else entirely.
+    expect(forAlpha.iconAssetAvailable(BETA_ONLY_COMPACT), "alpha does NOT hold it").toBe(false);
+    expect(alpha, "the basename under test is one alpha really ships").toBeDefined();
+    const foreignNamingALocallyHeldBasename = `https://beta.example.test${beta.urlBase}/${ALPHA_COMPACT}`;
+    expect(() =>
+      assertConfiguredCompactLogoAvailableFor(forAlpha, {
+        url,
+        assets: { logo: primary, logoCompact: foreignNamingALocallyHeldBasename },
+      }),
+    ).toThrow(/origin/);
+    expect(() =>
+      assertConfiguredCompactLogoAvailableFor(forAlpha, {
+        url,
+        assets: { logo: primary, logoCompact: "//cdn.example.com/logo-compact.svg" },
+      }),
+    ).toThrow(/site\.assets\.logoCompact/);
+    // ...while a same-origin path OUTSIDE the generated namespace space keeps the latitude every role has: the
+    // engine does not generate it and cannot know whether the deployment serves it.
+    expect(() =>
+      assertConfiguredCompactLogoAvailableFor(forAlpha, {
+        url,
+        assets: { logo: primary, logoCompact: `${url}/uploads/logo-compact.svg` },
+      }),
+    ).not.toThrow();
   });
 
   it("proves nothing for an absent or deliberately empty leaf", () => {
@@ -327,22 +358,26 @@ describe("R1F CASE 3 - the compact logo must be SERVABLE (build-time rule)", () 
     }
   });
 
-  it("never fails a partial configuration on a guess: without a comparable site URL, declared bases decide", () => {
+  it("judges a partial configuration honestly: paths by address space, absolute URLs by a comparable origin", () => {
+    // A same-origin PATH carries no origin to compare, so a partial projection (no `site.url`) still works — and
+    // the generated address space it names is still proved, exactly as before.
     expect(() =>
       assertConfiguredCompactLogoAvailableFor(forAlpha, {
-        assets: { logo: primary, logoCompact: at(alpha.urlBase, ALPHA_COMPACT) },
+        assets: { logo: primary, logoCompact: `${alpha.urlBase}/${ALPHA_COMPACT}` },
       }),
     ).not.toThrow();
     expect(() =>
       assertConfiguredCompactLogoAvailableFor(forAlpha, {
-        assets: { logo: primary, logoCompact: at(alpha.urlBase, "never-installed.svg") },
+        assets: { logo: primary, logoCompact: `${alpha.urlBase}/never-installed.svg` },
       }),
     ).toThrow(/never-installed\.svg/);
+    // ...but an ABSOLUTE URL can only be deliverable when its origin IS this deployment's, and with no `site.url`
+    // that can never be confirmed — so it is refused rather than rendered as a same-origin request (R1G).
     expect(() =>
       assertConfiguredCompactLogoAvailableFor(forAlpha, {
         assets: { logo: primary, logoCompact: "https://cdn.example.com/logo.svg" },
       }),
-    ).not.toThrow();
+    ).toThrow(/site\.url/);
   });
 });
 
@@ -396,5 +431,128 @@ describe("R1F CASE 4 - the BUILD PATH consults the rule", () => {
     const composition = spokeServerComposition(contextOf(root));
     expect(composition.siteConfig.assets?.logo).toBeUndefined();
     expect(composition.siteConfig.assets?.logoCompact).toBeUndefined();
+  });
+});
+
+/**
+ * ═════════════════════════════════════════════════════════════════════════════════════════════════════════════
+ * FOUNDATION-UI-R1G — THE COMPACT LOGO'S RESOLUTION CONTRACT (ORIGIN + NAMESPACE)
+ * ═════════════════════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * The two discrepancies independent review found in the R1F rule, and what now pins each one shut:
+ *
+ *   1. ORIGIN. The value was accepted on ANY origin, while the render delivers its PATHNAME from THIS
+ *      deployment's origin — the configured origin is canonical SOURCE identity, never a delivery instruction
+ *      (BRAND_ASSETS.md §3). A CDN value therefore became a same-origin request for a path the deployment does
+ *      not serve, and where a local namespace held the same basename it could even be answered by that file. It
+ *      is now REFUSED, naming both origins and the fix.
+ *   2. NAMESPACE. The rule judged the BASENAME alone, so a path that explicitly named ANOTHER Spoke's namespace
+ *      passed whenever this context held a file with that basename — and then served THIS context's file for a
+ *      path naming a different namespace. The path must now name a namespace THIS context may serve, address one
+ *      of that namespace's files FLAT exactly as the mirror installs them, and the file must be held by the
+ *      namespace the path NAMES. The SHARED platform namespace keeps its established ownership rule.
+ */
+describe("R1G CASE 5 - the resolution contract: origin and namespace", () => {
+  const PLATFORM_COMPACT = "r1g-platform-compact.svg";
+  const OWN_COMPACT = "r1g-own-compact.svg";
+  const SHARED_BASENAME = "r1g-shared-name.svg";
+  const platform = namespace("/assets", [PLATFORM_COMPACT, SHARED_BASENAME]);
+  const own = namespace("/spokes/alpha/assets", [OWN_COMPACT]);
+  const other = namespace("/spokes/beta/assets", [SHARED_BASENAME]);
+  const forAlpha = createRuntimeAssetOwnershipResolver([platform, own]);
+  const ORIGIN = "https://alpha.example.test";
+  const primary = `${ORIGIN}/assets/${PLATFORM_COMPACT}`;
+  const configuredAs = (logoCompact: string) => ({ url: ORIGIN, assets: { logo: primary, logoCompact } });
+  const rule = (logoCompact: string) => () =>
+    assertConfiguredCompactLogoAvailableFor(forAlpha, configuredAs(logoCompact));
+
+  it("1. RESOLVES a compact asset THIS Spoke's own namespace holds (and a real URL to load)", () => {
+    expect(rule(`${ORIGIN}${own.urlBase}/${OWN_COMPACT}`)).not.toThrow();
+    expect(forAlpha.runtimeAssetUrl(`${ORIGIN}${own.urlBase}/${OWN_COMPACT}`)).toBe(
+      `${own.urlBase}/${OWN_COMPACT}`,
+    );
+  });
+
+  it("2. RESOLVES a compact asset from the SHARED platform namespace", () => {
+    expect(rule(`${ORIGIN}/assets/${PLATFORM_COMPACT}`)).not.toThrow();
+    expect(forAlpha.runtimeAssetUrl(`${ORIGIN}/assets/${PLATFORM_COMPACT}`)).toBe(
+      `/assets/${PLATFORM_COMPACT}`,
+    );
+  });
+
+  it("3. REFUSES a generated asset that does not exist", () => {
+    expect(rule(`${ORIGIN}/assets/r1g-never-installed.svg`)).toThrow(/r1g-never-installed\.svg/);
+    expect(rule(`${ORIGIN}${own.urlBase}/r1g-never-installed.svg`)).toThrow(/r1g-never-installed\.svg/);
+    // A path into the generated container that names no namespace base at all can never be served either.
+    expect(rule(`${ORIGIN}/spokes/alpha/secret/r1g-never-installed.svg`)).toThrow(/r1g-never-installed\.svg/);
+  });
+
+  it("4. REFUSES another Spoke's namespace EVEN WHEN this Spoke holds the same basename", () => {
+    // THE EXACT HOLE: beta's path, a basename alpha ALSO holds. The basename used to decide, so alpha's own file
+    // was served for a path that named beta's namespace.
+    expect(forAlpha.iconAssetAvailable(SHARED_BASENAME), "alpha DOES hold that basename").toBe(true);
+    expect(rule(`${ORIGIN}${other.urlBase}/${SHARED_BASENAME}`)).toThrow(/r1g-shared-name\.svg/);
+    expect(rule(`${ORIGIN}${other.urlBase}/${SHARED_BASENAME}`)).toThrow(/spokes\/beta\/assets/);
+    // ...and it is refused because that NAMESPACE is not this context's, not because the file is missing: the very
+    // same reference is valid through a resolver that declares beta's namespace (the Hub's own view).
+    expect(() =>
+      assertConfiguredCompactLogoAvailableFor(
+        createRuntimeAssetOwnershipResolver([platform, other]),
+        configuredAs(`${ORIGIN}${other.urlBase}/${SHARED_BASENAME}`),
+      ),
+    ).not.toThrow();
+  });
+
+  it("4b. REFUSES a named namespace that does not hold the file (no substitution, no nested path)", () => {
+    // alpha's OWN namespace is named, but the file lives in the platform namespace: the render keeps that very
+    // pathname, so nothing would be served there — and the platform's file must not silently stand in for it.
+    expect(rule(`${ORIGIN}${own.urlBase}/${PLATFORM_COMPACT}`)).toThrow(/DIFFERENT namespace/);
+    // The mirror publishes every role FLAT, so a nested path inside a declared namespace is unservable too.
+    expect(rule(`${ORIGIN}${own.urlBase}/nested/${OWN_COMPACT}`)).toThrow(/FLAT/);
+  });
+
+  it("5. follows the DOCUMENTED policy for an EXTERNAL URL: refused, because delivery is this origin", () => {
+    for (const external of [
+      "https://cdn.example.com/content/assets/r1g-platform-compact.svg",
+      `https://beta.example.test${other.urlBase}/${SHARED_BASENAME}`,
+    ]) {
+      expect(rule(external), `${external} must be refused`).toThrow(/site\.assets\.logoCompact/);
+      expect(rule(external), `${external} must be refused`).toThrow(/origin/);
+    }
+    // NO OTHER ROLE CHANGES: the primary logo keeps the accepted latitude (its origin is source identity and the
+    // render reduces a value to its pathname), and the compact refusal never touches it.
+    expect(forAlpha.runtimeAssetUrl("https://cdn.example.com/content/assets/logo.svg")).toBe(
+      "/content/assets/logo.svg",
+    );
+    expect(() =>
+      assertConfiguredCompactLogoAvailableFor(forAlpha, {
+        url: ORIGIN,
+        assets: { logo: "https://cdn.example.com/content/assets/logo.svg" },
+      }),
+    ).not.toThrow();
+  });
+
+  it("6. leaves a PRIMARY-ONLY installation of every shape exactly as it was", () => {
+    for (const assets of [{}, { logo: primary }, { logo: primary, logoCompact: "" }]) {
+      expect(() =>
+        assertConfiguredCompactLogoAvailableFor(forAlpha, { url: ORIGIN, assets }),
+      ).not.toThrow();
+    }
+  });
+
+  it("7. resolves BOTH sides of the 599/600 switch to real, same-origin, fetchable URLs", () => {
+    // The header composes the pair from ONE configured value each, through THIS context's resolver: these are the
+    // two URLs the browser requests either side of the boundary (the scenario measures the browser itself).
+    const configured = configuredAs(`${ORIGIN}${own.urlBase}/${OWN_COMPACT}`);
+    expect(forAlpha.runtimeAssetUrl(configured.assets.logo)).toBe(`/assets/${PLATFORM_COMPACT}`);
+    expect(forAlpha.runtimeAssetUrl(configured.assets.logoCompact)).toBe(`${own.urlBase}/${OWN_COMPACT}`);
+    for (const delivered of [
+      forAlpha.runtimeAssetUrl(configured.assets.logo),
+      forAlpha.runtimeAssetUrl(configured.assets.logoCompact),
+    ]) {
+      expect(delivered, `${delivered} must be a generated namespace path`).toMatch(
+        /^\/(assets|spokes\/[^/]+\/assets)\//,
+      );
+    }
   });
 });

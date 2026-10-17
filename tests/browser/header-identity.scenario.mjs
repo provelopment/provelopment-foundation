@@ -391,6 +391,10 @@ const PROBE = `(() => {
     },
     documentScrollWidth: document.documentElement.scrollWidth,
     documentClientWidth: document.documentElement.clientWidth,
+    // FOUNDATION-UI-R1G — the ORIGIN this page was really served from. The compact logo's delivery contract is
+    // stated against it, because a configured origin is canonical SOURCE identity, never a delivery origin: the
+    // browser must fetch the artwork from THIS origin whatever host the configuration names.
+    documentOrigin: window.location.origin,
     // UI-R1D — THE SHELL FRAME ITSELF: its width and the computed 'min-inline-size' the floor rule would apply.
     // At a SUPPORTED width the frame must simply BE the viewport's content box (no floor standing in for it).
     frameWidth: frame ? Math.round(frame.getBoundingClientRect().width) : null,
@@ -539,6 +543,25 @@ function assertArtDirection(harness, rows, tag, seen, variant) {
     `${tag}.selection.exactlyOneImageInsideTheIdentity`,
     seen.picture.imagesInsideTheIdentity === 1,
     JSON.stringify(seen.picture),
+  );
+  // ── FOUNDATION-UI-R1G — THE DELIVERY CONTRACT, AS THE BROWSER RESOLVED IT ────────────────────────────────
+  // Whichever artwork the source-selection algorithm picked must have been fetched from THIS DOCUMENT'S OWN
+  // ORIGIN — never from the configured origin, which is canonical source identity only (BRAND_ASSETS.md §3) — and
+  // it must carry the basename the width entitles the visitor to: the compact artwork below 600 CSS pixels, the
+  // primary artwork at and above it, and the primary artwork everywhere when no compact alternative is configured.
+  const delivered = seen.logo ? seen.logo.currentSrc : null;
+  const entitled = expectedArtworkAt(variant, seen.viewportWidth) ?? basenameOf(primary);
+  harness.check(
+    rows,
+    `${tag}.selection.theSelectionIsServedFromThisOrigin`,
+    !!delivered && delivered.startsWith("http") && new URL(delivered).origin === seen.documentOrigin,
+    `currentSrc=${delivered} documentOrigin=${seen.documentOrigin} configuredPrimary=${primary} configuredCompact=${compact}`,
+  );
+  harness.check(
+    rows,
+    `${tag}.selection.theSelectionCarriesTheArtworkThisWidthEntitlesItTo`,
+    basenameOf(delivered) === entitled,
+    `currentSrc=${delivered} entitled=${entitled}`,
   );
   if (compact === null) {
     harness.check(

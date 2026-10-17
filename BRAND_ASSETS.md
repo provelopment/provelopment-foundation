@@ -375,12 +375,26 @@ configured value + NO backing file
 > (`site.assets.logoCompact`, §10.1.4) is a LOUD BUILD FAILURE when it is configured but cannot be served.** The
 > distinction is what the leaf MEANS: every other graphic role may legitimately point at artwork this engine does
 > not serve (a CDN, hand-published files), while the compact alternative exists precisely so a deployment's own
-> artwork is served from the runtime namespace that owns it. A value that addresses generated artwork — same-origin
-> with the deployment's own `site.url`, under `/assets/**` or anywhere in `/spokes/**` — must therefore be backed by
-> a file THIS context's namespaces hold, or the build fails naming the leaf, the file and the namespaces searched.
-> That single rule also refuses a path aimed at ANOTHER Spoke's private namespace, which is exactly what the
-> per-Spoke namespace model exists to prevent (§1.1). A value on another origin (or a same-origin path outside the
-> generated namespace space) is left to the author, exactly like every other role.
+> artwork is served from the runtime namespace that owns it — and it is the only role that PROMISES the artwork it
+> names will actually be shown at the widths it exists for. Two contracts are therefore enforced
+> (FOUNDATION-UI-R1G):
+>
+> - **ORIGIN.** Runtime image DELIVERY is always the deployment's own origin: a configured absolute URL is canonical
+>   SOURCE identity, and the browser fetches its PATHNAME from the current origin whatever host the value names
+>   (see §3). A value naming another origin can therefore never be delivered as authored, so it fails the build —
+>   naming both origins and the fix — instead of rendering a same-origin request for a path this deployment does not
+>   serve (or being answered by a local file that merely shares the basename). A same-origin path, and a value on the
+>   deployment's own origin, are unaffected.
+> - **NAMESPACE.** A value that addresses generated artwork — under `/assets/**`, under `/spokes/<segment>/assets/**`,
+>   or anywhere in `/spokes/**` — must name a namespace THIS context may serve (another Spoke's namespace is refused
+>   even when this Spoke holds a file with the same basename), must address one of that namespace's files FLAT exactly
+>   as the mirror installs them, and the file must be held by the namespace the path NAMES (a per-Spoke path is never
+>   answered by another namespace's file). The SHARED platform namespace keeps its established ownership rule:
+>   availability by basename, so a Spoke's own artwork for a role is served from that Spoke's namespace (§1.1). Every
+>   refusal names `site.assets.logoCompact`, the file and the namespaces searched.
+>
+> A same-origin path OUTSIDE the generated namespace space (`/uploads/logo-compact.svg`) is left to the author,
+> exactly like every other role: nothing is generated there, so the engine cannot know whether it is served.
 
 Two deliberate differences:
 
@@ -591,7 +605,8 @@ a narrow viewport. It is a header PRESENTATION input and never a second organisa
 | Required file type | **HARD:** any browser-renderable image. **RECOMMENDED:** SVG — a compact SQUARE mark that stays legible at ~32px |
 | Engine-required dimensions | **HARD: none.** §10.1.1's display limits apply to WHICHEVER artwork the browser selected (see the sizing rows there); a compact source is chosen for its legibility at that size, not to satisfy a required pixel size |
 | Sizing | **HARD:** exactly §10.1.1's contract, unchanged and unweakened — bounded by `--ui-site-header-logo-max-inline-size` (280px) AND the available header content width AND `--ui-logo-display-size` (32px) as its height maximum, intrinsic proportions preserved, never cropped, never distorted, never enlarged when the file is already smaller than both limits, and never a source of document-level horizontal scrolling. The header's flex sizing responds to whichever artwork was selected; the wrapper adds no box of its own (`.ui-site-header-logo-frame`) |
-| Missing-file behaviour | **HARD: LOUD BUILD FAILURE** when the configured value addresses generated artwork (same-origin and under `/assets/**` or `/spokes/**`) that this context's namespaces do not hold — the build names `site.assets.logoCompact`, the file and the namespaces searched. This is the ONE deliberate exception to §8, and it is why a compact alternative can never silently become a broken responsive image. A value on another origin (or a same-origin path outside the generated namespace space) is left to the author, like every other role |
+| Origin rule | **HARD: the value must be on THIS deployment's own origin** — an absolute URL whose origin equals `site.url`, or a same-origin path. Runtime artwork is always DELIVERED from the current origin (§3), so a value on another origin (a CDN or a third-party host) fails the build naming both origins: it can never be fetched as authored. A same-origin path outside the generated namespace space stays the author's latitude, like every other role (FOUNDATION-UI-R1G) |
+| Missing-file behaviour | **HARD: LOUD BUILD FAILURE** when the configured value cannot be served by this context (FOUNDATION-UI-R1G validates the referenced NAMESPACE, not just the basename): a value on another origin, a path naming a runtime namespace this context may not serve (including ANY other Spoke's private namespace — refused even when this Spoke holds a file with the same basename), a nested path inside a declared namespace (the mirror publishes every role FLAT), or a file the NAMED namespace does not hold. The build names `site.assets.logoCompact`, the file and the namespaces searched. This is the ONE deliberate exception to §8, and it is why a compact alternative can never silently become a broken responsive image |
 | Cross-Spoke isolation | **HARD:** the refusal above means a compact artwork is only ever served from the CURRENT Spoke's permitted namespaces; a path aimed at another Spoke's private namespace fails the build, and a basename two Spokes both ship resolves — as every role does — from the OWNING Spoke's namespace (§1.1) |
 | Removal / disable | remove `site.assets.logoCompact`. The primary logo then shows at every width — the state every existing deployment is in, byte for byte |
 | Replacement procedure | §4, exactly as for any role file: replace the source file byte-for-byte and re-run `pnpm assets:sync` (or `pnpm assets:check` to verify) |

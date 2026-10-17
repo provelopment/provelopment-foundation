@@ -102,6 +102,23 @@ export const TOUCH_TARGET_BOX_CLASS = "inline-flex min-h-11 min-w-11 items-cente
  */
 export const HEADER_NAV_LINK_CLASS = `${TOUCH_TARGET_BOX_CLASS} text-sm text-muted-foreground transition-colors hover:text-foreground`;
 
+/**
+ * FOUNDATION-UI-R1F — THE COMPACT-LOGO BOUNDARY, in CSS pixels: BELOW it the configured compact artwork is the
+ * header's identity, and AT OR ABOVE it the primary logo is.
+ *
+ * The boundary is expressed ONCE, as the `media` attribute of the ONE `<source>` the header composes — a CSS
+ * MEDIA QUERY, so the BROWSER performs the selection natively, before layout and before any pixel is painted.
+ * There is therefore no client state, no resize listener, no hydration-dependent switching and no second `<img>`
+ * hidden behind CSS: the artwork the browser picked is the artwork that is fetched, and the answer is the same on
+ * the first paint as at every resize.
+ *
+ * `599.98`, never `599`, is what makes "below 600 CSS pixels" exact: a viewport may be a fractional number of CSS
+ * pixels (a zoomed or fractional-device-pixel window), and `max-width: 599px` would hand the PRIMARY artwork to a
+ * 599.5px viewport — which is below the boundary the owner specified. The two-token form the alternative
+ * `min-width`/`max-width` pair would need is avoided for the same reason: one `<source>` states the whole rule.
+ */
+const COMPACT_LOGO_MEDIA_QUERY = "(max-width: 599.98px)";
+
 export function SiteHeader({
     locale,
     resolved,
@@ -191,6 +208,19 @@ export function SiteHeader({
     // preserved (`h-8 w-auto`, responsive); accessible name = the site name.
     // Absent config → the previous text brand link (graceful, never broken).
     const headerLogoSrc = assets.runtimeAssetUrl(siteConfig.assets?.logo);
+    /**
+     * FOUNDATION-UI-R1F — THE COMPACT ALTERNATIVE (`site.assets.logoCompact`, the `logo-compact` role).
+     *
+     * It is resolved exactly like the primary logo (same-origin, and pointed at the runtime namespace that holds
+     * the file) and becomes the narrow-viewport `<source>` of the ONE `<picture>` below. The resolution itself is
+     * not gated: the RENDER is, on `headerLogoSrc`, because a compact artwork is an alternative to a primary logo
+     * and never an identity of its own (the schema refuses the combination outright).
+     *
+     * Absent → `undefined` → the image is handed ONE source, so at every width it is the primary logo, exactly as
+     * before this milestone: no markup, no attribute and no network request is added to an installation that
+     * configures no compact artwork.
+     */
+    const headerCompactLogoSrc = assets.runtimeAssetUrl(siteConfig.assets?.logoCompact);
     // P12-HG — the optional decorative header band (`site.assets.headerGraphic`,
     // the `header-graphic` role). Resolved on the SERVER through the shared
     // availability rule, so a configured-but-missing file resolves to
@@ -240,30 +270,23 @@ export function SiteHeader({
         <ClientRoutingProvider routing={clientRouting}>
         <header className="ui-site-header border-b border-border" {...headerGraphicBandProps(headerGraphic)}>
             <div className="mx-auto max-w-page px-4 py-4">
-                {/* ── TOP SEMANTIC ROW — IDENTITY + THE NAVIGATION-MODE SELECTOR ────────
-                    NAV1B — this row owns exactly two things, at EVERY width: the identity,
-                    and the Sidebar/Menu-bar selector anchored to the right edge of the padded
-                    header content. The selector keeps its normal control sizing, never
-                    stretches across the row, and never moves into the control row below. The
-                    identity takes the remaining space; when the two cannot share one line the
-                    identity wraps BELOW the selector (never over it, never moving it). */}
-                <div
-                    className={
-                        headerLogoSrc
-                            ? // NAV1B-V1 — A GRAPHIC IDENTITY IS NOT A WRAPPING TEXT COLUMN. The row
-                              // keeps ONE track, so the graphic's clamp is the header's own CONTENT
-                              // width (never a narrow column), the selector stays in the same cell at
-                              // its right edge, and the stylesheet stacks it ABOVE the graphic it
-                              // overlaps. The TEXT case below is untouched.
-                              "ui-site-header-top ui-site-header-top--graphic grid items-start"
-                            : "ui-site-header-top grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-2"
-                    }
-                >
+                {/* ── TOP SEMANTIC ROW — THE BRAND IDENTITY + THE RIGHT-HAND CONTROL CLUSTER ─────
+                    NAV1B-V2 (FOUNDATION-UI-R1) — ONE row, TWO occupants, ONE rule for BOTH identity
+                    kinds: the brand is FIRST, the control cluster follows it, and the row WRAPS BY
+                    CONTENT (a wrapping flex row — never a viewport breakpoint). While the two fit on
+                    one line the brand keeps the left edge and the cluster is anchored at the right
+                    edge of the padded header content; when they cannot share a line the cluster moves
+                    ENTIRELY BENEATH the brand and stays right-aligned. The row never overlaps, never
+                    stacks and never paints one occupant over the other: the brand may therefore keep
+                    its own width (a text brand breaking inside itself, a graphic lockup keeping its
+                    intrinsic aspect ratio) instead of being covered by the selector. The stylesheet
+                    owns the arrangement — `globals.css`, NAV1B-V2 — so both kinds share it verbatim. */}
+                <div className="ui-site-header-top">
                     <div
                         className={
                             headerLogoSrc
-                                ? "ui-site-header-identity min-w-0"
-                                : "ui-site-header-identity min-w-0 break-words"
+                                ? "ui-site-header-identity ui-site-header-identity--graphic"
+                                : "ui-site-header-identity break-words"
                         }
                     >
                         {headerLogoSrc ? (
@@ -276,12 +299,36 @@ export function SiteHeader({
                                 // "go home" target is comfortably tappable.
                                 className="ui-site-header-brand inline-flex min-h-11 min-w-11 items-center"
                             >
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                    src={headerLogoSrc}
-                                    alt={siteConfig.name}
-                                    className="ui-site-header-logo h-8 w-auto"
-                                />
+                                {/* FOUNDATION-UI-R1E — the mark's DISPLAY contract lives in ONE place: the
+                                    stylesheet's `.ui-site-header-logo` rule (a maximum inline size of 280px
+                                    by default, the shared display size as its height maximum, and the
+                                    available container width, whichever is smallest — with the aspect ratio
+                                    always preserved and never enlarged). No utility class pins a dimension
+                                    here, because a forced height would stretch a naturally smaller mark and
+                                    defeat both maxima. */}
+                                {/* FOUNDATION-UI-R1F — ONE `<picture>`, ONE `<img>`, and the BROWSER performs the
+                                    ART DIRECTION. The `<source>` is the configured compact artwork for a viewport
+                                    narrower than 600 CSS pixels; the `<img>` is both the fallback (a browser that
+                                    ignores `<picture>`, and the print/legacy path) and the primary artwork at every
+                                    wider viewport. There is no client state, no resize listener, no
+                                    hydration-dependent switching and no CSS-hidden second image: the selection happens
+                                    in the source-selection algorithm, so the SAME markup answers correctly on the
+                                    first paint and after any later resize. The wrapper carries no box of its own
+                                    (`globals.css`, `.ui-site-header-logo-frame`), so the identity's flex sizing and
+                                    the mark's display contract are untouched by it. */}
+                                <picture className="ui-site-header-logo-frame">
+                                    {headerCompactLogoSrc === undefined ? null : (
+                                        <source
+                                            media={COMPACT_LOGO_MEDIA_QUERY}
+                                            srcSet={headerCompactLogoSrc}
+                                        />
+                                    )}
+                                    <img
+                                        src={headerLogoSrc}
+                                        alt={siteConfig.name}
+                                        className="ui-site-header-logo"
+                                    />
+                                </picture>
                             </Link>
                         ) : (
                             <ContextNavLinks
@@ -297,19 +344,22 @@ export function SiteHeader({
                     </div>
 
                     {/* ── THE HEADER'S RIGHT-HAND CONTROL CLUSTER (R1) ─────────────────────
-                        NAV1B keeps this row's ownership: the identity plus the controls that choose the
+                        NAV1B-V2 keeps this row's ownership: the identity plus the controls that choose the
                         CHROME a visitor is reading in — the cross-Spoke switcher (when the Installation
                         authors one) and the navigation-MODE selector (when the adopter enables it). Both
-                        keep their normal control sizing, stay anchored at the padded right edge, and wrap
-                        inside this cell when the width demands it, so neither can push the identity off the
-                        row nor migrate into the control row below.
+                        keep their normal control sizing and sit at the right edge of the padded header
+                        content, on the brand's own line while the two fit together and ENTIRELY BELOW the
+                        brand when they do not (the row wraps by content — no overlay, no stacking, so the
+                        cluster can never cover the identity). The cluster is itself a wrapping flex row, so
+                        two controls that cannot share ITS line wrap inside it rather than disappear or
+                        push the row wider.
 
                         WHY THE SPOKE SWITCHER LIVES HERE. It must remain visible on a Spoke that has ONE
                         Site, ONE language and NO Locations — the row below is composed only when such
                         controls exist, so a switcher placed there would vanish exactly where an Installation
                         that switches Spokes needs it most. */}
                     {spokeSwitch !== undefined || resolved.layoutSwitcher.enabled ? (
-                        <div className="ui-site-header-controls justify-self-end flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
+                        <div className="ui-site-header-controls flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
                             {spokeSwitch !== undefined ? (
                                 <SpokeSwitcher
                                     current={spokeSwitch.current}

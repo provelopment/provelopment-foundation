@@ -911,18 +911,25 @@ html[data-ui-hero="showcase"] .home-hero {
 
 /* NAV1D-V2 — THE SUPPORTED MINIMUM LAYOUT WIDTH.
  *
- * The shell's page layout has a deliberate floor: the established 320px boundary. At and above it
- * nothing scrolls sideways — the rail, the content column and every region fit the viewport's own
- * content box (which is what keeps a 320px window free of a horizontal scrollbar: the vertical
- * scrollbar already takes part of that width). BELOW it the layout keeps that floor instead of
+ * The shell's page layout has a deliberate floor: the platform's supported minimum viewport width, now
+ * 280px. At and above it nothing scrolls sideways — the rail, the content column and every region fit the
+ * viewport's own content box (which is what keeps a 280px window free of a horizontal scrollbar: the
+ * vertical scrollbar already takes part of that width). BELOW it the layout keeps that floor instead of
  * deforming or shredding itself to fit an arbitrarily narrow window, and the VIEWPORT scrolls
  * horizontally — the honest behaviour for a width this platform does not support. Declared as a token
- * so a deployment can lower or raise its own floor without touching the shell's rules. */
+ * so a deployment can lower or raise its own floor without touching the shell's rules.
+ *
+ * WHY IT MOVED FROM 320 TO 280 (FOUNDATION-UI-R1D). The owner's responsiveness contract requires true
+ * operation from 280px, and a floor ABOVE a supported width is self-defeating: at 280 the frame was
+ * pinned to 320, so the header had a 288px content box there — WIDER than the 273px it gets at a 320px
+ * window — and the row therefore stayed on one line at 280 while wrapping at 320, with 55px of document
+ * overflow. The floor is now below the narrowest width the platform supports, so every supported width
+ * fits its own content box and the content-fit behaviour is monotone in the viewport. */
 :root {
-  --ui-shell-min-inline-size: 20rem;
+  --ui-shell-min-inline-size: 17.5rem;
 }
 
-@media (max-width: 19.99rem) {
+@media (max-width: 17.49rem) {
   .ui-shell-frame {
     min-inline-size: var(--ui-shell-min-inline-size);
   }
@@ -1584,19 +1591,31 @@ html[data-ui-shell-layout="menu-bar"] .ui-shell-sidebar:has([data-ui-shell-part=
 
 /* ── P6-3B header logo + page banner ────────────────────────────────── */
 
-/* Brand logo DISPLAY size — ONE token governs BOTH logo roles, so the footer
- * mark renders at the same visual size as the header mark (owner ruling,
- * 2026-09). Aspect ratio is always preserved (`width: auto`) and the mark can
- * never overflow its column (`max-width: 100%`), so narrow layouts are safe.
+/* Brand logo DISPLAY size — ONE token governs the FOOTER mark and the header mark's HEIGHT limit, so the
+ * footer mark renders at the same visual size as the header mark (owner ruling, 2026-09). Aspect ratio is
+ * always preserved and a mark can never overflow its column, so narrow layouts are safe.
  * The authoritative ARTWORK is untouched and both runtime files still derive
  * from the one coloured source (see BRAND_ASSETS.md §10.1). */
 :root {
   --ui-logo-display-size: 2rem;
+
+  /* FOUNDATION-UI-R1E — THE HEADER LOGO'S DISPLAY MAXIMUM (inline size), 280px by default.
+   *
+   * The header must never force document-level horizontal scrolling because a logo is exceptionally wide, so the
+   * header mark is bounded in BOTH dimensions: this token is its width maximum and `--ui-logo-display-size` above is
+   * its height maximum. 280px is deliberately the platform's supported minimum viewport width, so a mark can never
+   * be wider than the narrowest window the platform supports, and an adopter may raise or lower the limit here
+   * without touching any rule below.
+   *
+   * These are RENDERING limits and say nothing about the authored artwork's source dimensions: a 4000px-wide
+   * source is perfectly acceptable and simply renders smaller. Exceptionally wide or intricate artwork may still be
+   * better served by a more suitable logo or by the text-brand fallback (`site.assets.logo` absent) — see
+   * ARCHITECTURE.md (NAV1B-V2) and BRAND_ASSETS.md. */
+  --ui-site-header-logo-max-inline-size: 17.5rem;
 }
 
-/* The header brand mark (`site.assets.logo` → logo-header.svg). Intrinsic
- * aspect ratio preserved; responsive; never inflates the header height. */
-.ui-site-header-logo,
+/* The FOOTER brand mark: its own contract, unchanged — the shared display size exactly, natural width, never
+ * cropped, never wider than its column. */
 .ui-site-footer-logo {
   display: block;
   height: var(--ui-logo-display-size);
@@ -1605,60 +1624,118 @@ html[data-ui-shell-layout="menu-bar"] .ui-shell-sidebar:has([data-ui-shell-part=
   object-fit: contain;
 }
 
-/* ── NAV1B-V1 — THE GRAPHIC IDENTITY PASSES BENEATH THE FIXED TOP-RIGHT SELECTOR ───────────────
+/* The HEADER brand mark (FOUNDATION-UI-R1E). The display size is a MAXIMUM here, and it is joined by the header's
+ * own inline maximum and by the AVAILABLE CONTAINER WIDTH — whichever is smallest wins, so a wide lockup is scaled
+ * proportionally to fit its line and can never widen the page or the header.
  *
- * The owner's rule for a GRAPHIC page/site identity is NOT the text rule. A text identity wraps
- * inside its own column and never goes under the navigation-MODE selector (`.ui-site-header-top`
- * grid: two tracks, text in the flexible first one). A GRAPHIC identity has no reason to reflow
- * around a control: it begins in its normal left-hand identity position, keeps its natural aspect,
- * and MAY continue geometrically beneath the selector's occupied area — the selector stays fixed at
- * the top-right and paints ABOVE it, hiding whatever lies underneath.
+ * `inline-size`/`block-size: auto` are what preserve the intrinsic aspect ratio: with neither dimension forced, an
+ * image is scaled to FIT its box (contain-style) instead of being stretched or cropped — and a mark whose intrinsic
+ * size is already smaller than both limits renders at its OWN size rather than being enlarged to fill the area.
+ * The 44px brand link around it is what supplies the pointer target, so a smaller mark keeps a full-height target. */
+.ui-site-header-logo-frame {
+  display: contents;
+}
+
+/* FOUNDATION-UI-R1F — THE ART-DIRECTION FRAME IS NOT A BOX.
  *
- * THE MECHANICS, and why they are what they are:
- *  - the row keeps ONE track, so the graphic's clamp (`max-width`) is the header's own CONTENT box
- *    (the page-edge inset) rather than a narrow first column: the graphic is never shrunk into a
- *    column and never distorted (`object-fit: contain` above);
- *  - the identity and the selector occupy the SAME cell, the selector right-aligned and stacked
- *    above (`z-index`), which is what makes an overlap an OVERLAY instead of a collision;
- *  - the brand link is sized to the graphic (`max-content`, capped by the cell), so it remains a
- *    lockup-sized "go home" target instead of a row-wide one;
- *  - the selector keeps an opaque surface of the header's own background behind it, so the graphic
- *    beneath it is obscured rather than showing through the control.
- *
- * The graphic is decorative/identity content that already had no interactivity: nothing here makes
- * it interactive, and the selector keeps every pointer event inside its own box.
+ * The compact/full logo pair is served by ONE `<picture>` wrapping an optional `<source>` and the ONE `<img>`
+ * that remains the header's identity (see `site-header.tsx`). `display: contents` keeps that wrapper invisible
+ * to LAYOUT: the image is laid out exactly as if it were the brand link's own child, so the row's flex sizing,
+ * the identity's maximum inline size and the `.ui-site-header-logo` display contract above are all untouched by
+ * the responsive source selection. The browser swaps the ARTWORK, never the box, and the percentage cap on the
+ * mark still resolves against the header's own content width.
  */
-.ui-site-header-top--graphic {
-  grid-template-columns: minmax(0, 1fr);
+.ui-site-header-logo {
+  display: block;
+  inline-size: auto;
+  block-size: auto;
+  max-inline-size: min(var(--ui-site-header-logo-max-inline-size), 100%);
+  max-block-size: var(--ui-logo-display-size);
+  object-fit: contain;
 }
 
-.ui-site-header-top--graphic .ui-site-header-identity {
-  grid-area: 1 / 1;
+/* ── NAV1B-V2 — THE TOP ROW WRAPS BY CONTENT, AND NOTHING EVER OVERLAPS ────────────────────────
+ *
+ * ONE rule for BOTH identity kinds — a configured graphic lockup and the text-brand fallback — and
+ * it is the correction of the former NAV1B-V1 arrangement, which gave the identity and the control
+ * cluster the SAME grid cell (`grid-area: 1 / 1`) and painted the cluster above the artwork
+ * (`z-index` + an opaque `background-color`). That is a control COVERING the brand: as soon as a
+ * lockup was wide enough to reach the selector, the visitor lost part of the identity. The owner's
+ * rule is the opposite one — the selector must never cover, overlap, obscure or displace the brand —
+ * so the row does not overlap at all, in either direction:
+ *
+ *  - the row is a WRAPPING FLEX ROW: the arrangement follows CONTENT versus the available width, so
+ *    no viewport breakpoint (and no device detection) decides it;
+ *  - the brand is FIRST and takes the free space (`flex: 1 1 auto` with `min-width: 0`), so a text
+ *    brand may break inside itself and a graphic may be clamped by its own `max-width` rather than
+ *    pushing the page wider;
+ *  - the control cluster follows it and is anchored at the RIGHT edge of the padded header content by
+ *    `margin-inline-start: auto` — the SAME anchor whether it shares the brand's line or has a line of
+ *    its own, so it is never left hanging mid-row;
+ *  - when the two cannot share a line the cluster WRAPS to the next line, ENTIRELY BELOW the brand
+ *    (the row's `row-gap` separates them) and right-aligned. There is no `z-index`, no `position`, no
+ *    opaque surface and no shared cell in this row, so nothing can hide behind or on top of anything:
+ *    the brand keeps the left-hand identity position and the cluster keeps its normal control sizing;
+ *  - THE GRAPHIC KEEPS ITS INTRINSIC PROPORTIONS. It is never distorted, cropped, hidden or
+ *    artificially shrunk to keep the selector on the first row (see `.ui-site-header-logo`: a fixed
+ *    2rem lockup height with `width: auto` and `object-fit: contain`); if an exceptionally wide lockup
+ *    exceeds the header's content width BY ITSELF, `max-width: 100%` clamps it PROPORTIONALLY to that
+ *    width instead — the artwork is scaled, never stretched or cut;
+ *  - the SECOND row (`.ui-site-header-context`) is untouched: this row owns the identity and the
+ *    right-hand chrome cluster only.
+ *
+ * The row is also keyboard- and pointer-neutral: it introduces no element, no overlay, no stacking
+ * context and no focusable surrogate, so the brand link and the cluster's controls keep exactly the
+ * hit areas and tab order they had.
+ */
+.ui-site-header-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  column-gap: 1rem;
+  row-gap: 0.5rem;
 }
 
-.ui-site-header-top--graphic .ui-site-header-brand {
+.ui-site-header-identity {
+  /* The brand yields WIDTH, never position: it may break/clamp inside itself, and it is always the
+   * first occupant of the row. */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* A GRAPHIC identity's own inline maximum (FOUNDATION-UI-R1E) — the SAME header token the mark itself honours.
+ *
+ * It is stated here because the ROW decides its arrangement from flex BASE sizes, and a base size that still
+ * contained the artwork's whole NATURAL width would keep the cluster below the brand even where the mark's
+ * permitted width and the controls comfortably fit side by side: a 2048px-wide lockup renders 280px, but without
+ * this definite cap the row would plan around 2048 and wrap on every desktop. A `min(…, 100%)` on the mark cannot
+ * do this job — a percentage is indefinite while intrinsic sizes are computed — so the cap is stated where the
+ * value is definite, and the mark keeps its own percentage cap for the width it actually renders at.
+ *
+ * The TEXT fallback does not carry this class: a text brand may still use the row's whole width and break inside
+ * itself, exactly as NAV1B-V2 established. */
+.ui-site-header-identity--graphic {
+  max-inline-size: var(--ui-site-header-logo-max-inline-size);
+}
+
+.ui-site-header-controls {
+  /* The cluster is pushed to the content's right edge by the auto margin — the SAME anchor on the brand's line and
+   * on a line of its own — and it may SHRINK (never grow): when the cluster has a line to itself and the controls
+   * it holds are together wider than that line, shrinking is what lets its own `flex-wrap` STACK them instead of
+   * the row overflowing the header. A `flex-shrink: 0` cluster could not wrap internally at all, which is how a
+   * Spoke switcher plus the mode selector overflowed the header at the platform's 280px supported minimum
+   * (FOUNDATION-UI-R1D). `min-width: 0` is required for the same reason: a flex item's automatic minimum size
+   * would otherwise pin the cluster to its content width however narrow the line is. */
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-inline-start: auto;
+}
+
+/* The brand link is sized to its own content, so a lockup stays a lockup-sized "go home" target rather
+ * than a row-wide one (capped by the row it lives in). */
+.ui-site-header-brand {
   width: max-content;
   max-width: 100%;
-}
-
-.ui-site-header-top--graphic .ui-site-header-controls {
-  grid-area: 1 / 1;
-  justify-self: end;
-  align-self: start;
-  position: relative;
-  z-index: 10;
-  padding-inline-start: 0.75rem;
-  background-color: var(--background);
-}
-
-.ui-site-header-top--graphic .ui-site-header-mode {
-  grid-area: 1 / 1;
-  justify-self: end;
-  align-self: start;
-  position: relative;
-  z-index: 10;
-  padding-inline-start: 0.75rem;
-  background-color: var(--background);
 }
 
 /* The page banner (P6-3B; P6-3C scaling contract). ALWAYS centered, never

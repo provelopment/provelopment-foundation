@@ -201,7 +201,49 @@ export const siteAssetsSchema = z.object({
   statusGraphic: z
     .url("must be an absolute URL including protocol, e.g. https://example.com/assets/status-graphic.svg")
     .optional(),
-});
+  /**
+   * FOUNDATION-UI-R1F — the optional `logo-compact` role (absolute URL): the COMPACT header artwork the
+   * browser selects BY VIEWPORT WIDTH below 600 CSS pixels, while `logo` (the `logo-header` role) is selected
+   * at and above that width.
+   *
+   * It is a HEADER-PRESENTATION ALTERNATIVE, never a second organisation identity: `logo` remains the ONE
+   * authority for structured data (`Organization.logo`) and for every other consumer, and a deployment that
+   * configures no compact artwork is unchanged at every width (the browser is handed ONE source).
+   *
+   * It is OPTIONAL and it is NOT a primary logo: a compact alternative is only meaningful as the narrow-width
+   * reading of a configured primary brand mark, so configuring one WITHOUT `logo` is refused below with an
+   * actionable message (never silently ignored, never rendered as the identity).
+   *
+   * Artwork is authored and installed exactly like every other role (see BRAND_ASSETS.md): the file lives in
+   * `content/assets/**` and is served from the runtime namespace that owns it, so a configured compact asset
+   * that cannot be served fails the build (`src/config/assets.ts`,
+   * `assertConfiguredCompactLogoAvailableFor`) instead of becoming a broken responsive image. FOUNDATION-UI-R1G
+   * makes that rule complete: runtime artwork is always DELIVERED from this deployment's own origin (a configured
+   * origin is canonical source identity, never a delivery instruction), so the value must be on that origin, and a
+   * path that addresses generated artwork must name a namespace this context may serve and a file THAT namespace
+   * holds. The template itself ships no compact artwork and configures none — the role is absent by default.
+   */
+  logoCompact: z
+    .url("must be an absolute URL including protocol, e.g. https://example.com/assets/logo-compact.svg")
+    .optional(),
+})
+  .superRefine((assets, ctx) => {
+    // FOUNDATION-UI-R1F — A COMPACT LOGO IS AN ALTERNATIVE, NOT AN IDENTITY. It exists so a wide primary
+    // mark can be replaced by a compact reading of the same brand on a narrow viewport; with no primary mark
+    // there is nothing to be an alternative TO, and the header would have to invent an identity from it. The
+    // refusal is the schema's (not the renderer's), so the adopter is told at validation time, in the same
+    // place every other configuration mistake is reported.
+    if (assets.logoCompact !== undefined && assets.logo === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["logoCompact"],
+        message:
+          '"site.assets.logoCompact" is the compact ALTERNATIVE to the primary brand logo, so it requires ' +
+          '"site.assets.logo": configure the primary logo as well — or drop "logoCompact" and let the text ' +
+          "brand be the identity at every width.",
+      });
+    }
+  });
 
 export const siteSettingsSchema = z.object({
   url: z

@@ -352,8 +352,9 @@ tree stays clean.
   rail's colour is proved to follow the site's ONE background authority by overriding `--background`
   at runtime. The CLOSED layout is proved free of a horizontal scrollbar at all eight widths
   (measured against the viewport's
-  content box), and a deliberate below-boundary width (300px) proves the 320px floor: the layout keeps
-  its geometry, the viewport scrolls, and the rail stays functional. The Menu Bar
+  content box), and a deliberate below-boundary width (260px) proves the 280px floor: the layout keeps
+  its geometry, the viewport scrolls, and the rail stays functional (FOUNDATION-UI-R1D moved the floor
+  from 320 to 280 so that every SUPPORTED width fits its own content box). The Menu Bar
   surface is measured too: its sticky surface spans the viewport and its navigation region uses the
   available width minus the page-edge inset (never the page's own `max-w-page` bound).
 - **header semantic rows** (`header-rows` scenario, NAV1B/NAV1B-V1): with test-owned fixtures the
@@ -364,6 +365,30 @@ tree stays clean.
   into the text column, reaches BENEATH the selector's occupied area at narrow widths, and the
   selector WINS the hit test at its own centre — with no page overflow in either case. Long
   contextual labels wrap INSIDE the row below, which never lets a control jump into the top row.
+- **header identity across the nine viewport categories** (`header-identity` scenario,
+  NAV1B-V2/FOUNDATION-UI-R1C/R1D/R1E): every identity kind × all 27 named widths × 9 categories, with
+  the requested width itself asserted. The row wraps by CONTENT (no breakpoint decides it), the cluster
+  is entirely below the brand exactly when their permitted widths cannot coexist, and nothing overlaps.
+  The mark's DISPLAY contract is measured as real rendered geometry: never wider than the header's own
+  maximum (`--ui-site-header-logo-max-inline-size`, 280px) or than the width available to it, never
+  taller than the shared display size, never enlarged when the file is smaller than both, scaled to fit
+  rather than cropped or stretched, and its intrinsic ratio preserved — for a compact square mark, a
+  naturally small 24×24 mark, a conventional horizontal lockup, a header band wider than the maximum
+  and an exceptionally wide 64:1 lockup. FOUNDATION-UI-R1F extends the scenario with the OPTIONAL compact
+  alternative: with `site.assets.logoCompact` configured the browser's own answer (`img.currentSrc`) is read
+  at every one of the 27 widths — the compact artwork below 600 CSS pixels, the primary logo at 600 and wider —
+  the intrinsic size of what LOADED is compared across the boundary (so a different file really was fetched),
+  every selected artwork must have completed loading, and resizing 600 → 599 → 600 → 599 WITHOUT reloading must
+  follow the boundary in both directions. Spoke-scoped compact artwork is proved on the test-owned Hub, where each
+  member authors its own differently-sized compact mark and the selection must be served from that member's own
+  namespace. FOUNDATION-UI-R1G adds the DELIVERY contract to every measured width: whichever artwork the browser
+  selected was fetched from THIS DOCUMENT'S OWN ORIGIN (`img.currentSrc` against `window.location.origin`) — never
+  from the origin the configuration names, which is canonical source identity only — and it carries the basename the
+  width entitles the visitor to (the compact artwork below 600 CSS pixels, the primary logo at 600 and wider). A
+  variant that configures no compact artwork composes no `<source>` at all and shows the primary logo
+  at every width (the unchanged case), and the text fallback renders no image. No document overflow at any
+  supported width (and a documented below-280 fallback), unchanged behaviour at tablet and desktop widths, and the
+  rail, drawer, bottom bar, selectors and keyboard/pointer interactions protected throughout.
 - **bottom navigation layout** (`bottom-nav-wrap` scenario, NAV1A): the sticky bar's rows
   are the `<li>` children of its `<ul>`, so the LIST owns their flow and wrapping. Proven
   with test-owned navigation fixtures on the disposable copy: SHORT labels share ONE row at

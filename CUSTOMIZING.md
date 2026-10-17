@@ -319,7 +319,7 @@ so the destination is presented with the collapsed, sticky rail; the rail's own 
 control still closes it without navigating. Viewport width does not substitute
 a drawer or a header disclosure, so Sidebar mode composes no drawer, no `Show navigation` band and no
 header affordance at all. Nothing in the shell scrolls sideways at the supported widths: the layout
-has a deliberate **320px floor** (`--ui-shell-min-inline-size`), so every width from 320px up — rail
+has a deliberate **280px floor** (`--ui-shell-min-inline-size`), so every width from 280px up — rail
 closed or open — fits the viewport without a horizontal scrollbar, and a narrower window scrolls
 horizontally by design instead of deforming the layout. Menu Bar mode uses a full-width sticky
 bottom navigation at every viewport width: the top navigation is not part of Menu Bar mode. The
@@ -1392,7 +1392,8 @@ configurable through the validated `site.assets.*` block:
 
 | Asset | Default file | Configuration (`site.assets.*`) |
 | --- | --- | --- |
-| Brand logo — the `logo-header` role (JSON-LD **and** the rendered header mark) | `logo-header.svg` in the role namespace (BRAND_ASSETS.md §1.1) | `site.assets.logo` |
+| Brand logo — the `logo-header` role (JSON-LD **and** the rendered header mark) | `logo-header.svg` in the role namespace (BRAND_ASSETS.md §1.1) | `site.assets.logo` — rendered inside the shared display size **and** the header's own maximum inline size (280px by default, `--ui-site-header-logo-max-inline-size`); an exceptionally wide or intricate mark may be better served by artwork designed for that size, or by the text-brand fallback (omit `site.assets.logo`) |
+| Compact brand logo — the optional `logo-compact` role (the header's narrow-viewport mark) | `logo-compact.svg` in the role namespace (BRAND_ASSETS.md §1.1) | `site.assets.logoCompact` (FOUNDATION-UI-R1F/R1G) — optional, **absent by default**, and valid only beside `site.assets.logo`: the browser shows it below 600 CSS pixels and the primary logo at or above that width. Author it under this Spoke's `content/assets/branding/**` so the asset mirror installs it; a compact value that cannot be served from this Spoke's namespaces fails the build — and because runtime artwork is always delivered from this deployment's own origin, the value must be ON that origin (a CDN URL cannot be delivered) and a generated path must name a namespace this context may serve and a file THAT namespace holds |
 | Open Graph / social share image — the `ogImage` role (ONE **global** image serving `og:image` **and** `twitter:image`; the generated per-locale route is the fallback) | `og-image.png` in the role namespace (BRAND_ASSETS.md §1.1) (the approved 1200 × 630 replacement for the generated route, used when a deployment configures the role) | `site.assets.ogImage` |
 | Browser favicon — the `favicon` role (the **browser tab / bookmark icon** only; it is **not** an installable-app icon) | `favicon.svg` in the role namespace (BRAND_ASSETS.md §1.1) (the single authoritative browser-icon route) | `site.assets.favicon` |
 | Footer logo — the `logo-footer` role | `logo-footer.svg` in the role namespace (BRAND_ASSETS.md §1.1) | `site.assets.logoFooter` |

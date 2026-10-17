@@ -94,9 +94,24 @@ const PROBE = `(() => {
   const identity = document.querySelector('.ui-site-header-identity');
   const layout = document.querySelector('[data-ui-layout-switcher]');
   const language = document.querySelector('[data-selector="language"]');
+  const row = document.querySelector('.ui-site-header-top');
+  const inner = document.querySelector('.ui-site-header > div');
   const options = select ? [...select.options] : [];
-  const rectOf = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return { width: Math.round(r.width), height: Math.round(r.height), right: Math.round(r.right), top: Math.round(r.top) }; };
+  const rectOf = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return { left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top), bottom: Math.round(r.bottom), width: Math.round(r.width), height: Math.round(r.height) }; };
   const selectRect = rectOf(select);
+  const identityRect = rectOf(identity);
+  const clusterRect = rectOf(cluster);
+  // R1 / UI-R1 — the row's own flow and content box, so "one line without overlap" and "entirely below the brand"
+  // are claims about the rendered geometry rather than about a class string.
+  const rowCs = row ? getComputedStyle(row) : null;
+  const innerCs = inner ? getComputedStyle(inner) : null;
+  const contentLeft = inner ? Math.round(inner.getBoundingClientRect().left + (parseFloat(innerCs.paddingLeft) || 0)) : null;
+  const contentRight = inner ? Math.round(inner.getBoundingClientRect().right - (parseFloat(innerCs.paddingRight) || 0)) : null;
+  const clusterBelowBrand = identityRect && clusterRect ? clusterRect.top >= identityRect.bottom - 1 : null;
+  const brandClusterOverlap =
+    !!identityRect && !!clusterRect &&
+    identityRect.left < clusterRect.right - 1 && clusterRect.left < identityRect.right - 1 &&
+    identityRect.top < clusterRect.bottom - 1 && clusterRect.top < identityRect.bottom - 1;
   const hittable = (() => {
     if (!select || !selectRect || selectRect.width === 0) return false;
     const r = select.getBoundingClientRect();
@@ -111,9 +126,18 @@ const PROBE = `(() => {
     selected: options.filter((option) => option.selected).map((option) => option.value),
     selectRect,
     hittable,
-    clusterRect: rectOf(cluster),
+    clusterRect: clusterRect,
     clusterWrapCapable: !!cluster && typeof cluster.className === 'string' && cluster.className.includes('flex-wrap'),
-    identityRect: rectOf(identity),
+    identityRect: identityRect,
+    rowDisplay: rowCs ? rowCs.display : null,
+    rowWrap: rowCs ? rowCs.flexWrap : null,
+    rowOverflow: row ? row.scrollWidth - row.clientWidth : null,
+    contentLeft: contentLeft,
+    contentRight: contentRight,
+    clusterBelowBrand: clusterBelowBrand,
+    brandClusterOverlap: brandClusterOverlap,
+    clusterInsideContent: !!clusterRect && contentLeft !== null && contentRight !== null && clusterRect.left >= contentLeft - 1 && clusterRect.right <= contentRight + 1,
+    identityAtTheLeftEdge: !!identityRect && contentLeft !== null && Math.abs(identityRect.left - contentLeft) <= 1,
     layoutPresent: !!layout,
     layoutRect: rectOf(layout),
     languagePresent: !!language,
@@ -355,9 +379,15 @@ async function proveVisibility(harness, rows, cdp, port) {
   harness.check(rows, "rich.cluster.wrapCapable", !!rich.clusterWrapCapable, `clusterWrapCapable=${rich.clusterWrapCapable}`);
 }
 
+/**
+ * R1 / UI-R1 — THE WIDTHS THE ROW CONTRACT IS MEASURED AT: the narrowest supported phone through desktop, the
+ * widths the DO names, and the band in which the mode control used to change rows by itself.
+ */
+const RESPONSIVE_WIDTHS = [320, 360, 390, 430, 480, 700, 1024, 1280];
+
 /** RESPONSIVENESS: present, usable, nothing pushed out of the viewport, other controls wrapping not vanishing. */
 async function proveResponsive(harness, rows, cdp, port) {
-  for (const width of [390, 700, 1024, 1280]) {
+  for (const width of RESPONSIVE_WIDTHS) {
     for (const [label, spoke] of [["bare", member("primary")], ["rich", member("docs")]]) {
       await cdp.setViewport(width, 900);
       await cdp.navigate(urlFor(spoke.hostname, port));
@@ -374,6 +404,47 @@ async function proveResponsive(harness, rows, cdp, port) {
         `responsive.${label}.w${width}.identity.stillVisible`,
         !!seen.identityRect && seen.identityRect.width > 0,
         `identityRect=${JSON.stringify(seen.identityRect)}`,
+      );
+      // R1 / UI-R1 — THE ROW CONTRACT, MEASURED, WITH THE SPOKE SWITCHER IN THE CLUSTER: the row wraps by content,
+      // the brand keeps the left edge of the padded content, the cluster shares the brand's line or sits ENTIRELY
+      // BELOW it (right-anchored either way, inside the content box), the two never overlap, and the row itself
+      // never becomes a scroll container. The arrangement is named in every check.
+      const arrangement = seen.clusterBelowBrand === true ? "cluster-below" : "one-line";
+      harness.check(
+        rows,
+        `responsive.${label}.w${width}.row.wrapsByContent`,
+        seen.rowDisplay === "flex" && seen.rowWrap === "wrap",
+        `display=${seen.rowDisplay} wrap=${seen.rowWrap}`,
+      );
+      harness.check(
+        rows,
+        `responsive.${label}.w${width}.neverOverlapsTheBrand`,
+        seen.brandClusterOverlap === false,
+        `identity=${JSON.stringify(seen.identityRect)} cluster=${JSON.stringify(seen.clusterRect)}`,
+      );
+      harness.check(
+        rows,
+        `responsive.${label}.w${width}.identity.keepsThePaddedLeftEdge`,
+        seen.identityAtTheLeftEdge === true,
+        `identity=${JSON.stringify(seen.identityRect)} contentLeft=${seen.contentLeft}`,
+      );
+      harness.check(
+        rows,
+        `responsive.${label}.w${width}.${arrangement}.clusterIsRightAnchored`,
+        !!seen.clusterRect && seen.contentRight !== null && Math.abs(seen.contentRight - seen.clusterRect.right) <= 1,
+        `right=${seen.clusterRect && seen.clusterRect.right} contentRight=${seen.contentRight}`,
+      );
+      harness.check(
+        rows,
+        `responsive.${label}.w${width}.${arrangement}.clusterInsideTheContentBox`,
+        seen.clusterInsideContent === true,
+        `cluster=${JSON.stringify(seen.clusterRect)} inside=${seen.clusterInsideContent}`,
+      );
+      harness.check(
+        rows,
+        `responsive.${label}.w${width}.row.doesNotScroll`,
+        seen.rowOverflow !== null && seen.rowOverflow <= 0,
+        `rowOverflow=${seen.rowOverflow}`,
       );
       if (label === "rich") {
         // WRAP, DO NOT DISAPPEAR. At every width BOTH controls must remain present, visible and inside the

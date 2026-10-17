@@ -1744,11 +1744,13 @@ which exists so a deployment can demonstrate the same site in two presentations.
   closed rail, an open desktop/tablet rail and the mobile overlay alike; nothing about the rail's
   geometry, padding, divider or stacking changes, and an opened overlay can never let page content
   blend through its text.
-- **THE PAGE LAYOUT HAS A DELIBERATE MINIMUM WIDTH** (NAV1D-V2). `--ui-shell-min-inline-size`
-  (320px, the platform's established support boundary) is applied to the shell frame only BELOW that
+- **THE PAGE LAYOUT HAS A DELIBERATE MINIMUM WIDTH** (NAV1D-V2, FOUNDATION-UI-R1D). `--ui-shell-min-inline-size`
+  (280px, the platform's supported minimum viewport width) is applied to the shell frame only BELOW that
   boundary. At and above it the layout fits the viewport's own content box — no horizontal scrollbar,
   with the rail closed or open — and a narrower viewport scrolls horizontally instead of deforming the
-  layout.
+  layout. The floor must sit BELOW the supported minimum, never at it: a floor AT a supported width pins
+  the frame wider than the window itself, which made a 280px window hold a WIDER content box than a 320px
+  one (and therefore the arrangement its content could not fit one step up) while scrolling sideways.
 - **MENU BAR MEANS THE STICKY BOTTOM BAR AT EVERY WIDTH** (NAV1B). The top navigation bar
   presentation is no longer part of Menu Bar mode: the layout's preset also CLOSES its ≥md top
   menu (`topMenu: "closed"` — the shipped three-state menu contract), so no ≥md header
@@ -1790,14 +1792,39 @@ which exists so a deployment can demonstrate the same site in two presentations.
   disclosure is composed by the ENGINE at the SIDEBAR BOUNDARY (`sidebarLead`, above the content
   row) for exactly that reason: inside the header it migrated between the rows as the visitor
   controls changed width, which is the reported defect.
-- **A GRAPHIC IDENTITY UNDERLAYS THE SELECTOR — IT DOES NOT REFLOW AROUND IT** (NAV1B-V1). The
-  owner's rule distinguishes the two identity kinds, and so does the shell: a text identity wraps
-  inside its own column, while a configured logo keeps the row's ONE track (so its clamp is the
-  header's content width — never a narrow column, never shrunk, never distorted) and may continue
-  beneath the selector's occupied area, the selector staying right-aligned in the same cell and
-  painting ABOVE it (`.ui-site-header-top--graphic` in the stylesheet). Nothing becomes
-  interactive: the graphic keeps its existing identity semantics and the selector keeps every
-  pointer event inside its own box.
+- **A GRAPHIC IDENTITY IS BOUNDED, AND THE CONTROL CLUSTER MOVES — IT IS NEVER COVERED** (NAV1B-V2,
+  FOUNDATION-UI-R1E). The owner's rule distinguishes the two identity kinds, and the row expresses
+  both WITHOUT any overlap: the TOP row is a WRAPPING flex row, so the arrangement follows CONTENT
+  versus the available width rather than a viewport breakpoint. A text identity wraps inside its own
+  column; a configured logo is bounded in BOTH dimensions — the header's own maximum inline size
+  (`--ui-site-header-logo-max-inline-size`, 280px by default) and the shared display size
+  (`--ui-logo-display-size`, 32px) as its height maximum — with the width actually available to it
+  always the stronger limit, its intrinsic aspect ratio always preserved, and never an enlargement of
+  a mark that is already smaller than both limits. The logo is NOT reduced merely to preserve a shared
+  row: where its permitted width and the cluster's controls cannot coexist, the ENTIRE cluster moves to
+  the next line, right-aligned beneath the brand. There is no `z-index`, no positioning, no opaque
+  surface and no shared cell in this row, so the brand can never be covered and the selector keeps
+  every pointer event inside its own box. The maximums are RENDERING limits and say nothing about the
+  authored artwork's SOURCE dimensions; exceptionally wide or intricate artwork may still be better
+  served by a more suitable logo or by the text-brand fallback (`site.assets.logo` absent). The FOOTER
+  mark keeps its own unchanged contract (a fixed display size, natural width, never cropped).
+- **ONE OPTIONAL COMPACT ARTWORK, SELECTED BY THE BROWSER** (FOUNDATION-UI-R1F). A deployment may configure
+  `site.assets.logoCompact` beside `site.assets.logo`: below 600 CSS pixels the header shows the compact artwork,
+  at 600 and wider the primary logo, with no compact artwork the primary logo at every width, and with no logo at
+  all the text brand. The header composes ONE `<picture>` with an optional `<source>` whose `media` is the boundary
+  and ONE `<img>` whose `src` is the primary logo, so the BROWSER performs the selection in its own source-selection
+  step: no client state, no resize listener, no hydration-dependent switching and no CSS-hidden duplicate image, and
+  the answer is the same on the first paint as after any resize. The artwork is authored through the established
+  `content/assets/**` source tree and served from the runtime namespace that owns it. Runtime artwork is always
+  DELIVERED from the deployment's own origin — a configured absolute URL is canonical SOURCE identity, never a
+  delivery instruction — so a compact value on another origin is refused, and a value that addresses generated
+  artwork this context cannot serve fails the BUILD: not only a file no namespace holds, but a path naming
+  ANOTHER Spoke's namespace, a per-Spoke namespace that does not hold the named file, or a nested path the flat
+  mirror never installs (the rule validates the referenced NAMESPACE, not just the basename — FOUNDATION-UI-R1G).
+  That build refusal is the one deliberate exception to the shared "missing file renders nothing" rule. Both kinds
+  obey the display
+  contract above verbatim, and the compact leaf is a HEADER PRESENTATION input only — `site.assets.logo` remains the
+  authority for JSON-LD and every other consumer. The shipped capsule configures neither leaf, so it is unchanged.
 - **One exposed navigation, by construction.** The shell composes the structures of both
   layouts and marks each one with the layouts it is the active navigation for
   (`data-ui-shell-part="rail" | "top-nav" | "bottom-bar" | "mobile-drawer"` +

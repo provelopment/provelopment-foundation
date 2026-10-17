@@ -395,11 +395,16 @@ describe("NAV1D-V2/V3 — an open sidebar, by band, on the page edge", () => {
   });
 
   it("declares the deliberate minimum layout width BELOW the supported boundary", () => {
-    expect(globals).toMatch(/--ui-shell-min-inline-size:\s*20rem/);
-    // The floor is scoped to viewports NARROWER than the boundary: at and above it the layout fits
-    // the viewport's own content box (a 320px window therefore has no horizontal scrollbar).
+    // FOUNDATION-UI-R1D — the platform's supported minimum viewport width is 280px, so its floor must sit BELOW
+    // it: a floor AT a supported width pins the frame wider than the window itself, which is what made a 280px
+    // window keep the one-line arrangement its content could not fit at 320px while scrolling sideways.
+    const token = /--ui-shell-min-inline-size:\s*([\d.]+)rem/.exec(globals)?.[1];
+    expect(token).toBe("17.5");
+    expect(Number(token) * 16).toBe(280);
+    // The floor is scoped to viewports NARROWER than the supported minimum: at and above it the layout fits
+    // the viewport's own content box (a 280px window therefore has no horizontal scrollbar).
     expect(globals).toMatch(
-      /@media \(max-width: 19\.99rem\) \{\r?\n\s*\.ui-shell-frame \{\r?\n\s*min-inline-size: var\(--ui-shell-min-inline-size\);/,
+      /@media \(max-width: 17\.49rem\) \{\r?\n\s*\.ui-shell-frame \{\r?\n\s*min-inline-size: var\(--ui-shell-min-inline-size\);/,
     );
     expect(engineSource).toContain("ui-shell-frame flex flex-col flex-1");
   });

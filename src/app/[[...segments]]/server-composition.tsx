@@ -68,7 +68,7 @@ import { RegionStructuredData } from "@/components/site/region-structured-data";
 import { SafeMarkdownContent } from "@/components/site/safe-markdown-content";
 import { Heading } from "@/components/ui/heading";
 import { Section } from "@/components/ui/section";
-import { assertConfiguredIconAssetsExistFor } from "@/config/assets";
+import { assertConfiguredCompactLogoAvailableFor, assertConfiguredIconAssetsExistFor } from "@/config/assets";
 import type { Dictionary } from "@/config/i18n/dictionary";
 import type { SpokeRuntimeContext } from "@/config/installation-runtime";
 import { createRuntimeAssetOwnershipResolver } from "@/config/runtime-asset-resolver";
@@ -184,6 +184,12 @@ export function spokeServerComposition(context: SpokeRuntimeContext): SpokeServe
   // never be validated against another context's artwork.
   const assets = createRuntimeAssetOwnershipResolver(context.runtimeAssetNamespaces);
   assertConfiguredIconAssetsExistFor(assets, siteConfig);
+  // FOUNDATION-UI-R1F — …and the OPTIONAL compact header logo gets the same treatment for the reason it exists:
+  // it is only ever SERVED (never authored) through a runtime namespace, so a configured compact asset that this
+  // context cannot serve is a build-time error rather than a broken responsive image at the 600px boundary.
+  // Asked of THAT resolver, exactly like the icon rule above, so a Spoke can only ever be judged by the artwork
+  // it may serve — never by another Spoke's private namespace.
+  assertConfiguredCompactLogoAvailableFor(assets, siteConfig);
 
   return {
     context,

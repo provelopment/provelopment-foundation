@@ -256,10 +256,11 @@ describe("P12-HG — layout-independence contract", () => {
     expect(engine).toContain('id="shell-mobile-nav"');
     expect(engine).toContain("ui-shell-sidebar-disclosure");
     // The header still exposes its brand link + navigation landmark.
-    // VIS1C — the brand link now carries the >= 44px hit-area contract; the lockup
-    // inside it keeps its own visual scale (asserted on the next line).
+    // VIS1C — the brand link now carries the >= 44px hit-area contract; the mark
+    // inside it keeps its own visual scale from the stylesheet (FOUNDATION-UI-R1E:
+    // a maximum inline size and a maximum block size, never a forced one).
     expect(siteHeader).toContain('className="ui-site-header-brand inline-flex min-h-11 min-w-11 items-center"');
-    expect(siteHeader).toContain("ui-site-header-logo h-8 w-auto");
+    expect(siteHeader).toContain('className="ui-site-header-logo"');
     // No z-index/positioning on the band that could confine the fixed panels.
     // (`background-position` is a paint-only longhand, so match the properties,
     // not the substring.)

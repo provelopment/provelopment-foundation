@@ -180,6 +180,7 @@ Both are fully supported and neither requires a code change:
       "ogImage":       "https://cdn.example.com/content/assets/my-share.png",
       "favicon":       "https://cdn.example.com/content/assets/my-icon.svg",
       "logoFooter":    "https://cdn.example.com/content/assets/my-logo-footer.svg",
+      "logoCompact":   "https://cdn.example.com/content/assets/my-logo-compact.svg",
       "banners":       { "home": "https://cdn.example.com/content/assets/banner-home.png" },
       "backgrounds":   { "all": "https://cdn.example.com/content/assets/background-all.webp" },
       "footerGraphic": "https://cdn.example.com/content/assets/footer-graphic.png",
@@ -370,6 +371,31 @@ configured value + NO backing file
            (never a placeholder, never a broken <img>, never a 404)
 ```
 
+> **ONE EXCEPTION, and it is deliberate: the compact header logo
+> (`site.assets.logoCompact`, §10.1.4) is a LOUD BUILD FAILURE when it is configured but cannot be served.** The
+> distinction is what the leaf MEANS: every other graphic role may legitimately point at artwork this engine does
+> not serve (a CDN, hand-published files), while the compact alternative exists precisely so a deployment's own
+> artwork is served from the runtime namespace that owns it — and it is the only role that PROMISES the artwork it
+> names will actually be shown at the widths it exists for. Two contracts are therefore enforced
+> (FOUNDATION-UI-R1G):
+>
+> - **ORIGIN.** Runtime image DELIVERY is always the deployment's own origin: a configured absolute URL is canonical
+>   SOURCE identity, and the browser fetches its PATHNAME from the current origin whatever host the value names
+>   (see §3). A value naming another origin can therefore never be delivered as authored, so it fails the build —
+>   naming both origins and the fix — instead of rendering a same-origin request for a path this deployment does not
+>   serve (or being answered by a local file that merely shares the basename). A same-origin path, and a value on the
+>   deployment's own origin, are unaffected.
+> - **NAMESPACE.** A value that addresses generated artwork — under `/assets/**`, under `/spokes/<segment>/assets/**`,
+>   or anywhere in `/spokes/**` — must name a namespace THIS context may serve (another Spoke's namespace is refused
+>   even when this Spoke holds a file with the same basename), must address one of that namespace's files FLAT exactly
+>   as the mirror installs them, and the file must be held by the namespace the path NAMES (a per-Spoke path is never
+>   answered by another namespace's file). The SHARED platform namespace keeps its established ownership rule:
+>   availability by basename, so a Spoke's own artwork for a role is served from that Spoke's namespace (§1.1). Every
+>   refusal names `site.assets.logoCompact`, the file and the namespaces searched.
+>
+> A same-origin path OUTSIDE the generated namespace space (`/uploads/logo-compact.svg`) is left to the author,
+> exactly like every other role: nothing is generated there, so the engine cannot know whether it is served.
+
 Two deliberate differences:
 
 | Family | A configured name with no backing file is… |
@@ -400,6 +426,7 @@ change to swap.**
 | --- | --- | --- | --- | --- | --- |
 | `logo-header.svg` | `site.assets.logo` | SVG (recommended for the header mark and JSON-LD) | PNG · WebP | **yes** | **no** |
 | `logo-footer.svg` | `site.assets.logoFooter` | SVG recommended | PNG · WebP | **yes** | **no** |
+| `logo-compact.svg` | `site.assets.logoCompact` | SVG recommended (a compact SQUARE reading of the mark) | PNG · WebP | **yes** — absent by default, valid only with `site.assets.logo` (see §10.1.4) | **no** |
 | `favicon.svg` | `site.assets.favicon` | SVG recommended | PNG · ICO | **yes** | **no** |
 
 > These three are **not** screened for file existence: the configured value is
@@ -486,7 +513,7 @@ artwork; it documents only the file/rendering contract and the substitution path
 | Recommended production master | the approved Foundation living master (`logos/lockup-horizontal.svg` geometry: `viewBox="0 0 646.75 158"`, ratio ≈ 4.09:1). **RECOMMENDED only** |
 | Required SVG viewBox | none — any viewBox renders. Set `viewBox` so the mark scales predictably |
 | Transparency requirement | **RECOMMENDED:** transparent background. The header surface colour varies by theme, so an opaque canvas shows as a rectangle |
-| Runtime sizing | **HARD:** rendered at `height: 2rem` (32px) with `width: auto`, `max-width: 100%`, `object-fit: contain` → aspect ratio preserved, never distorted, never cropped |
+| Runtime sizing | **HARD (FOUNDATION-UI-R1E):** rendered inside BOTH maxima — the header's own maximum inline size `--ui-site-header-logo-max-inline-size` (280px by default) and the shared display size `--ui-logo-display-size` (32px) as its height maximum — with the width actually available to the mark always the stronger limit, `inline-size`/`block-size: auto`, `object-fit: contain` → aspect ratio preserved, never distorted, never cropped, and never enlarged when the file is already smaller than both limits. The maximums are RENDERING limits: the source artwork may be any size (a 4000px-wide master simply renders smaller) |
 | Runtime crop behaviour | **HARD: never cropped.** There is no `cover` and no clipping in this path |
 | Position / anchor | in flow, at the start of the header's left brand slot, inside the brand `<a href="/{locale}">` |
 | Repetition | once per page |
@@ -511,8 +538,17 @@ artwork; it documents only the file/rendering contract and the substitution path
 | Recommended production master | **the SAME coloured source as the header** — `content/assets/branding/logos/lockup-horizontal.svg`, mirrored into `logo-footer.svg` (owner ruling, 2026-09 closure pass: the footer uses the coloured lockup, not the monochrome one). **RECOMMENDED only**; the monochrome `lockup-mono.svg` remains a retained optional source asset |
 | Required SVG viewBox | none |
 | Transparency requirement | **RECOMMENDED:** transparent. The mark sits beside the copyright line on the footer surface |
-| Runtime sizing | **HARD:** `height: var(--ui-logo-display-size)` = `2rem` (32px), `width: auto`, `max-width: 100%` → **the SAME displayed size as the header logo** (owner ruling, 2026-09) with the aspect ratio preserved; never cropped. ONE token governs both logo roles |
+| Runtime sizing | **HARD:** `height: var(--ui-logo-display-size)` = `2rem` (32px), `width: auto`, `max-width: 100%` → the SAME display size the header mark is capped at (owner ruling, 2026-09) with the aspect ratio preserved; never cropped. The ONE display-size token governs both logo roles; the HEADER additionally carries its own maximum inline size (FOUNDATION-UI-R1E), and this role is deliberately unchanged by it — its display size is exact, not a maximum |
 | Runtime crop behaviour | **HARD: never cropped** |
+
+> **FOUNDATION-UI-R1E — EXCEPTIONALLY WIDE OR INTRICATE ARTWORK.** The header mark is bounded by a
+> maximum inline size (280px by default) as well as by the display size, so a very wide lockup is
+> scaled down rather than given the header's whole width. Where the permitted width of the mark and
+> the header's controls cannot coexist, the controls move to the next line beneath it. Artwork that
+> becomes illegible at that size — an extremely wide or highly detailed lockup — is an ARTWORK choice,
+> not a framework limitation: the author may supply a mark designed for the small display size or use
+> the text-brand fallback instead (omit `site.assets.logo`), and the mark's own source dimensions are
+> otherwise unrestricted (a 4000px-wide master is perfectly acceptable).
 | Position / anchor | inline, immediately before the `© <year> <site name>` line |
 | Repetition | once per page |
 | Engine recolouring | **HARD: none** |
@@ -550,6 +586,33 @@ artwork; it documents only the file/rendering contract and the substitution path
 | Replacement procedure | §4 |
 | Requires code change to swap? | **no** |
 | **Not** an installable-app icon | The Foundation emits **no** web-app manifest, **no** service worker and **no** `apple-touch-icon`. There are **no PWA / installable-app icon roles** to replace. The `viewport` `theme-color` declaration is mobile-browser chrome, not a manifest `theme_color` |
+
+#### 10.1.4 `logo-compact.svg` — the OPTIONAL compact header alternative (FOUNDATION-UI-R1F)
+
+The ONE optional alternative to §10.1.1: a compact reading of the SAME brand that the **browser itself** selects on
+a narrow viewport. It is a header PRESENTATION input and never a second organisation identity — `site.assets.logo`
+(§10.1.1) remains the authority for JSON-LD `Organization.logo` and for every other consumer.
+
+| Field | Value |
+| --- | --- |
+| Runtime filename (served from the role namespace — §1.1) | `logo-compact.svg` is the conventional name; the role is addressed by the URL you configure, which may name any basename in your own namespace |
+| Config role | `site.assets.logoCompact` (**absolute URL**, schema-validated) |
+| Optional? | **yes — and ABSENT BY DEFAULT.** This template ships no compact artwork and configures none: neither `content/assets/placeholders/logo-compact.svg` nor a runtime `logo-compact.svg` exists until a deployment authors one (§6, §7) |
+| Permitted only WITH | `site.assets.logo`. A compact alternative to nothing is refused at validation with an actionable message (configure the primary logo as well, or drop `logoCompact` and keep the text brand) — it is never silently ignored and never promoted to the identity |
+| Selection rule | **HARD: BELOW 600 CSS pixels the compact artwork is shown; AT 600 CSS pixels and wider the primary `logo` is shown.** Expressed as ONE CSS media query on the header's `<source>` (`max-width: 599.98px`), so the BROWSER performs the selection natively — no client state, no resize listener, no hydration pass, no CSS-hidden duplicate image. The rule is a function of VIEWPORT WIDTH ONLY: it cannot differ by Spoke, Site, locale or selected shell layout |
+| Consumer | the header's identity: ONE `<picture>` containing the optional `<source>` and ONE `<img>` (`src/components/site/site-header.tsx`), whose `<img src>` is always the PRIMARY logo — the fallback for a browser that ignores `<picture>`, for print and for any width at or above the boundary |
+| Source of truth / derivation | a deployment's own `content/assets/branding/**` artwork, authored beside every other role file and mirrored into the owning Spoke's runtime namespace (§1.1) by `pnpm assets:sync` — the same two-tree model, the same mirror, no second asset service and no parallel configuration authority |
+| Required file type | **HARD:** any browser-renderable image. **RECOMMENDED:** SVG — a compact SQUARE mark that stays legible at ~32px |
+| Engine-required dimensions | **HARD: none.** §10.1.1's display limits apply to WHICHEVER artwork the browser selected (see the sizing rows there); a compact source is chosen for its legibility at that size, not to satisfy a required pixel size |
+| Sizing | **HARD:** exactly §10.1.1's contract, unchanged and unweakened — bounded by `--ui-site-header-logo-max-inline-size` (280px) AND the available header content width AND `--ui-logo-display-size` (32px) as its height maximum, intrinsic proportions preserved, never cropped, never distorted, never enlarged when the file is already smaller than both limits, and never a source of document-level horizontal scrolling. The header's flex sizing responds to whichever artwork was selected; the wrapper adds no box of its own (`.ui-site-header-logo-frame`) |
+| Origin rule | **HARD: the value must be on THIS deployment's own origin** — an absolute URL whose origin equals `site.url`, or a same-origin path. Runtime artwork is always DELIVERED from the current origin (§3), so a value on another origin (a CDN or a third-party host) fails the build naming both origins: it can never be fetched as authored. A same-origin path outside the generated namespace space stays the author's latitude, like every other role (FOUNDATION-UI-R1G) |
+| Missing-file behaviour | **HARD: LOUD BUILD FAILURE** when the configured value cannot be served by this context (FOUNDATION-UI-R1G validates the referenced NAMESPACE, not just the basename): a value on another origin, a path naming a runtime namespace this context may not serve (including ANY other Spoke's private namespace — refused even when this Spoke holds a file with the same basename), a nested path inside a declared namespace (the mirror publishes every role FLAT), or a file the NAMED namespace does not hold. The build names `site.assets.logoCompact`, the file and the namespaces searched. This is the ONE deliberate exception to §8, and it is why a compact alternative can never silently become a broken responsive image |
+| Cross-Spoke isolation | **HARD:** the refusal above means a compact artwork is only ever served from the CURRENT Spoke's permitted namespaces; a path aimed at another Spoke's private namespace fails the build, and a basename two Spokes both ship resolves — as every role does — from the OWNING Spoke's namespace (§1.1) |
+| Removal / disable | remove `site.assets.logoCompact`. The primary logo then shows at every width — the state every existing deployment is in, byte for byte |
+| Replacement procedure | §4, exactly as for any role file: replace the source file byte-for-byte and re-run `pnpm assets:sync` (or `pnpm assets:check` to verify) |
+| Requires code change to swap? | **no** |
+| Accessible name | the single `<img>`'s `alt` = the site name; the `<picture>` wrapper adds no accessible element, so ONE accessible image remains at every width (no duplicated identity, no CSS-generated brand text, no overlay) |
+| Footer impact | **none.** §10.1.2's footer contract is untouched by this role |
 
 ### 10.2 Page banners — the `banner-*` family
 

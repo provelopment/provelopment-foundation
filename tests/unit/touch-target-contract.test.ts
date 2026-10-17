@@ -143,8 +143,11 @@ describe("VIS1C — shared brand/home link contract (source guard)", () => {
     expect(classNameLine).toContain("min-w-11");
   });
 
-  it("leaves the lockup artwork at its existing visual scale", () => {
-    expect(source).toContain("ui-site-header-logo h-8 w-auto");
+  it("leaves the lockup artwork to the stylesheet's own display contract", () => {
+    // FOUNDATION-UI-R1E — the mark carries NO utility dimension: its display size is a MAXIMUM in the stylesheet
+    // (a forced `h-8` would stretch a naturally smaller mark and defeat both maxima).
+    expect(source).toContain('className="ui-site-header-logo"');
+    expect(source).not.toContain("ui-site-header-logo h-8");
   });
 });
 

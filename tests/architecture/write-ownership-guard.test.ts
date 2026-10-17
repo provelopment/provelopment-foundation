@@ -152,6 +152,12 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
     "presenting the site-wide notice with a long contact address, one without it) and removes, each behind its " +
     "own dev server — every write through the harness's own guarded writers. The committed fixture, the " +
     "selected deployment and the repository are only ever READ (R1)",
+  "tests/unit/r1f-compact-header-logo.test.ts":
+    "OS temp only: the disposable Installation roots (a manifest plus one copied synthetic-deployment Spoke) and " +
+    "the synthetic runtime NAMESPACES (a directory with real artwork each) it creates for the compact header " +
+    "logo's schema, build-time and cross-Spoke isolation proofs, every one of them removed when the file's tests " +
+    "finish. The committed fixtures, the selected deployment, the canonical deployment and the repository's " +
+    "generated platform namespace are only ever READ (FOUNDATION-UI-R1F)",
   "tests/unit/spoke-host-aliases.test.ts":
     "OS temp only: disposable Installation roots (manifest + one site.config.json per Spoke) it creates for the " +
     "additional-hostname-claim proofs and removes afterwards — no deployment or committed fixture is touched (R1)",
@@ -166,6 +172,16 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
     "OS temp only: the disposable four-Spoke Installation (materialised through that fixture builder) and its " +
     "dev server; the browser reads the rendered pages. Every write goes through the harness's own guarded " +
     "writers, and the copy is removed when the run ends (R1)",
+  "tests/browser/header-identity.scenario.mjs":
+    "OS temp (the disposable copy of the committed synthetic deployment it re-configures for each identity " +
+    "variant, and the disposable four-Spoke Installation that fixture builder authors) plus the GENERATED " +
+    "`public/spokes/<spokeId>/**` namespaces it CLAIMS, materialises its OWN authored test artwork into " +
+    "(each member's PRIMARY identity and — since FOUNDATION-UI-R1F — its COMPACT alternative, both authored by " +
+    "this scenario) and removes again — namespace ROOT included, so no empty namespace is left for the " +
+    "deployment's asset mirror to report. Every write goes through the harness's own guarded writers; the " +
+    "committed fixtures, the " +
+    "selected deployment and the generated PLATFORM namespace are only ever READ, and every dev server it " +
+    "starts is stopped on success and on failure (UI-R1)",
   "tests/support/multihost-installation.mjs":
     "OS temp only: the disposable two-Spoke Installation it authors and the caller removes",
   "tests/support/multi-hub-installation.mjs":

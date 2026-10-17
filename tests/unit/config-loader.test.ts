@@ -1129,6 +1129,27 @@ describe("UI-01 — the ui contract namespace", () => {
     const config = parseSiteConfig({ ...validConfig, site: { ...validConfig.site, assets } });
     expect(config.assets).toEqual(assets);
   });
+  it("maps the FOUNDATION-UI-R1F compact alternative through the loader, and refuses it alone", () => {
+    const assets = {
+      logo: "https://example.com/assets/logo-header.svg",
+      logoCompact: "https://example.com/assets/logo-compact.svg",
+    };
+    const config = parseSiteConfig({ ...validConfig, site: { ...validConfig.site, assets } });
+    expect(config.assets).toEqual(assets);
+    // A compact logo is an ALTERNATIVE, never an identity of its own: without a primary logo the loader refuses
+    // it (the schema's message names the leaf and the fix).
+    expect(() =>
+      parseSiteConfig({
+        ...validConfig,
+        site: {
+          ...validConfig.site,
+          assets: { logoCompact: "https://example.com/assets/logo-compact.svg" },
+        },
+      }),
+    ).toThrow(/logoCompact/);
+  });
+
+
 
   it("rejects a non-URL site.assets value (FS-4)", () => {
     expect(() =>

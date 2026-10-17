@@ -331,6 +331,43 @@ allowlist is the boundary this project accepts. `sanitize-html` (MIT, built on
 htmlparser2) is server-side only, imported by exactly ONE module
 (`src/adapters/markdown/safe-markdown.ts`), and replaceable behind
 `renderSafeMarkdown` — an architecture test asserts the single-importer rule.
+#### Serving and publishing are two answers, not one (TEMPLATE-PV-A1)
+
+A page is SERVABLE when a valid source resolves for it: it renders at its exact URL. It is PUBLISHED when the
+Template's own discovery surfaces advertise it: the sitemap lists it, `alternates.languages` offers it as an
+`hreflang` alternate (and it may become `x-default`), and its own response carries no `noindex`.
+
+Every page is both by default, and it stays that way when it declares nothing — which is every page authored
+before this property existed. A declarative document may narrow the SECOND answer without touching the first:
+
+```json
+{ "schemaVersion": 1, "title": "Preview", "visibility": "unlisted", "sections": [] }
+```
+
+`visibility: "unlisted"` is a PUBLICATION fact owned by the document itself, never a global setting:
+
+- the page is served EXACTLY as authored, at its exact URL, with its own canonical URL;
+- it is left out of the sitemap, because discovery asks the composition's PUBLIC inventory
+  (`PageSources.listPublicRoutes`) rather than its existence inventory (`listRoutes`);
+- it is never offered as an `hreflang` alternate — including `x-default`, so an unlisted default-language
+  representation is not advertised either;
+- its own response says `robots: { index: false, follow: false }`;
+- `robots.txt` is deliberately untouched: it cannot express a per-URL decision, and a global `disallow` would
+  have to name the very URL the author asked to keep out of discovery.
+
+The rule is decided ONCE, in the composition that answers the request: a caller asks `isUnlistedRoute` (or reads
+the resolved page's `visibility`), so precedence (JSON over Markdown) and the Site's locale fallback are never
+re-decided by a sitemap or a metadata builder. Two boundary cases are REFUSED rather than guessed at:
+
+- the RESERVED home document may not be `unlisted`: it is served by the locale root, a Site's own identity URL
+  that every sitemap leads with, so the combination is refused by name (`reservedHomeVisibilityIssue`);
+- a Markdown page has no visibility vocabulary at all: `visibility:` in frontmatter is unsupported metadata, and
+  is refused exactly like any other undeclared key.
+
+An unlisted URL is a DISCOVERY convenience, never a security boundary: it authenticates nobody and guarantees no
+confidentiality. Authentication, authorization and drafts are different capabilities, deliberately not modelled
+here.
+
 #### Declarative JSON page authoring — the second mode's vocabulary (A2)
 
 The Markdown mode is for an ordinary author; the JSON mode is for an advanced one who
@@ -781,7 +818,9 @@ Each locale is treated as a distinct page:
 
 - `<html lang>` reflects the active locale.
 - Pages expose `alternates.languages` (hreflang) including `x-default`.
-- The sitemap lists every route for every supported locale.
+- The sitemap lists every PUBLISHED route for every supported locale — a page whose own document declares
+  `visibility: "unlisted"` is served at its exact URL and advertised nowhere (see
+  [Serving and publishing are two answers, not one](#serving-and-publishing-are-two-answers-not-one-template-pv-a1)).
 
 Adding a new locale is a configuration-level change: register the locale in
 `site.config.json`, add `config/i18n/<code>.json`, and author its content.

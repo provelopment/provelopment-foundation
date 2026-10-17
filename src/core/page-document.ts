@@ -43,11 +43,47 @@
  */
 import { z } from "zod";
 
+import { HOME_CONTENT_SLUG } from "./page-content";
 import { isPageRoutePath } from "./page-route-path";
 import { classifyAuthorUrl } from "./safe-url";
 
 /** The ONE supported envelope version. A document naming another one is refused. */
 export const PAGE_DOCUMENT_SCHEMA_VERSION = 1;
+
+/**
+ * THE PAGE-VISIBILITY VOCABULARY (TEMPLATE-PV-A1)
+ * ===============================================
+ *
+ * Whether a page is ADVERTISED is a publication fact, and the document that describes the page is the only
+ * place it is declared — never a global Site setting and never a per-Spoke switch:
+ *
+ *   `public`    the ordinary page: served at its URL, published in the sitemap and offered as an `hreflang`
+ *               alternate exactly as it always was. This is the DEFAULT, so a document that declares nothing
+ *               is public: every page authored before this property existed keeps the behaviour it had, and
+ *               the envelope version stays `1` (the property is ADDITIVE and OPTIONAL).
+ *   `unlisted`  a page that is DIRECTLY REACHABLE at its exact URL and otherwise undiscoverable: it is
+ *               excluded from the published sitemap inventory, it is never offered as a language alternate,
+ *               and its own response carries `robots: noindex, nofollow`. No alias, no alternate, no
+ *               navigation entry and no `robots.txt` line may name it.
+ *
+ * TWO QUESTIONS ARE DELIBERATELY SEPARATE, and this vocabulary never merges them:
+ *
+ *   SERVABILITY    does a valid page resolve and render at its exact URL? An `unlisted` page does.
+ *   PUBLICATION    should that page appear in automatically generated discovery output? An `unlisted` page
+ *                  does not — while its own URL keeps working for anyone who knows it.
+ *
+ * AN UNLISTED URL IS A DISCOVERY CONVENIENCE, NEVER A SECURITY BOUNDARY. It authenticates nobody, restricts
+ * nothing and must never be asked to carry secrets; authentication and authorization are a different
+ * capability, deliberately not modelled here. A value outside this vocabulary is REFUSED rather than guessed
+ * at (see `pageDocumentSchema`), so a page is never accidentally made undiscoverable — or discoverable — by a
+ * word the platform did not understand.
+ */
+export const PAGE_VISIBILITIES = ["public", "unlisted"] as const;
+
+export type PageVisibility = (typeof PAGE_VISIBILITIES)[number];
+
+/** The visibility a document has when it declares none. Every page ever authored is public. */
+export const PAGE_DEFAULT_VISIBILITY: PageVisibility = "public";
 
 /** Structural bounds. Every one of them is enforced by the schema below. */
 export const PAGE_MAX_SECTIONS = 40;
@@ -516,10 +552,74 @@ export const pageDocumentSchema = z.strictObject({
   }),
   title: headingSchema,
   description: z.string().trim().min(1).max(PAGE_MAX_TEXT).optional(),
+  /**
+   * HOW THIS PAGE IS PUBLISHED (TEMPLATE-PV-A1). Absent → `public` (`PAGE_DEFAULT_VISIBILITY`), which is
+   * every document authored before this property existed — the reason the envelope version does not move.
+   * A value outside the vocabulary is REFUSED, and the refusal names the words this platform understands
+   * rather than guessing at the author's intent.
+   */
+  visibility: z
+    .enum(PAGE_VISIBILITIES, { message: enumMessage(PAGE_VISIBILITIES) })
+    .optional(),
   sections: z.array(pageSectionSchema).max(PAGE_MAX_SECTIONS),
 });
 
 export type PageDocument = z.infer<typeof pageDocumentSchema>;
+
+/**
+ * The visibility a VALIDATED document declares, or the default when it declares none. The ONE reading of the
+ * property: consumers ask this rather than re-spelling `document.visibility ?? …`, so "no marker means public"
+ * is decided in exactly one place.
+ */
+export function pageVisibilityOf(document: PageDocument): PageVisibility {
+  return document.visibility ?? PAGE_DEFAULT_VISIBILITY;
+}
+
+/**
+ * True when a document publishes itself as `unlisted`: reachable at its exact URL, absent from ordinary
+ * discovery. Consumers ask THIS question rather than comparing the value themselves, so the vocabulary and the
+ * comparison cannot drift apart.
+ */
+export function isUnlistedPage(document: PageDocument): boolean {
+  return pageVisibilityOf(document) === "unlisted";
+}
+
+/**
+ * THE RESERVED ROOT DOCUMENT MAY NOT BE UNLISTED (TEMPLATE-PV-A1)
+ * =============================================================
+ *
+ * `unlisted` means "reachable at this exact URL and advertised nowhere". The RESERVED home document has no URL
+ * of its own to be reached at: it is SERVED by the locale ROOT (`/<site>/<locale>`), which is a Site's own
+ * identity URL — the URL every sitemap leads with and `robots.txt` points at. So the combination is not a
+ * narrower kind of publication, it is a contradiction:
+ *
+ *   · the root URL cannot be hidden — a sitemap leads with it, and a `noindex` root would tell a crawler to
+ *     keep out of the Site it was just sent to while every OTHER URL of that Site stays advertised; and
+ *   · silently honouring either half would be a lie about what the author wrote.
+ *
+ * The document is therefore REFUSED, by name, exactly as any other unhonourable document is:
+ * `@/adapters/content/json-page` reports it, so the author is told which file and which property to change
+ * rather than being served something they did not write.
+ *
+ * The rule is deliberately NARROW: it is the reserved `home` route path alone — a page merely NAMED `home`
+ * inside a folder (`offerings/home`) has its own URL and may be `unlisted` freely. A Markdown document has no
+ * visibility vocabulary at all, so it cannot reach this state.
+ *
+ * Returns the refusal sentence, or `null` when the document is acceptable for the route it is authored at.
+ */
+export function reservedHomeVisibilityIssue(
+  document: PageDocument,
+  routePath: string,
+): string | null {
+  if (routePath !== HOME_CONTENT_SLUG || !isUnlistedPage(document)) return null;
+
+  return (
+    `"visibility": "unlisted" is refused on the reserved "${HOME_CONTENT_SLUG}" document: that document is ` +
+    "served at the locale root, which is the Site's own identity URL and is always published, so it cannot be " +
+    "hidden from discovery. Leave this document public, or mark an ordinary page (which has its own URL) " +
+    'as "unlisted" instead.'
+  );
+}
 
 /** `sections[2].items[0].alt` — a precise, greppable place for an author to look. */
 export function formatPageDocumentIssuePath(path: readonly PropertyKey[]): string {

@@ -1060,6 +1060,39 @@ platform code changes are required.
 > That is the documented behavior — localize the file when you want a
 > true per-locale page.
 
+### Keeping a page out of ordinary discovery — `visibility: "unlisted"` (TEMPLATE-PV-A1)
+
+A JSON page may declare how it is PUBLISHED:
+
+```json
+{
+  "schemaVersion": 1,
+  "title": "Preview",
+  "visibility": "unlisted",
+  "sections": []
+}
+```
+
+| Value | What it means |
+| --- | --- |
+| `public` | The ordinary page — and the DEFAULT, so a page that declares nothing is public. Served at its URL, listed in the sitemap, offered as an `hreflang` alternate. |
+| `unlisted` | Reachable at its exact URL and advertised nowhere: still served exactly as authored, but left out of the sitemap, never offered as an `hreflang` alternate (including `x-default`), and its own response carries `robots: noindex, nofollow`. |
+
+Four things are deliberate:
+
+- **It is not privacy.** Anyone who has the URL can open the page. Authentication, authorization and drafts are
+  different capabilities, and none of them is this.
+- **It decides publication, not access.** The page is served exactly as authored, with its own canonical URL, and
+  its own heading and layout are unchanged.
+- **The home document cannot be unlisted.** `content/pages/json/<site>/<locale>/home.json` is served by the locale
+  root — your site's own identity URL — so declaring it `unlisted` is REFUSED: the build stops and names the file.
+  Mark an ordinary page (one with its own URL) instead.
+- **Markdown is unaffected.** The Markdown mode has no visibility vocabulary: a `visibility:` key in Markdown
+  frontmatter is refused as unsupported metadata, and a Markdown page is always public.
+
+The precedence rule above is unchanged and decides this too: when the same route exists in both modes, the WINNING
+document's declaration is the one that counts.
+
 ### Sections, listings and items: folders ARE the model
 
 There is no catalogue, blog, portfolio or testimonials system to configure. **If

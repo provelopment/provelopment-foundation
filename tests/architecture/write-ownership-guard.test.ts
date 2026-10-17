@@ -182,6 +182,19 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
     "committed fixtures, the " +
     "selected deployment and the generated PLATFORM namespace are only ever READ, and every dev server it " +
     "starts is stopped on success and on failure (UI-R1)",
+  // TEMPLATE-PV-A1 — the page-publication contract's own scratch space: one disposable copy of the committed
+  // synthetic fixture (its origin replaced, one regional page configured, its own public/unlisted pages
+  // authored) behind ONE dev server. The committed fixture, the selected deployment and the repository are only
+  // ever READ, and the copy is removed when the run ends.
+  "tests/browser/unlisted-visibility.scenario.mjs":
+    "OS temp only: the disposable copy of the committed synthetic fixture it re-configures and authors its own " +
+    "public and unlisted pages into, behind its own dev server — every write through the harness's own guarded " +
+    "writers, and the copy removed when the run ends (TEMPLATE-PV-A1)",
+  "tests/unit/unlisted-visibility-contract.test.ts":
+    "OS temp only: the disposable one-Spoke Installations it authors for the publication contract's sitemap, " +
+    "metadata, regional and cross-Spoke proofs (manifest, configuration, dictionaries and its own pages), " +
+    "removed when the suite ends; the committed fixture and the selected deployment are only ever READ " +
+    "(TEMPLATE-PV-A1)",
   "tests/support/multihost-installation.mjs":
     "OS temp only: the disposable two-Spoke Installation it authors and the caller removes",
   "tests/support/multi-hub-installation.mjs":

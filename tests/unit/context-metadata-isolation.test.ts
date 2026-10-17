@@ -4,6 +4,10 @@ import path from "node:path";
 
 import { afterAll, describe, expect, it } from "vitest";
 
+import {
+  pageMetadataForContext,
+  spokeServerComposition,
+} from "@/app/[[...segments]]/server-composition";
 import { openGraphImageModelForContext } from "@/app/[site]/[locale]/opengraph-model";
 import { robotsForContext } from "@/app/robots-context";
 import { sitemapForContext } from "@/app/sitemap-context";
@@ -61,6 +65,13 @@ interface SpokeFixture {
   readonly sites?: readonly string[];
   /** Extra authored route this Spoke alone publishes — the inventory difference the sitemap must show. */
   readonly extraRoute?: string;
+  /**
+   * TEMPLATE-PV-A1 — authored routes whose publication is the DIFFERENCE this suite proves: `publicRoutes` are
+   * ordinary declarative documents, `unlistedRoutes` declare `visibility: "unlisted"`. Both are authored at the
+   * same coordinates on every Spoke, so only the Spoke's OWN tree can explain the difference.
+   */
+  readonly publicRoutes?: readonly string[];
+  readonly unlistedRoutes?: readonly string[];
 }
 
 /** One disposable Installation declaring exactly ONE Spoke, with its own config, words and pages. */
@@ -115,6 +126,24 @@ function installation(fixture: SpokeFixture): string {
       `# ${fixture.extraRoute}\n\nOnly this Spoke has it.\n`,
     );
   }
+  // TEMPLATE-PV-A1 — declarative documents at the SAME coordinates on both Spokes, declaring the publication
+  // state that differs between them.
+  for (const route of fixture.publicRoutes ?? []) {
+    write(
+      path.join(spokeRoot, "content", "pages", "json", "ww", "en", `${route}.json`),
+      `${JSON.stringify({ schemaVersion: 1, title: `${route} (public)`, sections: [] }, null, 2)}\n`,
+    );
+  }
+  for (const route of fixture.unlistedRoutes ?? []) {
+    write(
+      path.join(spokeRoot, "content", "pages", "json", "ww", "en", `${route}.json`),
+      `${JSON.stringify(
+        { schemaVersion: 1, title: `${route} (unlisted)`, visibility: "unlisted", sections: [] },
+        null,
+        2,
+      )}\n`,
+    );
+  }
 
   return root;
 }
@@ -131,6 +160,7 @@ const ALPHA: SpokeFixture = {
   tagline: "Alpha tagline",
   marker: "ALPHA_WORDING",
   aboutTitle: "Alpha About",
+  publicRoutes: ["quiet"],
 };
 
 const BETA: SpokeFixture = {
@@ -141,6 +171,7 @@ const BETA: SpokeFixture = {
   aboutTitle: "Beta About",
   sites: ["ww"],
   extraRoute: "beta-only",
+  unlistedRoutes: ["quiet"],
 };
 
 const compositionA = contextOf(installation(ALPHA));
@@ -261,5 +292,37 @@ describe("M14 — robots advertises the context's own sitemap", () => {
     expect(b1.sitemap).toBe("https://beta.example/sitemap.xml");
     // The accepted crawl rules are untouched.
     expect(a1.rules).toEqual({ userAgent: "*", allow: "/" });
+  });
+});
+
+/**
+ * TEMPLATE-PV-A1 — PUBLICATION IS ONE SPOKE'S OWN FACT, ON THE SAME COORDINATES
+ * =============================================================================
+ *
+ * Both Spokes author `ww/en/quiet`; only Alpha publishes it. Every other describe above proves A/B/A/B stability
+ * for facts that come from configuration, dictionaries and pages — and this is the same proof for the publication
+ * fact, which must never leak in from the neighbouring Spoke's tree.
+ */
+describe("TEMPLATE-PV-A1 — an unlisted page is a fact about ONE Spoke's own tree", () => {
+  it("publishes the SAME route in one Spoke's sitemap and not in the other's", async () => {
+    const a1 = (await sitemapForContext(compositionA)).map((entry) => entry.url);
+    const b1 = (await sitemapForContext(compositionB)).map((entry) => entry.url);
+    const a2 = (await sitemapForContext(compositionA)).map((entry) => entry.url);
+
+    expect(a1).toContain("https://alpha.example/ww/en/quiet");
+    expect(b1).not.toContain("https://beta.example/ww/en/quiet");
+    // A/B/A/B: a neighbour's tree cannot change this Spoke's answer, in any order.
+    expect(a2).toEqual(a1);
+  });
+
+  it("takes the response's robots metadata from the Spoke's OWN page", async () => {
+    const a = await pageMetadataForContext(spokeServerComposition(compositionA), ["ww", "en", "quiet"]);
+    const b = await pageMetadataForContext(spokeServerComposition(compositionB), ["ww", "en", "quiet"]);
+
+    expect(a.robots).toBeUndefined();
+    expect(b.robots).toEqual({ index: false, follow: false });
+    // …and each canonical URL is its OWN origin, so neither response describes the other Spoke's page.
+    expect(a.alternates?.canonical).toBe("https://alpha.example/ww/en/quiet");
+    expect(b.alternates?.canonical).toBe("https://beta.example/ww/en/quiet");
   });
 });

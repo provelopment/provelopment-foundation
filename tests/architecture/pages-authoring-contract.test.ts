@@ -196,12 +196,19 @@ describe("pages-authoring contract — exactly two first-class modes", () => {
     expect(existsSync(path.join(srcDirectory, "app/[site]/[locale]/opengraph-image.tsx"))).toBe(true);
   });
 
-  it("gives the sitemap the same inventory the routes use", () => {
+  it("gives the sitemap the same inventory the routes use, narrowed to what PUBLISHES", () => {
     const sitemap = `${read("app/sitemap.ts")}
 ${read("app/sitemap-context.ts")}`;
     expect(sitemap).toContain("createPageSources");
-    // S1 — the inventory is asked PER SITE: `listRoutes(site.code, localePath)`.
-    expect(sitemap).toContain("routes.listRoutes");
+    // S1 — the inventory is asked PER SITE: `listPublicRoutes(site.code, localePath)`.
+    // TEMPLATE-PV-A1 — the sitemap asks the PUBLISHED routes, so a page whose own document publishes itself as
+    // `unlisted` is served at its exact URL and advertised nowhere. `listRoutes` (what EXISTS) is the operation
+    // the route and the composition use; discovery must not fall back to the unfiltered inventory.
+    expect(sitemap).toContain("routes.listPublicRoutes");
+    // …and a URL that comes from CONFIGURATION (a regional landing or a configured regional page) is judged by
+    // the SAME composition, so a URL is never advertised merely because a binding names it.
+    expect(sitemap).toContain("isUnlistedRoute");
+    expect(sitemap).not.toContain("routes.listRoutes");
     expect(sitemap).not.toContain("pagesRepository");
     expect(sitemap).not.toContain("PageContentRepository");
   });

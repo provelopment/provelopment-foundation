@@ -31,6 +31,7 @@ import {
   PAGE_SECTION_TYPES,
   describePageDocumentIssues,
   pageDocumentSchema,
+  reservedHomeVisibilityIssue,
   type PageDocument,
 } from "@/core/page-document";
 import { isPageRoutePath } from "@/core/page-route-path";
@@ -124,6 +125,21 @@ export function parseJsonPageFile(
   }
 
   const document = result.data;
+
+  // TEMPLATE-PV-A1 — A VALID DOCUMENT CAN STILL BE AN UNHONOURABLE ONE. The schema decides the vocabulary;
+  // this decides whether the DOCUMENT may make the claim it makes on the ROUTE it is authored at. The reserved
+  // home document is served by a locale root, whose URL is always published, so `unlisted` is refused there —
+  // by name, through the ONE `reservedHomeVisibilityIssue` (`@/core/page-document`), never by a second spelling
+  // of the rule. The refusal travels the same path as every other document error: it names the file and the
+  // property, it stops the build, and it is never a silent reinterpretation.
+  const reservedIssue = reservedHomeVisibilityIssue(document, routePath);
+  if (reservedIssue !== null) {
+    throw new Error(
+      `Invalid page document "${file}":\n  - ${reservedIssue}\n` +
+        "A page is never silently reinterpreted from what its author declared.",
+    );
+  }
+
   return {
     routePath,
     locale,

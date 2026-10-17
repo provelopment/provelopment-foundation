@@ -79,9 +79,10 @@ import type { SiteConfig } from "@/config/site-config";
 import { effectiveSitePageConfig } from "@/config/site-page-config";
 import { siteDescriptionForLocale } from "@/config/site-metadata";
 import { spokeSwitcherForRenderingSpoke } from "@/config/spoke-routing";
-import { buildLanguageAlternates } from "@/core/locale";
+import { buildLanguageAlternates, type LanguageAlternateLocale } from "@/core/locale";
 import { resolveSiteNotice } from "@/core/notice";
 import { HOME_CONTENT_SLUG } from "@/core/page-content";
+import { isUnlistedPage } from "@/core/page-document";
 import { pageRoutePathSegments } from "@/core/page-route-path";
 import {
   bindingsForSite,
@@ -90,6 +91,7 @@ import {
   hasPageEntry,
   regionalPath,
   regionsForLocale,
+  resolveLocaleDestination,
 } from "@/core/regional-pages";
 import { buildOpenGraphData, buildTwitterData, resolveOgImageUrl } from "@/core/seo-metadata";
 import {
@@ -339,19 +341,147 @@ export async function staticParamsForContext(
   return params;
 }
 
-/** The context's site locales, as an hreflang alternates map for one route path. */
-function siteAlternates(
+/**
+ * The context's Site locales, as an hreflang alternates map for one route path — PUBLISHED targets only.
+ *
+ * TEMPLATE-PV-A1 — AN ALTERNATE IS AN ADVERTISEMENT, SO IT MAY NOT NAME AN UNLISTED URL. Both of the Site's
+ * inputs to the builder are therefore asked about the representation that would actually answer THEM:
+ *
+ *   · a locale whose own resolved source declares `visibility: "unlisted"` is not offered as an alternate;
+ *   · the default locale is offered as `x-default` only while its own target is published, which is what keeps
+ *     an unlisted default-language representation out of `x-default`;
+ *   · a locale with NO representation of its own, a Markdown representation and a document that declares
+ *     nothing are all KEPT, exactly as before: this removes a genuinely unlisted target and nothing else, so
+ *     every previously published alternate is byte-identical.
+ *
+ * Only the locale SET is filtered here. The URL spelling, the canonical tags, the Site prefix and the ordering
+ * of the map remain the builder's, so no tagging and no URL construction moved into this file.
+ */
+async function siteAlternates(
   composition: SpokeServerComposition,
   site: ResolvedSite,
-  path = "",
-): Record<string, string> {
+  routePath = "",
+): Promise<Record<string, string>> {
+  // A locale ROOT's URL carries no route path, but the document that answers it is the RESERVED home document
+  // (`pageForContext` resolves `HOME_CONTENT_SLUG` for `""`), so that is the representation every root alternate
+  // is asked about — the binding says WHICH document answers a URL, never a URL read back apart.
+  const contentRoutePath = routePath === "" ? HOME_CONTENT_SLUG : routePath;
   return buildLanguageAlternates({
     baseUrl: composition.siteConfig.url,
-    locales: site.locales,
-    defaultLocale: site.defaultLocale,
-    path,
+    locales: await publishedLocales(composition, site, site.locales, () => contentRoutePath),
+    defaultLocale: await publishedDefaultLocale(composition, site, () => contentRoutePath),
+    path: routePath === "" ? "" : `/${routePath}`,
     sitePrefix: sitePrefixPath(site),
   });
+}
+
+/**
+ * WHETHER ONE LOCALE OFFERS A PUBLISHED TARGET (TEMPLATE-PV-A1)
+ * =============================================================
+ *
+ * The ONE question both alternate builders ask about a locale. A target with NO destination at all (`null` — a
+ * regional counterpart this locale does not configure) is not offered, exactly as before; a target whose own
+ * resolved source declares `unlisted` is not offered either, because an hreflang alternate is an ADVERTISEMENT
+ * and no advertisement may name an unlisted URL. Everything else is offered, so a locale whose representation
+ * is missing, Markdown, or silent about visibility keeps the alternate it has always had.
+ */
+async function offersPublishedTarget(
+  composition: SpokeServerComposition,
+  site: ResolvedSite,
+  localePath: string,
+  targetRoutePath: string | null,
+): Promise<boolean> {
+  if (targetRoutePath === null) return false;
+  return !(await composition.routes.isUnlistedRoute(site.code, targetRoutePath, localePath));
+}
+
+/** The Site's locales that offer a published target, in configuration order. */
+async function publishedLocales(
+  composition: SpokeServerComposition,
+  site: ResolvedSite,
+  locales: readonly LanguageAlternateLocale[],
+  routePathOf: (localePath: string) => string | null,
+): Promise<readonly LanguageAlternateLocale[]> {
+  const kept: LanguageAlternateLocale[] = [];
+  for (const entry of locales) {
+    if (await offersPublishedTarget(composition, site, entry.path, routePathOf(entry.path))) {
+      kept.push(entry);
+    }
+  }
+  return kept;
+}
+
+/** The Site's default locale while ITS target is published, else `undefined` — so no `x-default` either. */
+async function publishedDefaultLocale(
+  composition: SpokeServerComposition,
+  site: ResolvedSite,
+  routePathOf: (localePath: string) => string | null,
+): Promise<string | undefined> {
+  const published = await offersPublishedTarget(
+    composition,
+    site,
+    site.defaultLocale,
+    routePathOf(site.defaultLocale),
+  );
+  return published ? site.defaultLocale : undefined;
+}
+
+/**
+ * THE REGIONAL ALTERNATES, judged by the DESTINATION each locale would be sent to (TEMPLATE-PV-A1)
+ * ==============================================================================================
+ *
+ * Switching language on a regional page preserves the region, so a locale's alternate is the URL the language
+ * switcher would actually follow — `resolveLocaleDestination`, the very one the switcher uses. Each locale is
+ * therefore judged by ITS OWN destination rather than by the current page's route path, and the SAME builder
+ * still spells every URL and tag.
+ */
+async function regionalAlternates(
+  composition: SpokeServerComposition,
+  site: ResolvedSite,
+  regional: { readonly region: string; readonly slug: string | null },
+): Promise<Record<string, string>> {
+  const entries = bindingsForSite(composition.siteConfig.pageBindings, site.code);
+  const routePathOf = (localePath: string): string | null => {
+    const destination = resolveLocaleDestination(entries, localePath, regional.region, regional.slug);
+    if (destination === null) return null;
+    // A region's namespace is a FOLDER in the authored tree: a landing is `<region>`, a page is `<region>/<slug>`.
+    return destination.slug === null ? destination.region : `${destination.region}/${destination.slug}`;
+  };
+
+  return buildRegionalLanguageAlternates({
+    baseUrl: composition.siteConfig.url,
+    locales: await publishedLocales(composition, site, site.locales, routePathOf),
+    defaultLocale: await publishedDefaultLocale(composition, site, routePathOf),
+    entries,
+    region: regional.region,
+    slug: regional.slug,
+    sitePrefix: sitePrefixPath(site),
+  });
+}
+
+/**
+ * THE ONE ROBOTS RULE FOR A PAGE'S OWN PUBLICATION (TEMPLATE-PV-A1)
+ * ================================================================
+ *
+ * A page its OWN document publishes as `unlisted` is directly reachable at its exact URL and must not be
+ * indexed, so ITS OWN response says so — through the same Next metadata surface the platform's not-found page
+ * already uses, rendered as `<meta name="robots" content="noindex, nofollow">`.
+ *
+ * A PUBLIC page — including every page that declares nothing, and every Markdown page, which has no visibility
+ * vocabulary at all — gets an EMPTY object: nothing is added and nothing is overridden, so the metadata it has
+ * always had is unchanged.
+ *
+ * The DECISION is read from the RESOLVED page, never from a raw file, so it follows the ONE authority that
+ * decided which source answers this request: JSON over Markdown, and the Site's own locale fallback.
+ *
+ * `robots.txt` is deliberately NOT part of this rule: it cannot express a per-URL decision, and a global
+ * `disallow` would have to name the very URL an author asked to keep out of discovery. The crawl rules stay
+ * exactly as they are (`./robots-context`), and an unlisted URL is never advertised there either.
+ */
+function robotsForVisibility(page: ResolvedPage | null): Pick<Metadata, "robots"> {
+  return page !== null && page.kind === "json" && isUnlistedPage(page.document)
+    ? { robots: { index: false, follow: false } }
+    : {};
 }
 
 /**
@@ -391,8 +521,12 @@ export async function pageMetadataForContext(
     // site speaks for it, in the locale it is being served in.
     const description = siteDescriptionForLocale(siteConfig, locale);
     return {
+      // TEMPLATE-PV-A1 — A LOCALE ROOT IS PUBLIC BY CONSTRUCTION. The document that answers it is the RESERVED
+      // home document, which is refused outright if it declares `unlisted` (`@/core/page-document`), so this
+      // response gains no `robots` property and its metadata is exactly what it was. Each root alternate is still
+      // asked about the home document that would answer IT, so no alternate can name an unlisted URL.
       description,
-      alternates: { canonical, languages: siteAlternates(composition, site) },
+      alternates: { canonical, languages: await siteAlternates(composition, site) },
       openGraph: buildOpenGraphData({
         baseUrl: siteConfig.url,
         siteName: siteConfig.name,
@@ -419,22 +553,19 @@ export async function pageMetadataForContext(
   const canonical = regional
     ? `${siteConfig.url}${regionalPath(locale, regional.region, regional.slug, sitePrefixPath(site))}`
     : `${siteConfig.url}${sitePath(site, locale, routePath) as string}`;
+  // TEMPLATE-PV-A1 — both builders are handed only the locales whose target PUBLISHES itself, so an hreflang
+  // link can never name an unlisted URL. The URL spelling and the tagging stay theirs.
   const alternates = regional
-    ? buildRegionalLanguageAlternates({
-        baseUrl: siteConfig.url,
-        locales: site.locales,
-        defaultLocale: site.defaultLocale,
-        entries: bindingsForSite(siteConfig.pageBindings, site.code),
-        region: regional.region,
-        slug: regional.slug,
-        sitePrefix: sitePrefixPath(site),
-      })
-    : siteAlternates(composition, site, `/${routePath}`);
+    ? await regionalAlternates(composition, site, regional)
+    : await siteAlternates(composition, site, routePath);
 
   // R1B — a page without its own summary falls back to the SITE's description IN THIS
   // LOCALE, never to the deployment's default-language sentence.
   const siteDescription = siteDescriptionForLocale(siteConfig, locale);
   return {
+    // TEMPLATE-PV-A1 — this page's OWN publication decision, taken from the source that actually answers this
+    // request. A public page spreads NOTHING, so its metadata is exactly what it was before.
+    ...robotsForVisibility(page),
     title: page.title,
     description: page.description ?? siteDescription,
     alternates: {

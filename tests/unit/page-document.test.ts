@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import { HOME_CONTENT_SLUG } from "@/core/page-content";
 import {
   PAGE_ACTION_VARIANTS,
   PAGE_CALLOUT_TONES,
+  PAGE_DEFAULT_VISIBILITY,
   PAGE_DOCUMENT_SCHEMA_VERSION,
   PAGE_HEADING_LEVELS,
   PAGE_ITEM_COLUMNS,
@@ -12,9 +14,13 @@ import {
   PAGE_MEDIA_POSITIONS,
   PAGE_SECTION_SURFACES,
   PAGE_SECTION_TYPES,
+  PAGE_VISIBILITIES,
   describePageDocumentIssues,
   formatPageDocumentIssuePath,
+  isUnlistedPage,
   pageDocumentSchema,
+  pageVisibilityOf,
+  reservedHomeVisibilityIssue,
 } from "@/core/page-document";
 
 /** A complete, valid document — the reference for the assertions below. */
@@ -69,6 +75,46 @@ describe("the page document envelope", () => {
     const many = Array.from({ length: PAGE_MAX_SECTIONS + 1 }, () => ({ type: "divider" }));
     expect(issues(document({ sections: many }))).toContain("sections");
     expect(pageDocumentSchema.safeParse(document({ sections: many.slice(1) })).success).toBe(true);
+  });
+
+  /**
+   * TEMPLATE-PV-A1 — THE VISIBILITY VOCABULARY. Two publication values, ONE default, and ONE envelope version:
+   * a document that declares nothing is public, which is every document authored before the property existed,
+   * so an additive optional field cannot move the version.
+   */
+  it("declares two publication visibilities, defaults to public, and keeps ONE schema version", () => {
+    expect([...PAGE_VISIBILITIES]).toEqual(["public", "unlisted"]);
+    expect(PAGE_DEFAULT_VISIBILITY).toBe("public");
+    expect(PAGE_DOCUMENT_SCHEMA_VERSION).toBe(1);
+
+    // A document that says nothing about visibility IS public — the compatibility guarantee.
+    const silent = pageDocumentSchema.parse(document());
+    expect(silent.visibility).toBeUndefined();
+    expect(pageVisibilityOf(silent)).toBe("public");
+    expect(isUnlistedPage(silent)).toBe(false);
+
+    // …and every declared value round-trips, so the vocabulary is usable rather than merely listed.
+    for (const visibility of PAGE_VISIBILITIES) {
+      const parsed = pageDocumentSchema.parse(document({ visibility }));
+      expect(pageVisibilityOf(parsed), visibility).toBe(visibility);
+      expect(isUnlistedPage(parsed), visibility).toBe(visibility === "unlisted");
+    }
+  });
+
+  it("refuses a visibility outside the vocabulary instead of guessing at it", () => {
+    // An author who writes something else must be told the words this platform understands: a page is never
+    // silently made undiscoverable — or discoverable — by a word the platform did not recognise.
+    for (const refused of ["hidden", "draft", "noindex", "Private", "PUBLIC", "Unlisted", "", " ", true, 0, null]) {
+      expect(pageDocumentSchema.safeParse(document({ visibility: refused })).success, String(refused)).toBe(
+        false,
+      );
+    }
+    const message = issues(document({ visibility: "hidden" }));
+    expect(message).toContain("visibility");
+    expect(message).toContain("public");
+    expect(message).toContain("unlisted");
+    // The envelope stays STRICT: the new property did not open the door to undeclared ones.
+    expect(issues(document({ visibilty: "unlisted" }))).toContain("visibilty");
   });
 });
 describe("the section vocabulary", () => {
@@ -408,3 +454,45 @@ function parse(value: unknown) {
   if (!result.success) throw new Error(describePageDocumentIssues(result.error));
   return result.data;
 }
+
+/**
+ * TEMPLATE-PV-A1 — THE RESERVED ROOT DOCUMENT MAY NOT BE UNLISTED
+ * ==============================================================
+ *
+ * The rule is stated ONCE, purely, in `reservedHomeVisibilityIssue`: given a VALIDATED document and the ROUTE PATH
+ * it is authored at, it returns the refusal sentence or `null`. The route path is an argument precisely because
+ * the rule is about the document's URL, which the document alone cannot know.
+ *
+ * `@/adapters/content/json-page` enforces it (naming the file), and `tests/unit/unlisted-visibility-contract.test.ts`
+ * proves the refusal through the composition that actually resolves a page — default locale and fallback alike.
+ */
+describe("the reserved root document's visibility", () => {
+  const unlisted = pageDocumentSchema.parse(document({ visibility: "unlisted" }));
+  const declaredPublic = pageDocumentSchema.parse(document({ visibility: "public" }));
+  const silent = pageDocumentSchema.parse(document());
+
+  it("refuses an unlisted document at the reserved home route, naming the property and the reason", () => {
+    const issue = reservedHomeVisibilityIssue(unlisted, HOME_CONTENT_SLUG);
+    expect(issue).not.toBeNull();
+    expect(issue).toContain("visibility");
+    expect(issue).toContain("unlisted");
+    expect(issue).toContain(HOME_CONTENT_SLUG);
+    // The reason is the URL: that document is served by the locale root, which is always published.
+    expect(issue).toContain("locale root");
+  });
+
+  it("accepts a public home and a home that declares nothing — the default is untouched", () => {
+    expect(reservedHomeVisibilityIssue(declaredPublic, HOME_CONTENT_SLUG)).toBeNull();
+    expect(reservedHomeVisibilityIssue(silent, HOME_CONTENT_SLUG)).toBeNull();
+  });
+
+  it("is NARROW: an unlisted document at any other route is none of its business", () => {
+    // The rule is about the reserved route, never about the WORD `home`: a page merely NAMED `home` inside a
+    // folder has its own URL and may be unlisted freely, and `""` is a request's root PATH rather than a
+    // document's route path — the reserved document's own route path is `home`, which is what this rule keys on.
+    for (const routePath of ["offerings/home", "home-page", "about", "north", "north/quote", ""]) {
+      expect(reservedHomeVisibilityIssue(unlisted, routePath), routePath).toBeNull();
+    }
+    expect(HOME_CONTENT_SLUG).toBe("home");
+  });
+});

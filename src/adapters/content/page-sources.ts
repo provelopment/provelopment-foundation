@@ -51,6 +51,15 @@
  * deployment's RESOLVED SITES, so a site or locale directory nobody configured can never
  * produce a route, a sitemap entry or a served page — a directory's existence is not
  * publication.
+ *
+ * SERVABILITY AND PUBLICATION ARE TWO QUESTIONS ANSWERED SEPARATELY (TEMPLATE-PV-A1)
+ * ---------------------------------------------------------------------------------
+ * `listRoutes` answers what EXISTS in this tree — every one of those routes is SERVED, and `resolve` still
+ * answers each of them. `listPublicRoutes` answers the narrower question ordinary discovery asks: which of
+ * those routes PUBLISH themselves. A page whose own resolved source declares `visibility: "unlisted"` is
+ * therefore served at its exact URL while no discovery surface advertises it — and because both questions are
+ * asked of THIS composition, the precedence (JSON over Markdown), the Site's locale fallback and the document
+ * schema are decided once, never re-decided by a caller that only wants to know how a page is published.
  */
 import {
   authoringPageRoutesFor,
@@ -61,7 +70,12 @@ import {
 import { parseAuthoringPageFile } from "./authoring-page";
 import { parseJsonPageFile } from "./json-page";
 import { resolvePageSource } from "@/application/page-source-resolution";
-import type { PageDocument } from "@/core/page-document";
+import {
+  isUnlistedPage,
+  pageVisibilityOf,
+  type PageDocument,
+  type PageVisibility,
+} from "@/core/page-document";
 import type { Locale } from "@/core/locale";
 import type { PageAuthoringMode } from "@/core/page-source";
 import type { SiteCode } from "@/core/site-code";
@@ -99,6 +113,12 @@ export interface ResolvedJsonPage {
   readonly title: string;
   /** The validated declarative document, in authoring order. */
   readonly document: PageDocument;
+  /**
+   * HOW THIS PAGE PUBLISHES ITSELF (TEMPLATE-PV-A1), exactly as its OWN document declares it: `public` unless
+   * the document says `unlisted`. It is carried on the RESOLVED page so a consumer never re-reads a file, never
+   * re-decides precedence and never re-derives the default merely to learn how the page is published.
+   */
+  readonly visibility: PageVisibility;
   readonly description?: string;
 }
 
@@ -130,6 +150,29 @@ export interface PageSources {
   resolve(siteCode: SiteCode, routePath: string, localePath: Locale): Promise<ResolvedPage | null>;
   /** The publishable page route paths for one configured site + locale (both modes, sorted). */
   listRoutes(siteCode: SiteCode, localePath: Locale): Promise<readonly string[]>;
+  /**
+   * THE PUBLIC ROUTES of one configured site + locale (TEMPLATE-PV-A1): every route `listRoutes` reports,
+   * MINUS the pages whose own resolved source declares `visibility: "unlisted"`.
+   *
+   * THE INVENTORY ORDINARY DISCOVERY USES. A sitemap reads this one, so an unlisted page is served at its
+   * exact URL while nothing advertises it — and `listRoutes` keeps its existing meaning (what EXISTS in the
+   * tree) for callers that need existence rather than publication.
+   */
+  listPublicRoutes(siteCode: SiteCode, localePath: Locale): Promise<readonly string[]>;
+  /**
+   * WHETHER THE SOURCE THAT WOULD ANSWER ONE ROUTE PUBLISHES ITSELF (TEMPLATE-PV-A1)
+   * ===============================================================================
+   *
+   * `listPublicRoutes` answers the inventory question; this answers the SAME question about ONE route path,
+   * which is what a caller that ALREADY KNOWS its route needs — a discovery surface whose URL comes from
+   * CONFIGURATION (a regional landing or a configured regional page) rather than from a directory listing.
+   * Such a caller asks here instead of assembling a second inventory, so a URL is never taken apart to guess
+   * which document answers it.
+   *
+   * ASKED OF `resolve`, so the answer is this composition's own: JSON over Markdown, the Site's locale
+   * fallback and the document schema are all included, and no consumer can hold a second opinion.
+   */
+  isUnlistedRoute(siteCode: SiteCode, routePath: string, localePath: Locale): Promise<boolean>;
 }
 
 export function createPageSources(options: PageSourcesOptions): PageSources {
@@ -174,7 +217,10 @@ export function createPageSources(options: PageSourcesOptions): PageSources {
   const isPublished = (site: ResolvedSite, localePath: Locale): boolean =>
     siteSupportsLocalePath(site, localePath);
 
-  return {
+  // Named, because the two publication operations below ask EACH OTHER: `listPublicRoutes` filters with
+  // `isUnlistedRoute`, the ONE spelling of the question — so a directory listing and a configuration-driven
+  // surface can never disagree about whether a page publishes itself.
+  const sources: PageSources = {
     async resolve(siteCode, routePath, localePath) {
       const site = siteOf(siteCode);
       if (site === null || !isPublished(site, localePath)) return null;
@@ -210,6 +256,7 @@ export function createPageSources(options: PageSourcesOptions): PageSources {
           fallback: resolved.fallback,
           title: page.title,
           document: page.document,
+          visibility: pageVisibilityOf(page.document),
           ...(page.description === undefined ? {} : { description: page.description }),
         };
       }
@@ -238,5 +285,61 @@ export function createPageSources(options: PageSourcesOptions): PageSources {
 
       return [...new Set([...markdown, ...json])].sort();
     },
+
+    /**
+     * THE PUBLIC INVENTORY — SERVABILITY AND DISCOVERABILITY, SEPARATED HERE (TEMPLATE-PV-A1)
+     * ======================================================================================
+     *
+     * `listRoutes` answers what EXISTS in this tree and is unchanged: a route it reports is still served, and
+     * `resolve` still answers it — unlisted pages included, at their exact URL alone. This operation answers the
+     * narrower question ordinary discovery asks: which of those routes PUBLISH THEMSELVES.
+     *
+     * The decision is delegated to `resolve`, deliberately, so it is made by the ONE authority on precedence
+     * (JSON over Markdown), on the Site's locale fallback and on the document schema — never by a filename
+     * convention and never by a second inventory. A route is therefore excluded exactly when the source that
+     * would ACTUALLY ANSWER it declares `visibility: "unlisted"`, which is what keeps a Markdown page from
+     * hiding a JSON one that wins over it.
+     *
+     * Two behaviours are preserved on purpose:
+     *
+     *   · a route that does not resolve stays listed, exactly as it is listed today — this operation never turns
+     *     a previously advertised route into a missing one;
+     *   · a file that exists but cannot be interpreted still fails LOUDLY, naming the file, because `resolve` is
+     *     asked rather than a raw text read.
+     *
+     * The reserved home route is an ordinary route here: it is served by a locale root, which is a Site's own
+     * identity URL and every sitemap publishes it, so an unlisted home document is refused outright when it is
+     * read (`@/adapters/content/json-page`) rather than silently hiding a Site root.
+     */
+    async listPublicRoutes(siteCode, localePath) {
+      const routes = await sources.listRoutes(siteCode, localePath);
+      const publicRoutes: string[] = [];
+
+      for (const routePath of routes) {
+        // ONE spelling of the question, through the operation every caller can ask.
+        if (!(await sources.isUnlistedRoute(siteCode, routePath, localePath))) {
+          publicRoutes.push(routePath);
+        }
+      }
+
+      return publicRoutes;
+    },
+
+    /**
+     * WHETHER ONE ROUTE'S OWN RESOLVED SOURCE IS UNLISTED (TEMPLATE-PV-A1)
+     * ===================================================================
+     *
+     * The narrowest useful form of the publication question, and the ONE place it is decided: a route is
+     * unlisted exactly when the source that would ACTUALLY ANSWER it is a declarative document declaring
+     * `visibility: "unlisted"` — JSON over Markdown, the Site's locale fallback and the document schema all
+     * included, because `resolve` is what answers. Everything else (no source at all, a Markdown page, a
+     * document that declares nothing or says `public`) is NOT unlisted.
+     */
+    async isUnlistedRoute(siteCode, routePath, localePath) {
+      const page = await sources.resolve(siteCode, routePath, localePath);
+      return page !== null && page.kind === "json" && isUnlistedPage(page.document);
+    },
   };
+
+  return sources;
 }

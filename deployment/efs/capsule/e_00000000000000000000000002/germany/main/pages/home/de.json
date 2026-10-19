@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+
+  "title": "Deutschland: zwei Sprachen, zwei Standorte.",
+
+  "description": "Eine Demonstrations-Website für Deutschland, die zeigt, wie eine Foundation-Website mehrere Sprachen und Standorte unterstützen kann.",
+
+  "sections": [
+
+    {
+      "type": "hero",
+
+      "lede": "Dies ist die Demonstrations-Website für Deutschland innerhalb der Foundation-Referenzinstallation. Sie hat eigene Inhalte und eine eigene Adresse, steht auf Deutsch und Englisch zur Verfügung und zeigt mit Berlin und Frankfurt, wie standortbezogene Informationen eingebunden werden können.",
+
+      "actions": [
+
+        { "label": "Mehr über diese Website erfahren", "href": "/de/de/about" },
+
+        {
+          "label": "Zum Foundation-Repository",
+          "href": "https://github.com/provelopment/provelopment-foundation",
+          "variant": "secondary"
+        }
+
+      ]
+    },
+
+    {
+      "type": "columns",
+
+      "heading": "Zwei Sprachen auf einer Website",
+
+      "ratio": "equal",
+
+      "items": [
+
+        {
+          "title": "Deutsch",
+          "body": "Sie lesen die deutsche Fassung. Über **Sprache** wechseln Sie zur englischen Version und bleiben dabei auf der entsprechenden Seite."
+        },
+
+        {
+          "title": "English",
+          "body": "Die englische Fassung gehört zur selben Website und folgt denselben Seiten und Adressen, mit Inhalten, die für englischsprachige Leser geschrieben sind."
+        }
+
+      ]
+    },
+
+    {
+      "type": "callout",
+
+      "heading": "Berlin und Frankfurt sind Demonstrationsdaten",
+
+      "body": "Berlin und Frankfurt dienen ausschließlich als Beispiele für Standorte. Sie sind keine tatsächlichen Geschäftsstellen von Provelopment. Ersetzen Sie sie durch die Standorte, die zu Ihrer Organisation gehören.",
+
+      "surface": "muted"
+    },
+
+    {
+      "type": "cards",
+
+      "heading": "Was diese Website zeigt",
+
+      "items": [
+
+        {
+          "title": "Eine eigene Website mit eigenen Inhalten",
+          "body": "Die Deutschland-Website hat eine eigene Adresse und eigene Inhalte. Sie ist von der globalen Demonstrations-Website getrennt, nutzt aber dieselbe Foundation-Installation.",
+          "action": { "label": "Über diese Website", "href": "/de/de/about" }
+        }
+
+      ]
+    },
+
+    {
+      "type": "prose",
+
+      "heading": "Standorte gehören zur Website",
+
+      "body": "**Berlin** und **Frankfurt** sind Standorte innerhalb dieser Website. Wenn Sie einen Standort auswählen, bleiben Sie auf derselben Website und in derselben Sprache und sehen die Informationen, die für diesen Standort gelten."
+    },
+
+    {
+      "type": "prose",
+
+      "heading": "Diese Konfiguration ist nur ein Beispiel",
+
+      "body": "Die hier gezeigten Sprachen und Standorte dienen nur der Demonstration. Eine Foundation-Website kann genau die Sprachen und Standorte verwenden, die zur jeweiligen Organisation passen."
+    }
+
+  ]
+}

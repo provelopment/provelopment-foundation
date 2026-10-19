@@ -1,0 +1,344 @@
+{
+  "entities": [
+    {
+      "id": "e_00000000000000000000000001",
+      "properties": {
+        "brand.name": {
+          "value": "Provelopment Foundation",
+          "public": true
+        },
+        "brand.tagline": {
+          "value": "An open-source website template you can own",
+          "public": true
+        },
+        "brand.description": {
+          "value": "This website is a working deployment of the Provelopment Foundation template: the same public code, downloadable and deployable by anyone. It is the template's own reference site, not a client website.",
+          "public": true
+        },
+        "brand.logo": {
+          "value": "/brand/logo.svg",
+          "public": true
+        },
+        "brand.favicon": {
+          "value": "/brand/favicon.svg",
+          "public": true
+        },
+        "contact.email": {
+          "value": "hello@example.com",
+          "public": true
+        },
+        "internal.ownerNotes": {
+          "value": "conversion:foundation",
+          "public": false
+        }
+      },
+      "facets": [
+        {
+          "id": "foundation",
+          "properties": {
+            "internal.facetNotes": {
+              "value": "facet:foundation",
+              "public": false
+            }
+          },
+          "sites": [
+            {
+              "id": "main",
+              "properties": {
+                "site.label": {
+                  "value": "Global",
+                  "public": true
+                }
+              },
+              "pages": [
+                {
+                  "id": "home",
+                  "route": [
+                    "home"
+                  ],
+                  "visibility": "public",
+                  "properties": {
+                    "nav.label": {
+                      "value": "Home",
+                      "public": true
+                    },
+                    "internal.pageNotes": {
+                      "value": "conversion:foundation/home",
+                      "public": false
+                    }
+                  },
+                  "representations": [
+                    {
+                      "locale": "en"
+                    },
+                    {
+                      "locale": "de"
+                    }
+                  ]
+                },
+                {
+                  "id": "about",
+                  "route": [
+                    "about"
+                  ],
+                  "visibility": "public",
+                  "properties": {
+                    "nav.label": {
+                      "value": "About",
+                      "public": true
+                    },
+                    "internal.pageNotes": {
+                      "value": "conversion:foundation/about",
+                      "public": false
+                    }
+                  },
+                  "representations": [
+                    {
+                      "locale": "en"
+                    },
+                    {
+                      "locale": "de"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "e_00000000000000000000000002",
+      "properties": {
+        "brand.name": {
+          "value": "Provelopment Foundation",
+          "public": true
+        },
+        "brand.tagline": {
+          "value": "An open-source website template you can own",
+          "public": true
+        },
+        "brand.description": {
+          "value": "This website is a working deployment of the Provelopment Foundation template: the same public code, downloadable and deployable by anyone. It is the template's own reference site, not a client website.",
+          "public": true
+        },
+        "brand.logo": {
+          "value": "/brand/logo.svg",
+          "public": true
+        },
+        "brand.favicon": {
+          "value": "/brand/favicon.svg",
+          "public": true
+        },
+        "contact.email": {
+          "value": "hello@example.com",
+          "public": true
+        },
+        "internal.ownerNotes": {
+          "value": "conversion:germany",
+          "public": false
+        }
+      },
+      "facets": [
+        {
+          "id": "germany",
+          "properties": {
+            "internal.facetNotes": {
+              "value": "facet:germany",
+              "public": false
+            }
+          },
+          "sites": [
+            {
+              "id": "main",
+              "properties": {
+                "site.label": {
+                  "value": "Germany",
+                  "public": true
+                }
+              },
+              "pages": [
+                {
+                  "id": "home",
+                  "route": [
+                    "home"
+                  ],
+                  "visibility": "public",
+                  "properties": {
+                    "nav.label": {
+                      "value": "Home",
+                      "public": true
+                    },
+                    "internal.pageNotes": {
+                      "value": "conversion:germany/home",
+                      "public": false
+                    }
+                  },
+                  "representations": [
+                    {
+                      "locale": "de"
+                    },
+                    {
+                      "locale": "en"
+                    }
+                  ]
+                },
+                {
+                  "id": "about",
+                  "route": [
+                    "about"
+                  ],
+                  "visibility": "public",
+                  "properties": {
+                    "nav.label": {
+                      "value": "About",
+                      "public": true
+                    },
+                    "internal.pageNotes": {
+                      "value": "conversion:germany/about",
+                      "public": false
+                    }
+                  },
+                  "representations": [
+                    {
+                      "locale": "de"
+                    },
+                    {
+                      "locale": "en"
+                    }
+                  ]
+                },
+                {
+                  "id": "berlin",
+                  "route": [
+                    "berlin"
+                  ],
+                  "visibility": "public",
+                  "properties": {
+                    "nav.label": {
+                      "value": "Berlin",
+                      "public": true
+                    },
+                    "internal.pageNotes": {
+                      "value": "conversion:germany/berlin",
+                      "public": false
+                    }
+                  },
+                  "representations": [
+                    {
+                      "locale": "de"
+                    },
+                    {
+                      "locale": "en"
+                    }
+                  ]
+                },
+                {
+                  "id": "frankfurt",
+                  "route": [
+                    "frankfurt"
+                  ],
+                  "visibility": "public",
+                  "properties": {
+                    "nav.label": {
+                      "value": "Frankfurt",
+                      "public": true
+                    },
+                    "internal.pageNotes": {
+                      "value": "conversion:germany/frankfurt",
+                      "public": false
+                    }
+                  },
+                  "representations": [
+                    {
+                      "locale": "de"
+                    },
+                    {
+                      "locale": "en"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "publications": [
+    {
+      "id": "foundation-publication",
+      "entityId": "e_00000000000000000000000001",
+      "facetId": "foundation",
+      "bindings": [
+        {
+          "id": "foundation-web",
+          "host": "foundation-template.provelopment.com",
+          "prefix": [
+            "ww"
+          ],
+          "entityId": "e_00000000000000000000000001",
+          "facetId": "foundation",
+          "siteIds": [
+            "main"
+          ],
+          "siteMode": "closed",
+          "defaultSiteId": "main",
+          "locales": [
+            "en",
+            "de"
+          ],
+          "defaultLocale": "en",
+          "canonical": true
+        },
+        {
+          "id": "foundation-inspection",
+          "host": "provelopment-foundation.vercel.app",
+          "prefix": [
+            "ww"
+          ],
+          "entityId": "e_00000000000000000000000001",
+          "facetId": "foundation",
+          "siteIds": [
+            "main"
+          ],
+          "siteMode": "closed",
+          "defaultSiteId": "main",
+          "locales": [
+            "en",
+            "de"
+          ],
+          "defaultLocale": "en",
+          "canonical": true
+        }
+      ]
+    },
+    {
+      "id": "germany-publication",
+      "entityId": "e_00000000000000000000000002",
+      "facetId": "germany",
+      "bindings": [
+        {
+          "id": "germany-web",
+          "host": "foundation-template-germany.provelopment.com",
+          "prefix": [
+            "de"
+          ],
+          "entityId": "e_00000000000000000000000002",
+          "facetId": "germany",
+          "siteIds": [
+            "main"
+          ],
+          "siteMode": "closed",
+          "defaultSiteId": "main",
+          "locales": [
+            "de",
+            "en"
+          ],
+          "defaultLocale": "en",
+          "canonical": true
+        }
+      ]
+    }
+  ]
+}

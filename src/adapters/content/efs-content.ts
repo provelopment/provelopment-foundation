@@ -2,8 +2,8 @@
  * OWNER-SCOPED EFS CONTENT ADAPTER (`D31`, Candidate CP-0...CP-5)
  * =============================================================
  *
- * The candidate reads synthetic, Entity-rooted capsules only. No released fixture population is
- * converted here. Paths are explicit ownership paths, never derived from a hostname, SiteID
+ * It reads both synthetic and converted Entity-rooted capsules. Paths are explicit ownership
+ * paths, never derived from a hostname, SiteID
  * spelling or locale. Reads are confined to the declared capsule root so a traversal, absolute
  * path or cross-Entity request cannot escape the owner boundary.
  *
@@ -32,6 +32,24 @@ export type EfsContentResult<T> =
   | { readonly kind: "rejected"; readonly reason: string };
 
 const SAFE_SEGMENT = /^[a-z0-9][a-z0-9_-]*$/;
+
+/** Parse the simple `key: value` YAML front matter the released Markdown pages use. */
+function frontMatter(raw: string): { readonly data: Record<string, string>; readonly body: string } {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(raw);
+  if (!match) return { data: {}, body: raw };
+  const data: Record<string, string> = {};
+  for (const line of match[1].split(/\r?\n/)) {
+    const separator = line.indexOf(":");
+    if (separator <= 0) continue;
+    const key = line.slice(0, separator).trim();
+    const value = line
+      .slice(separator + 1)
+      .trim()
+      .replace(/^["']|["']$/g, "");
+    if (/^[a-zA-Z][a-zA-Z0-9]*$/.test(key) && value.length > 0) data[key] = value;
+  }
+  return { data, body: raw.slice(match[0].length) };
+}
 
 function safeSegment(value: string, label: string): string {
   if (!SAFE_SEGMENT.test(value)) {
@@ -79,15 +97,19 @@ export function loadEfsPageSource(input: {
 
     const raw = readFileSync(canonical, "utf8");
     if (selected === markdownPath) {
-      const heading = /^#\s+(.+)$/m.exec(raw);
+      const front = frontMatter(raw);
+      const heading = /^#\s+(.+)$/m.exec(front.body);
       return {
         kind: "ok",
         value: {
           format: "markdown",
           path: canonical,
           pageId: page,
-          data: heading ? { title: heading[1].trim() } : {},
-          body: raw,
+          data: {
+            ...(heading ? { title: heading[1].trim() } : {}),
+            ...front.data,
+          },
+          body: front.body,
         },
       };
     }

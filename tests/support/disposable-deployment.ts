@@ -70,6 +70,10 @@ export function selectDisposableDeploymentCopy(): DisposableDeployment {
   const source = resolveDeploymentForBuild(process.env, process.cwd());
   const root = mkdtempSync(path.join(tmpdir(), "foundation-deployment-authoring-"));
   cpSync(source.root, root, { recursive: true });
+  // The authoring/legacy preservation suites exercise the released page resolver through a
+  // disposable copy. The explicit EFS manifest is a publication authority, so it must not travel
+  // into that copy: the real deployment keeps it, and the copy remains the legacy authoring subject.
+  rmSync(path.join(root, "efs"), { recursive: true, force: true });
 
   const fidelity = productionStateDrift(
     captureProductionStateManifest(source.root, FIDELITY_SURFACES),

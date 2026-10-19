@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
+// This suite asserts the RELEASED legacy metadata contract. EFS has its own reference scenario;
+// disable the explicit manifest here so the legacy resolver remains the subject under test.
+vi.hoisted(() => {
+  process.env.FOUNDATION_EFS_MANIFEST = "";
+});
+
 // DEPLOYMENT SCOPE — this test asserts THIS deployment's own configuration, content and assets, so
 // it lives in the deployment capsule (`deployment/tests/**`, FOUNDATION-DEPLOYMENT-ISO-B2A) and runs in
 // the `deployment` Vitest project, whose setup selects the REAL installed deployment

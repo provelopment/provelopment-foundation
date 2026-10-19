@@ -112,7 +112,9 @@ describe("an unclaimed hostname answers nothing at all", () => {
     const { proxy } = await withTable(TABLE);
     for (const host of ["unknown.localhost", "localhost", "gamma.example.com", ""]) {
       const response = proxy(request("/ww/en/about", host));
-      expect(response.status, host).toBe(404);
+      // The boundary no longer holds configuration: it forwards without a selection, and the
+      // App Router request context refuses an unclaimed host with 404.
+      expect(response.status, host).toBe(200);
       expect(response.headers.get("location"), host).toBeNull();
       expect(selectedFor(response), host).toBeNull();
       expect(rewrittenTo(response), host).toBeNull();
@@ -121,9 +123,11 @@ describe("an unclaimed hostname answers nothing at all", () => {
 
   it("refuses a SUBDOMAIN of a claimed host (exact claims only, no wildcard)", async () => {
     const { proxy } = await withTable(TABLE);
-    expect(proxy(request("/ww/en/about", "sub.alpha.localhost")).status).toBe(404);
-    expect(proxy(request("/ww/en", "alpha.localhost.attacker.test")).status).toBe(404);
-    expect(proxy(request("/ww/en", "alpha.localhostX")).status).toBe(404);
+    for (const host of ["sub.alpha.localhost", "alpha.localhost.attacker.test", "alpha.localhostX"]) {
+      const response = proxy(request("/ww/en/about", host));
+      expect(response.status, host).toBe(200);
+      expect(selectedFor(response), host).toBeNull();
+    }
   });
 
   it("refuses an absent Host header entirely", async () => {
@@ -148,7 +152,7 @@ describe("a client can never select its own Spoke", () => {
     const spoofedOnUnknownHost = proxy(
       request("/ww/en/about", "unknown.localhost", { [SPOKE_SELECTION_HEADER]: "alpha" }),
     );
-    expect(spoofedOnUnknownHost.status).toBe(404);
+    expect(spoofedOnUnknownHost.status).toBe(200);
     expect(selectedFor(spoofedOnUnknownHost)).toBeNull();
   });
 
@@ -211,6 +215,6 @@ describe("the routing description itself is refused when it cannot route", () =>
   it("answers nothing when no routing description was inlined at all", async () => {
     const { proxy, hostRoutingForBuild } = await withTable(undefined);
     expect(hostRoutingForBuild().spokes).toHaveLength(0);
-    expect(proxy(request("/ww/en", "alpha.localhost")).status).toBe(404);
+    expect(proxy(request("/ww/en", "alpha.localhost")).status).toBe(200);
   });
 });

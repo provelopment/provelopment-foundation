@@ -205,6 +205,28 @@
           ],
           "defaultLocale": "en-001",
           "canonical": true
+        },
+        {
+          "id": "acme-nested",
+          "host": "my.provelopment.com",
+          "prefix": [
+            "acme",
+            "nested"
+          ],
+          "entityId": "e_00000000000000000000000000",
+          "facetId": "acme",
+          "siteIds": [
+            "main"
+          ],
+          "siteMode": "closed",
+          "defaultSiteId": "main",
+          "locales": [
+            "en-001",
+            "fr",
+            "fr-CA"
+          ],
+          "defaultLocale": "en-001",
+          "canonical": true
         }
       ]
     },

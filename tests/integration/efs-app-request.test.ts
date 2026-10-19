@@ -1,3 +1,5 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -96,5 +98,15 @@ describe("EFS actual App Router request branch (S3-E3)", () => {
   it("refuses an unclaimed prefix and an unclaimed host when the EFS manifest is authoritative", async () => {
     await expect(request("my.provelopment.com", "/other/en-001/about")).rejects.toThrow("NOT_FOUND");
     await expect(request("unclaimed.example", "/acme-co/en-001/about")).rejects.toThrow("NOT_FOUND");
+  });
+
+  it("fails with a controlled diagnostic instead of falling back when the manifest is invalid", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "efs-invalid-"));
+    const invalid = join(directory, "manifest.json");
+    writeFileSync(invalid, "{ not json", "utf8");
+    process.env.FOUNDATION_EFS_MANIFEST = invalid;
+    await expect(request("my.provelopment.com", "/acme-co/en-001/about")).rejects.toThrow(
+      /EFS manifest is invalid/,
+    );
   });
 });

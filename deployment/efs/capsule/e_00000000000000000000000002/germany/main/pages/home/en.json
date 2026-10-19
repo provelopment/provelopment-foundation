@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+
+  "title": "Germany: two languages, two locations.",
+
+  "description": "A Germany demonstration website showing how one Foundation website can support multiple languages and locations.",
+
+  "sections": [
+
+    {
+      "type": "hero",
+
+      "lede": "This is the Germany demonstration website in the Foundation reference installation. It has its own pages and address, supports German and English, and uses Berlin and Frankfurt to demonstrate location-specific information.",
+
+      "actions": [
+
+        { "label": "Read about this website", "href": "/de/en/about" },
+
+        {
+          "label": "View the Foundation repository",
+          "href": "https://github.com/provelopment/provelopment-foundation",
+          "variant": "secondary"
+        }
+
+      ]
+    },
+
+    {
+      "type": "columns",
+
+      "heading": "Two languages on one website",
+
+      "ratio": "equal",
+
+      "items": [
+
+        {
+          "title": "English",
+          "body": "You are reading the English version. Use **Language** to switch to German while staying on the corresponding page."
+        },
+
+        {
+          "title": "Deutsch",
+          "body": "The German version belongs to the same website and follows the same routes, with content written for German readers."
+        }
+
+      ]
+    },
+
+    {
+      "type": "callout",
+
+      "heading": "Berlin and Frankfurt are demonstration data",
+
+      "body": "Berlin and Frankfurt are included only to demonstrate locations. They are not real Provelopment offices. Replace them with the locations that belong to your organisation.",
+
+      "surface": "muted"
+    },
+
+    {
+      "type": "cards",
+
+      "heading": "What this website demonstrates",
+
+      "items": [
+
+        {
+          "title": "Its own website and content",
+          "body": "The Germany website has its own address and its own content. It is separate from the Global demonstration website while sharing the same Foundation installation.",
+          "action": { "label": "About this website", "href": "/de/en/about" }
+        }
+
+      ]
+    },
+
+    {
+      "type": "prose",
+
+      "heading": "Locations belong inside the website",
+
+      "body": "**Berlin** and **Frankfurt** are locations within this website. Choosing a location keeps you on the same website and in the same language while showing the information that applies to that location."
+    },
+
+    {
+      "type": "prose",
+
+      "heading": "This configuration is only an example",
+
+      "body": "The languages and locations shown here are demonstration choices. A Foundation website can use the languages and locations that make sense for the organisation it represents."
+    }
+
+  ]
+}

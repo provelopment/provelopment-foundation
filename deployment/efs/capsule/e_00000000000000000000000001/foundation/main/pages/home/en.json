@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+
+  "title": "Build a website you own.",
+
+  "description": "A live Provelopment Foundation reference site showing how pages are created, how related websites can share one Foundation installation, and how to make it your own.",
+
+  "sections": [
+
+    {
+      "type": "hero",
+
+      "lede": "Foundation is an open-source website template designed to be understandable, editable and deployable. Run it yourself, adapt it to your needs and deploy it on the infrastructure you choose.",
+
+      "actions": [
+
+        { "label": "See how this site works", "route": "about" },
+
+        {
+          "label": "View the Foundation repository",
+          "href": "https://github.com/provelopment/provelopment-foundation",
+          "variant": "secondary"
+        }
+
+      ]
+    },
+
+    {
+      "type": "columns",
+
+      "heading": "Two ways to create a page",
+
+      "ratio": "equal",
+
+      "items": [
+
+        {
+          "title": "Markdown",
+          "body": "Markdown is the simplest choice for straightforward content pages. It stays easy to read and edit, using familiar notation for headings, lists and links. The **About** page on this site uses Markdown."
+        },
+
+        {
+          "title": "JSON",
+          "body": "Declarative JSON is useful when a page needs more structure. It lets you arrange sections such as heroes, columns, cards, tables and questions. **This page** uses JSON."
+        }
+
+      ]
+    },
+
+    {
+      "type": "callout",
+
+      "heading": "You own your website",
+
+      "body": "Provelopment services are optional. Your website, its content and its code remain under your control.",
+
+      "surface": "muted"
+    },
+
+    {
+      "type": "cards",
+
+      "heading": "About this website",
+
+      "items": [
+
+        {
+          "title": "A live Foundation reference site",
+          "body": "This is a working website built from the public Foundation code. It demonstrates both page-authoring methods, multiple languages, different layouts and a second demonstration website for Germany.",
+          "action": { "label": "Read about this site", "route": "about" }
+        }
+
+      ]
+    },
+
+    {
+      "type": "prose",
+
+      "heading": "Built for different needs",
+
+      "body": "The **Layout** control switches between Sidebar and Menu-bar views without changing the page or its content. **Language** lets you read this website in English or German.\n\nThis website has no locations of its own, so no **Location** control appears here. The Germany demonstration website adds **Berlin** and **Frankfurt** to show how location-specific information can work. It is a separate website and is reached through the link in the footer.\n\nThese are demonstration choices, not fixed parts of Foundation. Use the languages, locations and websites that make sense for your organisation."
+    },
+
+    {
+      "type": "prose",
+
+      "heading": "The complete site is public",
+
+      "body": "This is a working Foundation website, not a mock-up. This page comes from `home.json` in the [public Provelopment Foundation repository](https://github.com/provelopment/provelopment-foundation), alongside the About page, configuration and styling. Change the source, commit it and deploy it from your own repository. The code remains yours to use, adapt and host wherever you choose."
+    }
+
+  ]
+}

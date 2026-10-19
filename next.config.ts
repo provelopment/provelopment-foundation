@@ -1,38 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import type { NextConfig } from "next";
 
 import { deploymentEnvironment, resolveDeploymentForBuild } from "./src/config/deployment-build.mjs";
-
-/**
- * The EFS public host claims are a BUILD projection of the explicit manifest, not a runtime mode.
- * The request boundary only needs to know whether a host belongs to EFS at all; the App Router
- * then resolves the binding and fails closed. An installation without an EFS manifest projects no
- * host, so the existing reference runtime remains exactly as it was.
- */
-function efsHostClaims(deploymentRoot: string): string {
-  const manifestPath = process.env.FOUNDATION_EFS_MANIFEST ?? join(deploymentRoot, "efs", "manifest.json");
-  if (!existsSync(manifestPath)) return "";
-  try {
-    const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
-      publications?: { bindings?: { host?: unknown }[] }[];
-    };
-    const hosts = new Set<string>();
-    for (const publication of manifest.publications ?? []) {
-      for (const binding of publication.bindings ?? []) {
-        if (typeof binding.host === "string" && binding.host.trim()) {
-          hosts.add(binding.host.trim().toLowerCase());
-        }
-      }
-    }
-    return [...hosts].join(",");
-  } catch {
-    return "";
-  }
-}
-
-const deployment = resolveDeploymentForBuild();
 
 /**
  * THE DEPLOYMENT ROOT, RESOLVED BY THE BUILD (FOUNDATION-DEPLOYMENT-ISO-B1C)
@@ -49,10 +17,7 @@ const deployment = resolveDeploymentForBuild();
  * code or breaking module/build resolution.
  */
 const nextConfig: NextConfig = {
-  env: {
-    ...deploymentEnvironment(deployment),
-    FOUNDATION_EFS_HOSTS: efsHostClaims(deployment.root),
-  },
+  env: deploymentEnvironment(resolveDeploymentForBuild()),
   /**
    * P6-3B — disable the DEVELOPMENT-ONLY Next.js route/dev indicator. It is a
    * fixed-position `nextjs-portal` element pinned to the bottom-left corner of

@@ -9,6 +9,7 @@ vi.mock("next/headers", () => ({
 }));
 
 import { serveOwnerAsset } from "@/app/efs-asset-response";
+import { GET as GET_NESTED } from "@/app/[site]/[locale]/owner-assets/[...path]/route";
 
 describe("EFS owner-scoped asset delivery (S3-E3-R01)", () => {
   beforeEach(() => {
@@ -54,6 +55,14 @@ describe("EFS owner-scoped asset delivery (S3-E3-R01)", () => {
       const response = await serveOwnerAsset(prefix, asset);
       expect(response.status, `${prefix.join("/")}/${asset.join("/")}`).toBe(404);
     }
+  });
+
+  it("serves a nested publication prefix through its own route", async () => {
+    const response = await GET_NESTED({} as Request, {
+      params: Promise.resolve({ site: "acme", locale: "nested", path: ["brand", "acme-main.svg"] }),
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/svg+xml");
   });
 
   it("refuses a malformed path and a missing binding", async () => {

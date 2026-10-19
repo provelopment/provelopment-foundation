@@ -1,9 +1,16 @@
 import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Plus_Jakarta_Sans } from "next/font/google";
 
-import { layoutForContext, layoutMetadataForContext, spokeServerComposition } from "./server-composition";
+import {
+  layoutForContext,
+  layoutForEfsContext,
+  layoutMetadataForContext,
+  spokeServerComposition,
+} from "./server-composition";
 import { efsDescription, efsTitle, efsViewForCurrentRequest } from "./efs-request";
 import { requestPublicDestination } from "./request-context";
+import { runtimeContextForCurrentRequest } from "@/config/spoke-request";
+import { assetUrl } from "@/core/efs/publication";
 import "../globals.css";
 
 /**
@@ -68,9 +75,13 @@ export async function generateMetadata({ params }: LocaleLayoutProps): Promise<M
   const segments = (await params).segments ?? [];
   const efs = await efsViewForCurrentRequest(segments);
   if (efs) {
+    const favicon = efs.properties.get("brand.favicon");
     return {
       title: efsTitle(efs),
       description: efsDescription(efs),
+      ...(favicon?.public && typeof favicon.value === "string"
+        ? { icons: { icon: assetUrl(efs.binding, favicon.value) } }
+        : {}),
       alternates: {
         canonical: efs.canonical,
         languages: Object.fromEntries(efs.alternates.map((alternate) => [alternate.hreflang, alternate.href])),
@@ -88,6 +99,11 @@ export default async function LocaleLayout({ children, params }: LocaleLayoutPro
   const segments = (await params).segments ?? [];
   const efs = await efsViewForCurrentRequest(segments);
   if (efs) {
+    const context = await runtimeContextForCurrentRequest();
+    if (context) {
+      const shell = await layoutForEfsContext(context, segments, children, HTML_CLASS_NAME);
+      if (shell) return shell;
+    }
     return (
       <html lang={efs.locale} className={HTML_CLASS_NAME}>
         <body className="min-h-full bg-white text-neutral-900 antialiased">{children}</body>

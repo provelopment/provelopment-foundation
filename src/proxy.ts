@@ -52,23 +52,6 @@ import { SPOKE_SELECTION_HEADER, isInternalSpokePath } from "@/config/spoke-sele
  */
 const SPOKE_ASSET_PREFIX = "/spokes/";
 
-/**
- * The EFS host claims the BUILD projected from the explicit manifest. This is not a selection
- * rule or a compatibility flag: a claimed host is handed to the App Router's binding resolver;
- * an unclaimed host keeps the established exact-claim refusal.
- */
-const EFS_HOSTS_ENV = "FOUNDATION_EFS_HOSTS";
-
-function isEfsHost(host: string | null): boolean {
-  if (!host) return false;
-  const normalized = host.trim().toLowerCase().split(":")[0];
-  return (process.env[EFS_HOSTS_ENV] ?? "")
-    .split(",")
-    .map((value) => value.trim().toLowerCase())
-    .filter(Boolean)
-    .includes(normalized);
-}
-
 /** Nothing answers this request: no Spoke, never another Spoke's content. */
 function refuse(): NextResponse {
   return new NextResponse("Not Found", {
@@ -131,15 +114,16 @@ export function proxy(request: NextRequest) {
   // 2 — a Spoke's own asset namespace is host-bound (static paths included — see the matcher).
   if (pathname.startsWith(SPOKE_ASSET_PREFIX)) return spokeAsset(request);
 
-  // 3 — which Spoke answers this host: exact claims in multi mode, nothing when unclaimed.
-  // A manifest-claimed EFS host is resolved by the App Router's binding resolver.
-  if (isEfsHost(request.headers.get("host"))) {
-    return NextResponse.next({ request: { headers: new Headers(request.headers) } });
-  }
-
+  // 3 — which Spoke answers this host: an exact claim, or no selection at all. An unclaimed
+  // host is still handed to the App Router: EFS may own it, and otherwise the request context
+  // refuses it with the same 404. No second runtime is selected here.
   const routing = hostRoutingForBuild();
   const entry = selectedEntry(routing, request.headers.get("host"));
-  if (entry === null) return refuse();
+  if (entry === null) {
+    const forwarded = new Headers(request.headers);
+    forwarded.delete(SPOKE_SELECTION_HEADER);
+    return NextResponse.next({ request: { headers: forwarded } });
+  }
 
   // 4 — the PUBLIC request continues unchanged, carrying the boundary's selection privately upstream.
   return continueWithSelectedSpoke(request, entry);

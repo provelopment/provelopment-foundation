@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { EfsPageView } from "@/components/efs/efs-page";
+import { runtimeContextForCurrentRequest } from "@/config/spoke-request";
 import { efsDescription, efsTitle, efsViewForCurrentRequest } from "./efs-request";
 import { pageForContext, pageMetadataForContext, spokeServerComposition } from "./server-composition";
 import { requestPublicDestination } from "./request-context";
@@ -69,7 +70,9 @@ export async function generateMetadata({ params }: PageRouteProps): Promise<Meta
 export default async function PageRoute({ params }: PageRouteProps) {
   const segments = (await params).segments ?? [];
   const efs = await efsViewForCurrentRequest(segments);
-  if (efs) return <EfsPageView view={efs} />;
+  if (efs) {
+    return <EfsPageView view={efs} withShell={Boolean(await runtimeContextForCurrentRequest())} />;
+  }
   const { context, destination } = await requestPublicDestination(segments);
   return pageForContext(spokeServerComposition(context), destination.segments as string[]);
 }

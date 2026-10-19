@@ -141,6 +141,9 @@ describe("EFS publication and routing (D31 / O-4, O-5)", () => {
     expect(assetUrl(managed, "brand/logo.svg")).toBe(
       "/acme-co/owner-assets/brand/logo.svg",
     );
+    expect(assetUrl({ ...managed, prefix: ["acme", "nested"] }, "brand/logo.svg")).toBe(
+      "/acme/nested/owner-assets/brand/logo.svg",
+    );
   });
 
   it("fails closed for unclaimed hosts, unknown prefixes and unsupported locales", () => {

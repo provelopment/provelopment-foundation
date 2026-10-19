@@ -71,6 +71,7 @@ import { Section } from "@/components/ui/section";
 import { assertConfiguredCompactLogoAvailableFor, assertConfiguredIconAssetsExistFor } from "@/config/assets";
 import type { Dictionary } from "@/config/i18n/dictionary";
 import type { SpokeRuntimeContext } from "@/config/installation-runtime";
+import { completePublicPath } from "./spoke-navigation";
 import { createRuntimeAssetOwnershipResolver } from "@/config/runtime-asset-resolver";
 import type { RuntimeAssetOwnershipResolver } from "@/config/runtime-asset-resolver";
 import type { RuntimeDictionaryAccess } from "@/config/runtime-dictionaries";
@@ -1079,5 +1080,26 @@ export async function layoutForContext(
         </ClientRoutingProvider>
       </body>
     </html>
+  );
+}
+
+/**
+ * EFS's shared-shell entry. An EFS Page whose host/URLs still map to a declared Spoke renders the
+ * SAME accepted shell for that context; the EFS Page remains the content authority. `null` means
+ * there is no matching legacy shell context, so the EFS-only document boundary applies.
+ */
+export async function layoutForEfsContext(
+  context: SpokeRuntimeContext,
+  segments: readonly string[],
+  children: ReactNode,
+  htmlClassName: string,
+): Promise<ReactNode | null> {
+  const completion = completePublicPath(context.siteConfig, segments, {});
+  if (!("destination" in completion)) return null;
+  return layoutForContext(
+    spokeServerComposition(context),
+    completion.destination.segments,
+    children,
+    htmlClassName,
   );
 }

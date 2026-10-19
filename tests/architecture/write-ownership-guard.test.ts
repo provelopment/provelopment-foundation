@@ -110,6 +110,8 @@ const SANCTIONED_DOMAIN_WRITERS: Record<string, string> = {
   "scripts/generate-country-code-reference.mjs":
     "<selected deployment>/content/COUNTRY-CODES.md — the ONE generated deployment document (ISO-B3A)",
   "scripts/ci/change-scope.mjs": "$GITHUB_OUTPUT — the CI runner's own file, never repository state (ISO-B3B)",
+  "scripts/efs/convert-reference.mjs":
+    "<selected deployment>/efs/manifest.json and <selected deployment>/efs/capsule/** — the explicit EFS capsule converted from the controlled reference Spokes. It reads deployment/spokes/** and never writes there (S3-E3-R02)",
   "scripts/release/release-construction.mjs":
     "the EMPTY destination directory the caller names — a release construction area outside the source repository. It reads committed bytes only, and writes no repository, deployment or generated state (R1B)",
   // ── FOUNDATION-B4B: the FIRST writers inside `src/**`, each owning exactly ONE installation ──────────
@@ -283,6 +285,8 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
   "tests/support/installation-establishment-fixture.ts":
     "disposable platforms, releases, seeds and target roots under OS temp — the establishment proof's own " +
     "throwaway tree, removed by exact ownership (B4B)",
+  "tests/integration/efs-app-request.test.ts":
+    "OS temp only — one deliberately invalid manifest written to prove EFS fails with a controlled diagnostic rather than falling back (S3-E3-R02)",
   "tests/integration/foundation-installation-bootstrap.test.ts":
     "OS temp target roots and one deliberately half-written materialisation, plus the installation's own " +
     "generated asset mirror when the established tree is proved self-contained (B4B)",
@@ -342,7 +346,7 @@ describe("the executable writer inventory is explicit", () => {
   });
 
   it("names the sanctioned durable domains, each as ONE document/domain and no more", () => {
-    expect(Object.keys(SANCTIONED_DOMAIN_WRITERS)).toHaveLength(7);
+    expect(Object.keys(SANCTIONED_DOMAIN_WRITERS)).toHaveLength(8);
     expect(SANCTIONED_DOMAIN_WRITERS["scripts/sync-runtime-assets.mjs"]).toContain("public/assets");
     expect(SANCTIONED_DOMAIN_WRITERS["scripts/generate-country-code-reference.mjs"]).toContain(
       "COUNTRY-CODES.md",

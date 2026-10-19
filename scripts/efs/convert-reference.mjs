@@ -157,6 +157,10 @@ function buildEntity(config, definition) {
     },
     publication: {
       id: `${definition.spoke}-publication`,
+      // Explicit publication ownership and explicit presentation source. Neither is derived from
+      // the binding host or URL prefix.
+      spokeId: definition.spoke,
+      presentationSiteCode: definition.legacySite,
       entityId,
       facetId: definition.facet,
       bindings: definition.hosts.map((host) => ({

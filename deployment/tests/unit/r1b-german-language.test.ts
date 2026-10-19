@@ -1,10 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-// This suite asserts the RELEASED legacy metadata contract. EFS has its own reference scenario;
-// disable the explicit manifest here so the legacy resolver remains the subject under test.
-vi.hoisted(() => {
-  process.env.FOUNDATION_EFS_MANIFEST = "";
-});
+// This suite asserts the RELEASED legacy metadata contract through the shared composition.
+// It no longer drives the production route: EFS is the only public runtime, so the legacy
+// composition is exercised directly as the separately scoped test utility it now is.
+
 
 // DEPLOYMENT SCOPE — this test asserts THIS deployment's own configuration, content and assets, so
 // it lives in the deployment capsule (`deployment/tests/**`, FOUNDATION-DEPLOYMENT-ISO-B2A) and runs in
@@ -12,7 +11,7 @@ vi.hoisted(() => {
 // (`tests/setup/real-deployment.ts`, ISO-H2). Its subject is the real capsule, never a fixture.
 import { renderToStaticMarkup } from "react-dom/server";
 
-import PageRoute, { generateMetadata } from "@/app/[[...segments]]/page";
+import { pageForContext, pageMetadataForContext, spokeServerComposition } from "@/app/[[...segments]]/server-composition";
 import { createPageSources } from "@/adapters/content/page-sources";
 // M18 — FOUNDATION Spoke binding: the `ww` Site, its dictionaries and its origin. A multi-Spoke
 // Installation has no installation-wide configuration to read (the authority refuses that answer), so a
@@ -74,10 +73,12 @@ const GERMAN = "de";
 const ENGLISH = "en";
 
 const pages = () => createPageSources({ sites: siteConfig.sites, roots: foundationSpoke.resources });
-const params = (...segments: string[]) => ({ params: Promise.resolve({ segments }) });
+const composition = () => spokeServerComposition(foundationSpoke.context);
+const renderPage = (...segments: string[]) => pageForContext(composition(), segments);
+const pageMetadata = (...segments: string[]) => pageMetadataForContext(composition(), segments);
 const site = siteConfig.sites.find((candidate) => candidate.code === SITE);
-
 describe("the `ww` site serves a real second language", () => {
+
   it("serves exactly `en` and `de`, and keeps English as the default locale", () => {
     expect(site?.locales.map((locale) => locale.path)).toEqual([ENGLISH, GERMAN]);
     expect(site?.defaultLocale).toBe(ENGLISH);
@@ -249,7 +250,7 @@ describe("the German Home keeps the English page's structure", () => {
 describe("the served German pages", () => {
   it("renders German Home at `/ww/de`: one h1, a valid outline, site-scoped destinations", async () => {
     const home = await pages().resolve(SITE, HOME_CONTENT_SLUG, GERMAN);
-    const html = renderToStaticMarkup(await PageRoute(params(SITE, GERMAN)));
+    const html = renderToStaticMarkup(await renderPage(SITE, GERMAN));
 
     expect(html.match(/<h1\b/g) ?? []).toHaveLength(1);
     expect(headingOutlineIssues(headingLevels(html))).toEqual([]);
@@ -275,7 +276,7 @@ describe("the served German pages", () => {
 
   it("renders German About at `/ww/de/about`: one h1, a valid outline, addressable sections", async () => {
     const about = await pages().resolve(SITE, "about", GERMAN);
-    const html = renderToStaticMarkup(await PageRoute(params(SITE, GERMAN, "about")));
+    const html = renderToStaticMarkup(await renderPage(SITE, GERMAN, "about"));
 
     expect(html.match(/<h1\b/g) ?? []).toHaveLength(1);
     expect(headingOutlineIssues(headingLevels(html))).toEqual([]);
@@ -301,7 +302,7 @@ describe("the served German pages", () => {
 
 describe("German locale metadata", () => {
   it("speaks German at the locale root, where the site's own words stand alone", async () => {
-    const metadata = await generateMetadata(params(SITE, GERMAN));
+    const metadata = await pageMetadata(SITE, GERMAN);
 
     expect(metadata.description).toBe(siteDescriptionForLocale(siteConfig, GERMAN));
     // …and it is genuinely German, not the deployment's English sentence.
@@ -320,7 +321,7 @@ describe("German locale metadata", () => {
   });
 
   it("leaves the English locale root exactly as the owner accepted it", async () => {
-    const metadata = await generateMetadata(params(SITE, ENGLISH));
+    const metadata = await pageMetadata(SITE, ENGLISH);
 
     expect(metadata.description).toBe(siteConfig.description);
     expect(metadata.alternates?.canonical).toBe("/ww/en");
@@ -328,7 +329,7 @@ describe("German locale metadata", () => {
   });
 
   it("lets the German About page's own summary speak for it, with German alternates", async () => {
-    const metadata = await generateMetadata(params(SITE, GERMAN, "about"));
+    const metadata = await pageMetadata(SITE, GERMAN, "about");
     const about = await pages().resolve(SITE, "about", GERMAN);
 
     // The page's metadata is present and coherent; its wording is the owner's.

@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-import { efsSitemapUrlForCurrentRequest } from "@/app/[[...segments]]/efs-request";
+import { efsRuntimeDeclared, efsSitemapUrlForCurrentRequest } from "@/app/[[...segments]]/efs-request";
 import { runtimeContextForRequest } from "@/config/spoke-request";
 
 import { robotsForContext } from "./robots-context";
@@ -19,6 +19,7 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
 
   const efsSitemap = await efsSitemapUrlForCurrentRequest();
   if (efsSitemap) return { rules, sitemap: efsSitemap };
+  if (efsRuntimeDeclared()) return { rules };
 
   const context = await runtimeContextForRequest();
   if (context === null) return { rules };

@@ -22,6 +22,7 @@ import {
   type EfsSiteMode,
 } from "@/core/efs/publication";
 import { siteIdIssue } from "@/core/site-identity";
+import { IMPLICIT_SPOKE_HUB_ID, IMPLICIT_SPOKE_ID } from "@/core/spoke";
 
 /** One localized representation declared inside a Page. */
 export interface EfsRepresentationDeclaration {
@@ -64,6 +65,19 @@ export interface EfsEntityDeclaration {
 /** One explicit Spoke<->Entity publication with its bindings. */
 export interface EfsPublicationDeclaration {
   readonly id: string;
+  /**
+   * The Spoke that OWNS this publication. A publication is never attached to a Spoke by a
+   * hostname, a URL prefix, a matching name or an Entity/Facet name.
+   */
+  readonly spokeId: string;
+  /** The owning Spoke Hub when the Installation identifies its Hubs; absent in flat form. */
+  readonly spokeHubId?: string;
+  /**
+   * The presentation Site inside the owning Spoke's configuration, chosen EXPLICITLY. It supplies
+   * the approved shared shell (dictionary, navigation, footer, branding, layouts, accessibility).
+   * Absent means the EFS-only document boundary is used. It is never inferred from a prefix.
+   */
+  readonly presentationSiteCode?: string;
   readonly entityId: string;
   readonly facetId: string;
   readonly bindings: readonly EfsBinding[];
@@ -315,6 +329,24 @@ export function validateEfsManifest(input: unknown): EfsManifestResult {
     const siteMap = sitesByFacet.get(`${entityId}/${facetId}`);
     if (!siteMap) issues.push(`${at}.facetId does not name a declared Facet of that Entity.`);
 
+    // OWNERSHIP IS EXPLICIT. A publication names its Spoke (and, in an identified-Hub
+    // Installation, its Spoke Hub). Hostnames, prefixes and matching names are never substituted.
+    const spokeId = text(rawPublication.spokeId, `${at}.spokeId`, issues);
+    if (spokeId.trim() === IMPLICIT_SPOKE_ID) {
+      issues.push(`${at}.spokeId cannot declare the reserved implicit Spoke.`);
+    }
+    const spokeHubId =
+      rawPublication.spokeHubId === undefined
+        ? undefined
+        : text(rawPublication.spokeHubId, `${at}.spokeHubId`, issues);
+    if (spokeHubId?.trim() === IMPLICIT_SPOKE_HUB_ID) {
+      issues.push(`${at}.spokeHubId cannot declare the reserved implicit Spoke Hub.`);
+    }
+    const presentationSiteCode =
+      rawPublication.presentationSiteCode === undefined
+        ? undefined
+        : text(rawPublication.presentationSiteCode, `${at}.presentationSiteCode`, issues);
+
     const bindings: EfsBinding[] = [];
     for (const [bindingIndex, rawBinding] of arrayOf<unknown>(
       rawPublication.bindings,
@@ -367,7 +399,15 @@ export function validateEfsManifest(input: unknown): EfsManifestResult {
       bindings.push(binding);
       allBindings.push(binding);
     }
-    publications.push({ id: publicationId, entityId, facetId, bindings });
+    publications.push({
+      id: publicationId,
+      spokeId,
+      spokeHubId,
+      presentationSiteCode,
+      entityId,
+      facetId,
+      bindings,
+    });
   }
 
   issues.push(...bindingIssues(allBindings));

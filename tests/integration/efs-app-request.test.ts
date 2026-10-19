@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -6,10 +6,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   headers: new Map<string, string>(),
+  spoke: { id: "implicit" } as { id: string; spokeHubId?: string },
 }));
 
 vi.mock("next/headers", () => ({
   headers: async () => ({ get: (key: string) => state.headers.get(key) ?? null }),
+}));
+
+vi.mock("@/config/spoke-request", () => ({
+  runtimeContextForCurrentRequest: async () => state.spoke,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -31,6 +36,7 @@ function request(host: string, path: string) {
 describe("EFS actual App Router request branch (S3-E3)", () => {
   beforeEach(() => {
     state.headers.clear();
+    state.spoke = { id: "implicit" };
     process.env.FOUNDATION_EFS_MANIFEST = join(
       process.cwd(),
       "tests",
@@ -134,5 +140,56 @@ describe("EFS actual App Router request branch (S3-E3)", () => {
     await expect(request("my.provelopment.com", "/acme-co/en-001/about")).rejects.toThrow(
       /EFS manifest is invalid/,
     );
+  });
+
+  it("fails closed when the manifest exists without its capsule", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "efs-no-capsule-"));
+    process.env.FOUNDATION_EFS_MANIFEST = join(
+      process.cwd(),
+      "tests",
+      "fixtures",
+      "efs",
+      "canonical",
+      "manifest.json",
+    );
+    process.env.FOUNDATION_EFS_CAPSULE = join(directory, "capsule");
+    await expect(request("my.provelopment.com", "/acme-co/en-001/about")).rejects.toThrow(
+      /EFS capsule is missing/,
+    );
+  });
+
+  it("refuses an empty manifest override instead of selecting the legacy runtime", async () => {
+    process.env.FOUNDATION_EFS_MANIFEST = "";
+    await expect(request("my.provelopment.com", "/acme-co/en-001/about")).rejects.toThrow(
+      /must name a manifest or be left unset/,
+    );
+  });
+
+  it("refuses a publication whose declared Spoke does not own the host-selected context", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "efs-owner-"));
+    const source = JSON.parse(
+      readFileSync(
+        join(process.cwd(), "tests", "fixtures", "efs", "canonical", "manifest.json"),
+        "utf8",
+      ),
+    ) as {
+      publications: Array<{
+        spokeId: string;
+        bindings: Array<Record<string, unknown>>;
+      }>;
+    };
+    source.publications[0].spokeId = "germany";
+    source.publications[0].bindings[0] = {
+      ...source.publications[0].bindings[0],
+      host: "foundation-template.provelopment.com",
+      prefix: ["acme-co"],
+    };
+    const manifest = join(directory, "manifest.json");
+    writeFileSync(manifest, JSON.stringify(source), "utf8");
+    process.env.FOUNDATION_EFS_MANIFEST = manifest;
+    state.spoke = { id: "foundation" };
+    await expect(
+      request("foundation-template.provelopment.com", "/acme-co/en-001/about"),
+    ).rejects.toThrow("NOT_FOUND");
   });
 });

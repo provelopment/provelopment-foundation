@@ -32,6 +32,7 @@ function manifest(binding: Record<string, unknown>) {
     publications: [
       {
         id: "acme",
+        spokeId: "acme-spoke",
         entityId,
         facetId: "acme",
         bindings: [
@@ -79,5 +80,17 @@ describe("EFS authoring diagnostics (S3-E3-R01)", () => {
   it("reports a Page representation with no source through capsule diagnostics", () => {
     const result = validateEfsManifest(manifest({}));
     expect(result.ok).toBe(true);
+  });
+
+  it("requires every publication to name its owning Spoke explicitly", () => {
+    const withoutOwner = manifest({});
+    delete (withoutOwner.publications[0] as Record<string, unknown>).spokeId;
+    const missing = validateEfsManifest(withoutOwner);
+    expect(missing.ok).toBe(false);
+    expect(missing.issues.join(" ")).toMatch(/spokeId must be a non-empty string/);
+
+    const reserved = manifest({});
+    (reserved.publications[0] as Record<string, unknown>).spokeId = "implicit";
+    expect(validateEfsManifest(reserved).issues.join(" ")).toMatch(/reserved implicit Spoke/);
   });
 });

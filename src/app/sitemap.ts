@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-import { efsSitemapForCurrentRequest } from "@/app/[[...segments]]/efs-request";
+import { efsRuntimeDeclared, efsSitemapForCurrentRequest } from "@/app/[[...segments]]/efs-request";
 import { runtimeContextForRequest } from "@/config/spoke-request";
 
 import { sitemapForContext } from "./sitemap-context";
@@ -21,6 +21,8 @@ import { sitemapForContext } from "./sitemap-context";
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const efs = await efsSitemapForCurrentRequest();
   if (efs) return efs;
+  // When EFS is the declared authority, an unclaimed host has no legacy inventory to fall back to.
+  if (efsRuntimeDeclared()) return [];
   const context = await runtimeContextForRequest();
   if (context === null) return [];
   return sitemapForContext(context);

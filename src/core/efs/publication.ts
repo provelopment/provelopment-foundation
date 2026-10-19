@@ -283,11 +283,51 @@ export function parseContentRoute(binding: EfsBinding, remaining: readonly strin
   };
 }
 
+/** A publication's declared owner and the runtime identity it must match. */
+export interface EfsPublicationOwner {
+  readonly spokeId: string;
+  readonly spokeHubId?: string;
+}
+
+export interface EfsRuntimeSpokeIdentity {
+  readonly id: string;
+  readonly spokeHubId?: string;
+}
+
+/**
+ * Whether an explicit publication is owned by the selected runtime Spoke. Composite identity is
+ * required whenever the Installation identifies its Hubs; a missing half is never guessed.
+ */
+export function publicationOwnedBy(
+  publication: EfsPublicationOwner,
+  spoke: EfsRuntimeSpokeIdentity,
+): boolean {
+  if (publication.spokeId !== spoke.id) return false;
+  if (spoke.spokeHubId !== undefined) return publication.spokeHubId === spoke.spokeHubId;
+  return publication.spokeHubId === undefined;
+}
+
+/**
+ * A binding's publication, found by object identity inside the manifest. The binding carries an Entity
+ * and Facet for request resolution, but the publication declaration names its owning Spoke.
+ */
+export function publicationForBinding<T extends EfsPublicationOwner & { readonly bindings: readonly unknown[] }>(
+  publications: readonly T[],
+  binding: unknown,
+): T | null {
+  for (const publication of publications) {
+    if (publication.bindings.includes(binding)) return publication;
+  }
+  return null;
+}
+export function publicPathBase(binding: EfsBinding, siteId: string): readonly string[] {
+  return [...normalizePrefix(binding.prefix), ...(binding.siteMode === "open" ? [siteId] : [])];
+}
+
 /** Build the canonical content suffix (prefix + Site when open + locale + Page route). */
 export function contentSegments(binding: EfsBinding, route: EfsContentRoute): readonly string[] {
   return [
-    ...normalizePrefix(binding.prefix),
-    ...(binding.siteMode === "open" ? [route.siteId] : []),
+    ...publicPathBase(binding, route.siteId),
     route.localeKey,
     ...route.pageRoute,
   ];

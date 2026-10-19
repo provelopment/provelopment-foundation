@@ -11,6 +11,12 @@ import { validateEfsManifest, type EfsManifest } from "@/config/efs/manifest";
 import { normalizePrefix } from "@/core/efs/publication";
 
 export interface EstablishWebsiteInput {
+  /** The Spoke that owns this publication. It is an identity, never a hostname or a name match. */
+  readonly spokeId: string;
+  /** The owning Spoke Hub, when the Installation identifies its Hubs. */
+  readonly spokeHubId?: string;
+  /** The presentation Site explicitly selected from that Spoke's configuration, if any. */
+  readonly presentationSiteCode?: string;
   readonly facetId: string;
   readonly siteId: string;
   readonly host: string;
@@ -95,6 +101,9 @@ export function establishWebsite(input: EstablishWebsiteInput, entropy: Uint8Arr
     publications: [
       {
         id: `${input.facetId}-${input.siteId}`,
+        spokeId: input.spokeId,
+        spokeHubId: input.spokeHubId,
+        presentationSiteCode: input.presentationSiteCode,
         entityId,
         facetId: input.facetId,
         bindings: [

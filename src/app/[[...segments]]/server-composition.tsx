@@ -79,6 +79,8 @@ import { dictionaryAccessForRuntimeContext } from "@/config/runtime-dictionaries
 import type { SiteConfig } from "@/config/site-config";
 import { effectiveSitePageConfig } from "@/config/site-page-config";
 import type { EfsView } from "./efs-request";
+import { IMPLICIT_SPOKE_ID } from "@/core/spoke";
+import { publicPathBase, publicationOwnedBy } from "@/core/efs/publication";
 import { siteDescriptionForLocale } from "@/config/site-metadata";
 import { spokeSwitcherForRenderingSpoke } from "@/config/spoke-routing";
 import { buildLanguageAlternates, type LanguageAlternateLocale } from "@/core/locale";
@@ -1098,15 +1100,25 @@ export function efsShellPresentationConfig(
   source: SiteConfig,
   view: EfsView,
 ): SiteConfig | null {
-  const prefix = view.binding.prefix;
-  if (prefix.length !== 1) return null;
-  const sourceSite = source.sites.find((candidate) => candidate.code === prefix[0]);
-  if (!sourceSite) return null;
+  const presentationSiteCode = view.publication.presentationSiteCode;
+  if (presentationSiteCode === undefined) return null;
+  const sourceSite = source.sites.find((candidate) => candidate.code === presentationSiteCode);
+  if (!sourceSite) {
+    throw new Error(
+      `EFS presentation Site "${presentationSiteCode}" is not declared by the owning Spoke ` +
+        `"${view.publication.spokeId}"; the shared shell cannot be composed.`,
+    );
+  }
 
   const label = view.properties.get("site.label");
   const site: ResolvedSite = {
     ...sourceSite,
-    code: prefix[0],
+    // The Site's CODE remains the owner's configuration identity (its dictionary/presentation
+    // source). Its PUBLIC base is the binding's explicit path segments, so a dedicated root, a
+    // single prefix and a multi-segment prefix all keep correct URLs without treating either as
+    // a country, locale or name.
+    code: sourceSite.code,
+    publicPathBase: publicPathBase(view.binding, view.site.id),
     label: label?.public && typeof label.value === "string" ? label.value : view.site.id,
     locales: view.binding.locales.map((locale) => ({
       path: localePathKey(locale),
@@ -1152,6 +1164,12 @@ export async function layoutForEfsContext(
   children: ReactNode,
   htmlClassName: string,
 ): Promise<ReactNode | null> {
+  if (context.id !== IMPLICIT_SPOKE_ID && !publicationOwnedBy(view.publication, context)) {
+    throw new Error(
+      `EFS publication "${view.publication.id}" is owned by Spoke "${view.publication.spokeId}", ` +
+        `not the context selected for this request.`,
+    );
+  }
   const siteConfig = efsShellPresentationConfig(context.siteConfig, view);
   if (!siteConfig) return null;
   const siteSet: SiteSet = { sites: siteConfig.sites, defaultSite: siteConfig.defaultSite };

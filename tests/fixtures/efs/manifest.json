@@ -3,47 +3,80 @@
     {
       "id": "e_00000000000000000000000000",
       "properties": {
-        "brand.logo": { "value": "/brand/acme.svg", "public": true },
-        "contact.address": { "value": "1 Corporate Way", "public": true },
-        "contact.phone": { "value": "+1 555 0100" }
+        "brand.logo": {
+          "value": "/brand/acme.svg",
+          "public": true
+        },
+        "contact.address": {
+          "value": "1 Corporate Way",
+          "public": true
+        },
+        "contact.phone": {
+          "value": "+1 555 0100"
+        }
       },
       "facets": [
         {
           "id": "acme",
           "properties": {
-            "openingHours": { "value": "Facet desk hours", "public": true }
+            "openingHours": {
+              "value": "Facet desk hours",
+              "public": true
+            }
           },
           "sites": [
             {
               "id": "jakarta",
               "properties": {
-                "brand.logo": { "value": "/brand/jakarta.svg", "public": true }
+                "brand.logo": {
+                  "value": "/brand/jakarta.svg",
+                  "public": true
+                }
               },
               "pages": [
                 {
                   "id": "home",
-                  "route": ["home"],
+                  "route": [
+                    "home"
+                  ],
                   "visibility": "public",
                   "fallbackLocaleKey": "en-001",
                   "representations": [
-                    { "locale": "en-001" },
-                    { "locale": "fr" }
+                    {
+                      "locale": "en-001"
+                    },
+                    {
+                      "locale": "fr"
+                    }
                   ]
                 },
                 {
                   "id": "about",
-                  "route": ["about"],
+                  "route": [
+                    "about"
+                  ],
                   "visibility": "public",
                   "representations": [
-                    { "locale": "en-001" },
-                    { "locale": "fr-CA" }
+                    {
+                      "locale": "en-001"
+                    },
+                    {
+                      "locale": "fr-CA"
+                    }
                   ]
                 },
                 {
                   "id": "detail",
-                  "route": ["products", "detail"],
+                  "route": [
+                    "products",
+                    "detail"
+                  ],
                   "visibility": "unlisted",
-                  "representations": [{ "locale": "en-001" }]
+                  "representations": [
+                    {
+                      "locale": "en-001"
+                    }
+                  ]
                 }
               ]
             },
@@ -55,8 +88,14 @@
               "pages": [
                 {
                   "id": "home",
-                  "route": ["home"],
-                  "representations": [{ "locale": "fr" }]
+                  "route": [
+                    "home"
+                  ],
+                  "representations": [
+                    {
+                      "locale": "fr"
+                    }
+                  ]
                 }
               ]
             }
@@ -75,9 +114,15 @@
               "pages": [
                 {
                   "id": "home",
-                  "route": ["home"],
+                  "route": [
+                    "home"
+                  ],
                   "visibility": "public",
-                  "representations": [{ "locale": "en-001" }]
+                  "representations": [
+                    {
+                      "locale": "en-001"
+                    }
+                  ]
                 }
               ]
             }
@@ -89,25 +134,36 @@
   "publications": [
     {
       "id": "acme-managed",
+      "spokeId": "acme-spoke",
       "entityId": "e_00000000000000000000000000",
       "facetId": "acme",
       "bindings": [
         {
           "id": "managed-acme",
           "host": "my.provelopment.com",
-          "prefix": ["acme-co"],
+          "prefix": [
+            "acme-co"
+          ],
           "entityId": "e_00000000000000000000000000",
           "facetId": "acme",
-          "siteIds": ["jakarta", "catalogue"],
+          "siteIds": [
+            "jakarta",
+            "catalogue"
+          ],
           "siteMode": "open",
           "defaultSiteId": "jakarta",
-          "locales": ["en-001", "fr", "fr-CA"],
+          "locales": [
+            "en-001",
+            "fr",
+            "fr-CA"
+          ],
           "defaultLocale": "en-001"
         }
       ]
     },
     {
       "id": "acme-dedicated",
+      "spokeId": "acme-spoke",
       "entityId": "e_00000000000000000000000000",
       "facetId": "acme",
       "bindings": [
@@ -117,29 +173,42 @@
           "prefix": [],
           "entityId": "e_00000000000000000000000000",
           "facetId": "acme",
-          "siteIds": ["jakarta"],
+          "siteIds": [
+            "jakarta"
+          ],
           "siteMode": "closed",
           "defaultSiteId": "jakarta",
-          "locales": ["en-001", "fr", "fr-CA"],
+          "locales": [
+            "en-001",
+            "fr",
+            "fr-CA"
+          ],
           "defaultLocale": "en-001"
         }
       ]
     },
     {
       "id": "beta-managed",
+      "spokeId": "beta-spoke",
       "entityId": "e_00000000000000000000000001",
       "facetId": "beta",
       "bindings": [
         {
           "id": "managed-beta",
           "host": "my.provelopment.com",
-          "prefix": ["beta-co"],
+          "prefix": [
+            "beta-co"
+          ],
           "entityId": "e_00000000000000000000000001",
           "facetId": "beta",
-          "siteIds": ["main"],
+          "siteIds": [
+            "main"
+          ],
           "siteMode": "closed",
           "defaultSiteId": "main",
-          "locales": ["en-001"],
+          "locales": [
+            "en-001"
+          ],
           "defaultLocale": "en-001"
         }
       ]

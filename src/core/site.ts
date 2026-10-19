@@ -95,6 +95,16 @@ export interface ResolvedSite {
   /** True for the ONE configured default site (the site `/` negotiates to). */
   readonly isDefault: boolean;
   /**
+   * EFS — the EXPLICIT public path segments this Site occupies, when they are not its `code`.
+   *
+   * A legacy Site's public base is exactly `/<code>`. An EFS presentation Site is composed for a
+   * publication binding, whose public base may be a dedicated root (`[]`), one prefix segment
+   * (`["ww"]`) or several (`["us","west"]`), and may include a Site-open selector. The value is
+   * supplied by the publication context — it is never derived from a name, a hostname or a locale.
+   * When absent, `sitePrefixPath()` retains the released `/<code>` behaviour byte-for-byte.
+   */
+  readonly publicPathBase?: readonly string[];
+  /**
    * LOC1 — this Site's Location-selection policy, or `null`/absent for the established optional
    * behaviour.
    *
@@ -284,9 +294,10 @@ export function siteSupportsLocalePath(site: ResolvedSite, localePath: string): 
   return site.locales.some((locale) => locale.path === localePath);
 }
 
-/** The site's public prefix as a URL fragment: always `/<code>` (never empty). */
+/** The site's public prefix as a URL fragment: `/<code>`, or its explicit EFS public base. */
 export function sitePrefixPath(site: ResolvedSite): string {
-  return `/${site.code}`;
+  if (site.publicPathBase === undefined) return `/${site.code}`;
+  return site.publicPathBase.length === 0 ? "" : `/${site.publicPathBase.join("/")}`;
 }
 
 /** The URL every page of a site+locale hangs from: `/ca/en`. */
@@ -325,15 +336,32 @@ export function resolveSiteRequest(
 ): SiteRequest | null {
   if (segments.length === 0) return null;
 
-  const site = siteByCode(set, segments[0] as string);
-  if (site === undefined) return null;
+  // EFS — a presentation Site may occupy an EXPLICIT public base that is not its code. The base is
+  // matched first; a legacy Site has no base and keeps the released `/<code>` rule below.
+  let site: ResolvedSite | undefined;
+  let cursor = 0;
+  for (const candidate of set.sites) {
+    const base = candidate.publicPathBase;
+    if (base === undefined) continue;
+    if (segments.length < base.length) continue;
+    if (base.every((segment, index) => segments[index] === segment)) {
+      site = candidate;
+      cursor = base.length;
+      break;
+    }
+  }
+  if (site === undefined) {
+    site = siteByCode(set, segments[0] as string);
+    if (site === undefined) return null;
+    cursor = 1;
+  }
 
-  const localePath = segments[1];
+  const localePath = segments[cursor];
   if (localePath === undefined) return null;
   const locale = site.locales.find((entry) => entry.path === localePath);
   if (locale === undefined) return null;
 
-  const routeSegments = segments.slice(2);
+  const routeSegments = segments.slice(cursor + 1);
   const routePath = routeSegments.length === 0 ? "" : pageRoutePath(...routeSegments);
   if (routePath === null) return null;
 
@@ -416,7 +444,8 @@ export function siteHref(site: ResolvedSite, localePath: string, href: string): 
   if (first !== undefined && isSiteCode(first)) return href;
 
   const prefix = siteLocalePath(site, localePath);
-  return href === "/" ? prefix : `${prefix}${href}`;
+  if (href === "/") return prefix === "" ? "/" : prefix;
+  return `${prefix}${href}`;
 }
 
 /** The `SiteSet` view of a resolved site list and its default site. */

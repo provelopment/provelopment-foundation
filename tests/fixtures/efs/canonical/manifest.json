@@ -142,6 +142,7 @@
   "publications": [
     {
       "id": "acme-managed",
+      "spokeId": "acme-spoke",
       "entityId": "e_00000000000000000000000000",
       "facetId": "acme",
       "bindings": [
@@ -232,6 +233,7 @@
     },
     {
       "id": "acme-dedicated",
+      "spokeId": "acme-spoke",
       "entityId": "e_00000000000000000000000000",
       "facetId": "acme",
       "bindings": [
@@ -258,6 +260,7 @@
     },
     {
       "id": "acme-open",
+      "spokeId": "acme-spoke",
       "entityId": "e_00000000000000000000000000",
       "facetId": "acme",
       "bindings": [

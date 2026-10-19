@@ -24,7 +24,9 @@ converted host.
 | Assets | `/spokes/<segment>/assets/**` | Shared shell assets unchanged; EFS owner assets at `/<prefix>/owner-assets/**` (logo, favicon) |
 | Site Hubs / Inspection hosts | `provelopment-foundation.vercel.app` inspection host | Explicit Foundation binding for the inspection host; no implicit default |
 | Publication bindings | Implicit Spoke hostname | Three explicit bindings: Foundation host, inspection host, Germany host |
-| URL grammar | `/ww/<locale>/...`, `/de/<locale>/...` | **Unchanged** — prefix is the Site code position; Site `main` is closed |
+| Publication ownership | Not declared | Each publication names its owning Spoke (`foundation`, `germany`) explicitly; the runtime refuses a host-selected Spoke that differs |
+| Presentation source | Legacy Site found through `prefix[0]` | Each publication names `presentationSiteCode` explicitly (`ww`, `de`); public URL base comes from the binding, not from a country or Site name |
+| URL grammar | `/ww/<locale>/...`, `/de/<locale>/...` | **Unchanged** — prefix is the explicit binding base; Site `main` is closed |
 | Geographic behavior | Germany `business.regions`, timezone, regional generation | Retired. `berlin`/`frankfurt` are ordinary Pages; no timezone/region/DST scheduling exists in the manifest or capsule |
 | Discovery | Legacy sitemap/robots | EFS binding-derived sitemap/robots; public Pages only |
 
@@ -61,3 +63,13 @@ representations and Pages are refused.
 - `tests/unit/efs-public-rendering.test.tsx` — private property/nav-label leakage and external logo
   refusal.
 - `tests/integration/efs-assets.test.ts` — owner isolation, traversal, nested-prefix route.
+- `tests/integration/efs-publication-isolation.test.ts` — one Entity across Facets, multiple
+  Entities under one Spoke, and one Entity through two distinct Spokes, all through the actual EFS
+  request/rendering boundary.
+- `tests/integration/efs-independent-installations.test.ts` — the same Entity served from two
+  independent on-disk manifests and capsules.
+- `deployment/tests/integration/efs-shared-shell.test.tsx` — complete rendered shared shell at a
+  dedicated root, single prefix, multi-segment prefix and Site-open publication; owner refusal and
+  name invariance.
+- `tests/unit/efs-shell-presentation.test.ts` — explicit presentation source/public base and complete
+  geography/locale neutrality.

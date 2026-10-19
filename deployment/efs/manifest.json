@@ -284,6 +284,8 @@
   "publications": [
     {
       "id": "foundation-publication",
+      "spokeId": "foundation",
+      "presentationSiteCode": "ww",
       "entityId": "e_00000000000000000000000001",
       "facetId": "foundation",
       "bindings": [
@@ -331,6 +333,8 @@
     },
     {
       "id": "germany-publication",
+      "spokeId": "germany",
+      "presentationSiteCode": "de",
       "entityId": "e_00000000000000000000000002",
       "facetId": "germany",
       "bindings": [

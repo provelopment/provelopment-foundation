@@ -3,18 +3,35 @@ import { describe, expect, it } from "vitest";
 import { efsShellPresentationConfig } from "@/app/[[...segments]]/server-composition";
 import type { EfsView } from "@/app/[[...segments]]/efs-request";
 import type { SiteConfig } from "@/config/site-config";
+import { resolveSiteRequest } from "@/core/site";
 import { resolveProperties, type PropertyOwner } from "@/core/efs/properties";
 
-function view(overrides: { readonly prefix?: readonly string[]; readonly pageId?: string } = {}): EfsView {
+function view(
+  overrides: {
+    readonly prefix?: readonly string[];
+    readonly pageId?: string;
+    readonly siteMode?: "closed" | "open";
+    readonly presentationSiteCode?: string;
+  } = {},
+): EfsView {
   const properties = new Map([
     ["site.label", { key: "site.label", value: "North", public: true, provenance: [] }],
   ]);
   return {
+    publication: {
+      id: "north-publication",
+      spokeId: "north-spoke",
+      presentationSiteCode: overrides.presentationSiteCode ?? "ww",
+      entityId: "e_00000000000000000000000003",
+      facetId: "north",
+      bindings: [],
+    },
     binding: {
       host: "north.example",
       prefix: overrides.prefix ?? ["de"],
       locales: ["de", "en"],
       defaultLocale: "en",
+      siteMode: overrides.siteMode ?? "closed",
     },
     site: { id: "berlin", pages: [] },
     facet: { id: "germany" },
@@ -41,9 +58,21 @@ function source(): SiteConfig {
     locationSelection: { mode: "required", default: "berlin" },
   };
   const alternate = { ...site, code: "x", label: "X", isDefault: false };
+  const worldwide = {
+    ...site,
+    code: "ww",
+    label: "Worldwide",
+    locales: [
+      { path: "en", canonical: "en" },
+      { path: "de", canonical: "de" },
+    ],
+    defaultLocale: "en",
+    locationSelection: null,
+    isDefault: false,
+  };
   return {
     url: "https://legacy.example",
-    sites: [site, alternate],
+    sites: [site, alternate, worldwide],
     defaultSite: site,
     hubs: [],
     sitePageOverrides: { de: { ctaHref: "/de" }, x: { ctaHref: "/x" } },
@@ -120,5 +149,54 @@ describe("EFS shell presentation is name- and geography-neutral (R03)", () => {
       baseline.publicEntries().map((entry) => entry.key),
     );
     expect(renamed.get("contact.address")?.state).toBe("suppressed");
+  });
+
+  it("takes the presentation Site from the explicit publication, never from a prefix", () => {
+    const dedicated = efsShellPresentationConfig(source(), view({ prefix: [] }))!;
+    const single = efsShellPresentationConfig(source(), view({ prefix: ["de"] }))!;
+    const nested = efsShellPresentationConfig(source(), view({ prefix: ["us", "west"] }))!;
+    const open = efsShellPresentationConfig(
+      source(),
+      view({ prefix: ["us"], siteMode: "open" }),
+    )!;
+
+    for (const result of [dedicated, single, nested, open]) {
+      expect(result.sites[0].code).toBe("ww");
+      expect(result.sites[0].label).toBe("North");
+      expect(result.sites[0].locales).toEqual([
+        { path: "de", canonical: "de" },
+        { path: "en", canonical: "en" },
+      ]);
+    }
+    expect(dedicated.sites[0].publicPathBase).toEqual([]);
+    expect(single.sites[0].publicPathBase).toEqual(["de"]);
+    expect(nested.sites[0].publicPathBase).toEqual(["us", "west"]);
+    expect(open.sites[0].publicPathBase).toEqual(["us", "berlin"]);
+  });
+
+  it("fails loudly when an explicit presentation Site is not in the owning Spoke", () => {
+    expect(() =>
+      efsShellPresentationConfig(source(), view({ presentationSiteCode: "missing" })),
+    ).toThrow(/presentation Site "missing" is not declared/);
+  });
+
+  it("resolves the shared composition from the EFS public base, not a Site code", () => {
+    const nested = efsShellPresentationConfig(source(), view({ prefix: ["us", "west"] }))!;
+    const request = resolveSiteRequest({ sites: nested.sites, defaultSite: nested.defaultSite }, [
+      "us",
+      "west",
+      "en",
+      "about",
+    ]);
+    expect(request?.site.code).toBe("ww");
+    expect(request?.localePath).toBe("en");
+    expect(request?.routePath).toBe("about");
+    const dedicated = efsShellPresentationConfig(source(), view({ prefix: [] }))!;
+    expect(
+      resolveSiteRequest({ sites: dedicated.sites, defaultSite: dedicated.defaultSite }, [
+        "de",
+        "frankfurt",
+      ])?.routePath,
+    ).toBe("frankfurt");
   });
 });

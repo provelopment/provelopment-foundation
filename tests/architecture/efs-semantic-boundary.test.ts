@@ -39,8 +39,21 @@ describe("EFS semantic boundary (R03)", () => {
     expect(build).toContain("pageBindings: []");
     expect(build).toContain("timezone: undefined");
     expect(build).toContain("locations: []");
+    expect(build).toContain("view.publication.presentationSiteCode");
+    expect(build).toContain("publicPathBase(view.binding, view.site.id)");
+    expect(build).not.toContain("view.binding.prefix");
+    expect(build).not.toContain("prefix[0]");
     expect(build).not.toContain("resolveSiteLocale");
     expect(build).not.toContain("defaultSiteLabel");
+  });
+
+  it("resolves publication ownership from declarations, never from a host or prefix match", () => {
+    const request = source("app/[[...segments]]/efs-request.ts");
+    expect(request).toContain("publicationForBinding(manifest.publications, matched.binding)");
+    expect(request).toContain("publicationOwnedBy(publication, context)");
+    expect(request).toContain("runtimeContextForCurrentRequest");
+    expect(request).not.toContain("publication.spokeId === matched.binding.prefix");
+    expect(request).not.toContain("binding.host === publication.spokeId");
   });
 
   it("keeps the EFS resolver and locale authority free of Site/country inference", () => {

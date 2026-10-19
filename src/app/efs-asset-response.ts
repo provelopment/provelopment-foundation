@@ -3,7 +3,9 @@ import { extname, join, sep } from "node:path";
 
 import { headers } from "next/headers";
 
-import { normalizePrefix, matchBinding } from "@/core/efs/publication";
+import { normalizePrefix, matchBinding, publicationForBinding, publicationOwnedBy } from "@/core/efs/publication";
+import { IMPLICIT_SPOKE_ID } from "@/core/spoke";
+import { runtimeContextForCurrentRequest } from "@/config/spoke-request";
 import { deploymentPaths } from "@/config/deployment-root";
 import { loadEfsManifest } from "@/config/efs/manifest";
 
@@ -67,6 +69,16 @@ export async function serveOwnerAsset(
   const matched = matchBinding(host, `/${prefix.join("/")}`, bindings);
   if (!matched || matched.binding.prefix.length !== prefix.length) return assetNotFound();
   const binding = matched.binding;
+  const publication = publicationForBinding(loaded.manifest.publications, binding);
+  if (!publication) return assetNotFound();
+  const context = await runtimeContextForCurrentRequest();
+  if (
+    context !== null &&
+    context.id !== IMPLICIT_SPOKE_ID &&
+    !publicationOwnedBy(publication, context)
+  ) {
+    return assetNotFound();
+  }
   const entity = loaded.manifest.entities.find((candidate) => candidate.id === binding.entityId);
   const facet = entity?.facets.find((candidate) => candidate.id === binding.facetId);
   if (!entity || !facet) return assetNotFound();

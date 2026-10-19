@@ -19,6 +19,15 @@ describe("controlled reference Installation conversion (R02)", () => {
       "e_00000000000000000000000002",
     ]);
     expect(loaded.manifest?.publications.flatMap((publication) => publication.bindings)).toHaveLength(3);
+    expect(
+      loaded.manifest?.publications.map((publication) => [
+        publication.spokeId,
+        publication.presentationSiteCode,
+      ]),
+    ).toEqual([
+      ["foundation", "ww"],
+      ["germany", "de"],
+    ]);
   });
 
   it("preserves the released URL grammar through explicit bindings", () => {

@@ -14,6 +14,7 @@ describe("EFS ordinary establishment and capsule portability (S3-E3-R01)", () =>
   it("establishes one explicit website with a localized Home Page", () => {
     const established = establishWebsite(
       {
+        spokeId: "acme-spoke",
         facetId: "acme",
         siteId: "main",
         host: "www.acme.example",
@@ -37,6 +38,7 @@ describe("EFS ordinary establishment and capsule portability (S3-E3-R01)", () =>
   it("exports only the selected Entity and refuses a foreign file", () => {
     const established = establishWebsite(
       {
+        spokeId: "acme-spoke",
         facetId: "acme",
         siteId: "main",
         host: "www.acme.example",
@@ -59,6 +61,7 @@ describe("EFS ordinary establishment and capsule portability (S3-E3-R01)", () =>
   it("round-trips a capsule and diagnoses a missing representation", () => {
     const established = establishWebsite(
       {
+        spokeId: "acme-spoke",
         facetId: "acme",
         siteId: "main",
         host: "www.acme.example",
@@ -80,6 +83,7 @@ describe("EFS ordinary establishment and capsule portability (S3-E3-R01)", () =>
   it("refuses a tampered capsule path", () => {
     const established = establishWebsite(
       {
+        spokeId: "acme-spoke",
         facetId: "acme",
         siteId: "main",
         host: "www.acme.example",
@@ -100,6 +104,7 @@ describe("EFS ordinary establishment and capsule portability (S3-E3-R01)", () =>
   it("copies a template once into a new identity with provenance", () => {
     const source = establishWebsite(
       {
+        spokeId: "acme-spoke",
         facetId: "acme",
         siteId: "main",
         host: "www.acme.example",

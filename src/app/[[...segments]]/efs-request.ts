@@ -45,8 +45,10 @@ import {
  * host and path through the binding, then the Entity/Facet/Site/Page/representation chain, loads the
  * localized owner source, resolves the one property cascade and composes canonical/hreflang output.
  *
- * Hosts not claimed by the manifest return `null` so the existing reference deployment remains reachable
- * while controlled fixture conversion is completed; that transition is reported, never hidden.
+ * When this deployment DECLARES EFS, a host the manifest does not claim is refused (`notFound`); it never
+ * falls through to the legacy Page/locale runtime. Only the absence of an EFS declaration selects the
+ * ordinary legacy installation path (UC-01), and an incomplete declaration fails with a controlled
+ * diagnostic rather than reviving that path.
  */
 const MANIFEST_ENV = "FOUNDATION_EFS_MANIFEST";
 const CAPSULE_ENV = "FOUNDATION_EFS_CAPSULE";

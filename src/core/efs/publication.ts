@@ -317,4 +317,3 @@ export function assetUrl(binding: EfsBinding, assetPath: string | readonly strin
     ...segments,
   ].join("/")}`;
 }
-

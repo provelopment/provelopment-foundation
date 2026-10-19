@@ -203,4 +203,3 @@ export function resolveProperty(
 ): ResolvedProperty | undefined {
   return resolveProperties(chain).get(key);
 }
-

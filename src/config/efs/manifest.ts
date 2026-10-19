@@ -380,4 +380,3 @@ export function loadEfsManifest(path: string): EfsManifestResult {
     };
   }
 }
-

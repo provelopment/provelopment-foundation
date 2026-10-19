@@ -190,4 +190,3 @@ export function advertisedHreflang(
     localeKey: localePathKey(representation.locale),
   }));
 }
-

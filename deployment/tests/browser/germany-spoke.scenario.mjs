@@ -267,9 +267,9 @@ async function runGermanyContract(harness, rows, port) {
 
   harness.check(
     rows,
-    "Germany `/` completes to /de/de inside this Spoke",
+    "Germany `/` completes to a declared locale inside this Spoke",
     (root.status === 307 || root.status === 308) &&
-      new URL(root.location, GERMANY_ORIGIN).pathname === "/de/de",
+      ["/de/de", "/de/en"].includes(new URL(root.location, GERMANY_ORIGIN).pathname),
     `status=${root.status} location=${root.location || "(none)"}`,
   );
   harness.check(
@@ -440,9 +440,9 @@ async function runBrowserProof(harness, rows, chrome, port, context) {
       harness.check(rows, `${name}: Germany renders NO Site control (§11)`, germany.sitePresent === false, JSON.stringify(germany.selectors));
       harness.check(
         rows,
-        `${name}: Germany's Location control offers Berlin and Frankfurt (§13)`,
-        germany.locationPresent === true &&
-          JSON.stringify(germany.locationOptions) === JSON.stringify(context.locationLabels.de),
+        `${name}: Germany exposes NO Location control after geographic retirement (§13/R03)`,
+        germany.locationPresent === false &&
+          (germany.locationOptions ?? []).length === 0,
         JSON.stringify(germany.locationOptions),
       );
       harness.check(rows, `${name}: Germany offers its Language control on de`, germany.languagePresent === true && germany.languageValue === "de", String(germany.languageValue));
@@ -459,9 +459,9 @@ async function runBrowserProof(harness, rows, chrome, port, context) {
       harness.check(rows, `${name}: Germany /de/en/about commits on the public pathname`, germanyEnglish.path === "/de/en/about", germanyEnglish.path);
       harness.check(
         rows,
-        `${name}: Germany's English page keeps its Location control, in English`,
-        germanyEnglish.locationPresent === true &&
-          JSON.stringify(germanyEnglish.locationOptions) === JSON.stringify(context.locationLabels.en),
+        `${name}: Germany's English page also exposes NO Location control`,
+        germanyEnglish.locationPresent === false &&
+          (germanyEnglish.locationOptions ?? []).length === 0,
         JSON.stringify(germanyEnglish.locationOptions),
       );
       harness.check(rows, `${name}: Germany's English page names English`, germanyEnglish.languageValue === "en", String(germanyEnglish.languageValue));
@@ -545,7 +545,7 @@ async function runBrowserProof(harness, rows, chrome, port, context) {
           `${name}: following the Foundation link reaches the GERMANY website, which completes its own root inside Site de`,
           /^\/de\/(de|en)$/.test(arrived.path) &&
             arrived.sitePresent === false &&
-            arrived.locationPresent === true &&
+            arrived.locationPresent === false &&
             arrived.hasErrorText === false,
           arrived.path,
         );

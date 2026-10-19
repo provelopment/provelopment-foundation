@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -45,6 +45,42 @@ describe("controlled reference Installation conversion (R02)", () => {
     }
     const raw = JSON.stringify(loaded.manifest);
     expect(raw).not.toMatch(/timezone|regions|Europe\/Berlin/);
+  });
+
+  it("declares exactly the released authored Pages and representations", () => {
+    const authored: string[] = [];
+    for (const [spoke, site] of [
+      ["foundation", "ww"],
+      ["germany", "de"],
+    ] as const) {
+      for (const mode of ["json", "markdown"]) {
+        const root = join(DEPLOYMENT, "spokes", spoke, "content", "pages", mode, site);
+        if (!existsSync(root)) continue;
+        for (const relative of readdirSync(root, { recursive: true }) as string[]) {
+          const match = /^([^\\/]+)[\\/]([^\\/]+)\.(json|md)$/.exec(relative.replace(/\\/g, "/"));
+          if (!match) continue;
+          authored.push(`${spoke}/${match[1]}/${match[2]}`);
+        }
+      }
+    }
+
+    const declared: string[] = [];
+    for (const [entityIndex, entity] of (loaded.manifest?.entities ?? []).entries()) {
+      const spoke = entityIndex === 0 ? "foundation" : "germany";
+      for (const facet of entity.facets) {
+        for (const site of facet.sites) {
+          for (const page of site.pages) {
+            for (const representation of page.representations) {
+              declared.push(`${spoke}/${representation.locale.toLowerCase()}/${page.id}`);
+            }
+          }
+        }
+      }
+    }
+
+    expect(declared.sort()).toEqual(authored.sort());
+    expect(loaded.manifest?.entities.flatMap((entity) => entity.facets.flatMap((facet) => facet.sites.flatMap((site) => site.pages)))).toHaveLength(6);
+    expect(declared).toHaveLength(12);
   });
 
   it("keeps the reference brand assets inside each owning Entity capsule", () => {

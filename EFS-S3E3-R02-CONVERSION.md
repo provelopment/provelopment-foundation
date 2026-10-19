@@ -15,8 +15,8 @@ converted host.
 | Entities | None | `e_00000000000000000000000001` (Foundation), `e_00000000000000000000000002` (Germany) |
 | Facets | Spoke content trees | `foundation`, `germany` |
 | Sites | `ww`, `de` | Non-geographic Site `main` in each Facet. `ww`/`de` remain URL binding prefixes, not Site identities |
-| Pages | Foundation Home/About; Germany Home/About/Berlin/Frankfurt | Same eight Pages, explicit route declarations |
-| Representations | `ww/en`, `ww/de`, `de/de`, `de/en` | Same 16 localized sources (JSON/Markdown), copied byte-for-byte into ownership paths |
+| Pages | Foundation Home/About; Germany Home/About/Berlin/Frankfurt | **6 Pages**, explicit route declarations |
+| Representations | `ww/en`, `ww/de`, `de/de`, `de/en` | **12 localized representations** (6 Pages × declared en/de), copied byte-for-byte into ownership paths |
 | JSON/Markdown precedence | JSON over Markdown | Unchanged; JSON over Markdown per representation |
 | Dictionaries | Shared platform/Spoke dictionaries | Unchanged; the shared shell consumes the same dictionary capability |
 | Navigation | `site.config.json` Home/About; Germany footer link | Unchanged; shared shell navigation + EFS Page `nav.label` public properties |

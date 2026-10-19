@@ -80,24 +80,79 @@ export async function run(_chrome, harness) {
     }
 
     const germany = [
-      ["/de/de", "Deutschland: zwei Sprachen, zwei Standorte."],
-      ["/de/en", "Germany: two languages, two locations."],
-      ["/de/de/about", "Über die Deutschland-Website"],
-      ["/de/en/about", "About the Germany website"],
-      ["/de/de/berlin", "Berlin"],
-      ["/de/en/berlin", "Berlin"],
-      ["/de/de/frankfurt", "Frankfurt"],
-      ["/de/en/frankfurt", "Frankfurt"],
+      ["/de/de", "Deutschland: zwei Sprachen, zwei Standorte.", "de"],
+      ["/de/en", "Germany: two languages, two locations.", "en"],
+      ["/de/de/about", "Über die Deutschland-Website", "de"],
+      ["/de/en/about", "About the Germany website", "en"],
+      ["/de/de/berlin", "Berlin", "de"],
+      ["/de/en/berlin", "Berlin", "en"],
+      ["/de/de/frankfurt", "Frankfurt", "de"],
+      ["/de/en/frankfurt", "Frankfurt", "en"],
     ];
-    for (const [path, title] of germany) {
+    for (const [path, title, lang] of germany) {
       const page = await request(port, path, "foundation-template-germany.provelopment.com");
       harness.check(
         rows,
         `germany ${path} is served from the converted Entity`,
-        page.status === 200 && page.body.includes(`<title>${title}</title>`),
+        page.status === 200 &&
+          page.body.includes(`<title>${title}</title>`) &&
+          page.body.includes(`<html lang="${lang}"`),
         `status=${page.status}`,
       );
     }
+
+    const germanEnglish = await request(
+      port,
+      "/de/en",
+      "foundation-template-germany.provelopment.com",
+    );
+    harness.check(
+      rows,
+      "a declared `en` representation stays English under a Germany-named Facet and `de` prefix",
+      germanEnglish.status === 200 &&
+        germanEnglish.body.includes('<html lang="en"') &&
+        germanEnglish.body.includes('rel="canonical" href="https://foundation-template-germany.provelopment.com/de/en"') &&
+        germanEnglish.body.includes('hrefLang="en"') &&
+        germanEnglish.body.includes('hrefLang="de"') &&
+        germanEnglish.body.includes('property="og:locale" content="en"') &&
+        !germanEnglish.body.includes("en-DE") &&
+        !germanEnglish.body.includes("de-DE"),
+      "lang=en, canonical /de/en, hreflang en/de, og:locale en",
+    );
+    const german = await request(port, "/de/de", "foundation-template-germany.provelopment.com");
+    harness.check(
+      rows,
+      "a declared `de` representation stays German without a country-derived tag",
+      german.status === 200 &&
+        german.body.includes('<html lang="de"') &&
+        german.body.includes('hrefLang="de"') &&
+        !german.body.includes("de-DE"),
+      "lang=de, no de-DE",
+    );
+    const city = await request(
+      port,
+      "/de/en/berlin",
+      "foundation-template-germany.provelopment.com",
+    );
+    harness.check(
+      rows,
+      "a city-named Page creates no place record, region route, address or timezone",
+      city.status === 200 &&
+        city.body.includes("<title>Berlin</title>") &&
+        !city.body.includes("Europe/Berlin") &&
+        !city.body.includes("Example Street") &&
+        !city.body.includes('aria-label="Location"') &&
+        !city.body.includes("data-region"),
+      "ordinary Berlin Page, no regional runtime state",
+    );
+    harness.check(
+      rows,
+      "legacy regional configuration cannot leak into the EFS shell",
+      !germanEnglish.body.includes("Example Street") &&
+        !germanEnglish.body.includes("Europe/Berlin") &&
+        !germanEnglish.body.includes('aria-label="Location"'),
+      "no authored region address/timezone/selector",
+    );
 
 
     const about = await request(port, "/ww/en/about", "foundation-template.provelopment.com");

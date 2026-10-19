@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -98,6 +98,32 @@ describe("EFS actual App Router request branch (S3-E3)", () => {
   it("refuses an unclaimed prefix and an unclaimed host when the EFS manifest is authoritative", async () => {
     await expect(request("my.provelopment.com", "/other/en-001/about")).rejects.toThrow("NOT_FOUND");
     await expect(request("unclaimed.example", "/acme-co/en-001/about")).rejects.toThrow("NOT_FOUND");
+  });
+
+  it("keeps identity and properties unchanged between prefixed and dedicated bindings", async () => {
+    const managed = await request("my.provelopment.com", "/acme-co/en-001/about");
+    const dedicated = await request("127.0.0.1", "/en-001/about");
+    expect(dedicated?.entity.id).toBe(managed?.entity.id);
+    expect(dedicated?.facet.id).toBe(managed?.facet.id);
+    expect(dedicated?.site.id).toBe(managed?.site.id);
+    expect(dedicated?.page.id).toBe(managed?.page.id);
+    expect(dedicated?.locale).toBe(managed?.locale);
+    expect(dedicated?.properties.toRecord()).toEqual(managed?.properties.toRecord());
+    expect(dedicated?.canonical).not.toBe(managed?.canonical);
+  });
+
+  it("refuses an unsupported locale without inferring one from the prefix or Site", async () => {
+    await expect(request("my.provelopment.com", "/acme-co/de/about")).rejects.toThrow("NOT_FOUND");
+  });
+
+  it("fails closed when a capsule exists without its explicit manifest", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "efs-missing-"));
+    mkdirSync(join(directory, "capsule"), { recursive: true });
+    process.env.FOUNDATION_EFS_MANIFEST = join(directory, "manifest.json");
+    process.env.FOUNDATION_EFS_CAPSULE = join(directory, "capsule");
+    await expect(request("my.provelopment.com", "/acme-co/en-001/about")).rejects.toThrow(
+      /EFS manifest is missing/,
+    );
   });
 
   it("fails with a controlled diagnostic instead of falling back when the manifest is invalid", async () => {

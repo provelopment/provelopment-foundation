@@ -7,7 +7,7 @@ import {
   layoutMetadataForContext,
   spokeServerComposition,
 } from "./server-composition";
-import { efsDescription, efsTitle, efsViewForCurrentRequest } from "./efs-request";
+import { efsDescription, efsPublicSegments, efsTitle, efsViewForCurrentRequest } from "./efs-request";
 import { requestPublicDestination } from "./request-context";
 import { runtimeContextForCurrentRequest } from "@/config/spoke-request";
 import { assetUrl } from "@/core/efs/publication";
@@ -101,7 +101,13 @@ export default async function LocaleLayout({ children, params }: LocaleLayoutPro
   if (efs) {
     const context = await runtimeContextForCurrentRequest();
     if (context) {
-      const shell = await layoutForEfsContext(context, segments, children, HTML_CLASS_NAME);
+      const shell = await layoutForEfsContext(
+        context,
+        efs,
+        efsPublicSegments(efs),
+        children,
+        HTML_CLASS_NAME,
+      );
       if (shell) return shell;
     }
     return (

@@ -90,15 +90,27 @@ function hostName(value: string | null): string | null {
 }
 
 function runtime(): LoadedRuntime | null {
-  const manifestPath = process.env[MANIFEST_ENV] ?? DEFAULT_MANIFEST;
-  if (!existsSync(manifestPath)) return null;
+  // An explicit test/deployment override of the empty string is the only supported way to exercise a
+  // legacy installation in tests. An unset override selects the deployment's EFS authority.
+  const override = process.env[MANIFEST_ENV];
+  if (override === "") return null;
+  const manifestPath = override ?? DEFAULT_MANIFEST;
+  const capsulePath = process.env[CAPSULE_ENV] ?? DEFAULT_CAPSULE;
+  if (!existsSync(manifestPath)) {
+    // A deployment that HAS a capsule but no manifest is a broken EFS installation: it must not fall
+    // back to the older page/locale runtime and revive retired geographic behaviour.
+    if (existsSync(capsulePath)) {
+      throw new Error(`EFS manifest is missing at ${manifestPath}; the capsule cannot be served.`);
+    }
+    return null;
+  }
   const result = loadEfsManifest(manifestPath);
   if (!result.ok || !result.manifest) {
     throw new Error(`EFS manifest is invalid: ${result.issues.join(" ")}`);
   }
   return {
     manifest: result.manifest,
-    capsule: process.env[CAPSULE_ENV] ?? DEFAULT_CAPSULE,
+    capsule: capsulePath,
   };
 }
 

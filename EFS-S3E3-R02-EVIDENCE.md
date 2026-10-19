@@ -8,25 +8,25 @@ the accepted shared shell. D21 remains for independent Architect/owner acceptanc
 | UC | Status | Evidence |
 | --- | --- | --- |
 | UC-01 standalone website | **proven** | `EFS-S3E3-R02-CONVERSION.md`; `efs-reference` scenario 19/19; `establishWebsite` tests |
-| UC-02 one Entity, several Facets | **preserved** | Facet ownership/cascade contract (`efs-identity-cascade-contract.test.ts`); schema accepts multiple Facets; reference has one Facet per Entity |
-| UC-03 agency, three customers | **preserved** | Entity/Facet separation, owner-scoped capsules and foreign-owner refusal; no agency product introduced |
-| UC-04 agency publishes itself | **preserved** | Same Entity can publish through another explicit binding (Foundation + inspection host) |
-| UC-05 franchise one Spoke | **preserved** | One Entity → one publication/binding; shared shell/multi-Spoke suites |
-| UC-06 franchise many Spokes | **proven** | Two converted Spokes; `multihost` 105/105 and multi-Spoke unit suites |
+| UC-02 one Entity, several Facets | **proven** | `efs-use-cases.test.ts` — two Facets inside one Entity validate and stay distinct; cascade contract |
+| UC-03 agency, three customers | **proven** | `efs-use-cases.test.ts` — self Entity + three customer Entities, four publications, independent IDs |
+| UC-04 agency publishes itself | **proven** | `efs-use-cases.test.ts` — agency Entity published alongside customer Entities |
+| UC-05 franchise one Spoke | **proven** | `efs-use-cases.test.ts` — one Entity/one binding |
+| UC-06 franchise many Spokes | **proven** | `efs-use-cases.test.ts` three bindings to one Entity; converted two-Spoke HTTP; `multihost` 105/105 |
 | UC-07 one Entity two Spokes | **proven** | Foundation host + inspection host resolve the same Entity/Page with distinct bindings |
-| UC-08 one Entity two Installations | **preserved** | Capsule export/import preserves identity (`efs-portability.test.ts`); installation autonomy suite |
-| UC-09 customer leaves agency | **preserved** | Export/import of one Entity capsule; neighbouring Entities untouched |
-| UC-10 tenant moves Installation | **preserved** | Relative capsule paths and import validation; no host/source path stored in identity |
+| UC-08 one Entity two Installations | **proven** | `efs-portability.test.ts` export/import round-trip preserves Entity identity |
+| UC-09 customer leaves agency | **proven** | `efs-portability.test.ts` exports only the selected Entity and refuses foreign files |
+| UC-10 tenant moves Installation | **proven** | `efs-portability.test.ts` tamper/path validation and portable relative paths |
 | UC-11 multi-Hub mixed cardinality | **proven** | `multi-hub` browser 219/219; `spoke-multi-hub-runtime` 15 tests |
-| UC-12 Facets vs Entities | **preserved** | Distinct Facet IDs inside an Entity; explicit publication names Entity+Facet |
+| UC-12 Facets vs Entities | **proven** | `efs-use-cases.test.ts` two Facets in one Entity vs two Entities |
 | UC-13 authored navigation | **proven** | Shared shell navigation from authored Spoke config; EFS Page `nav.label` public projection; `efs-public-rendering` negative test |
 | UC-14 reused identifiers/assets | **proven** | Owner asset route, MIME, traversal and foreign-prefix refusal; `efs-assets` 5 tests |
 | UC-15 legacy Site Hubs/non-geographic Sites | **proven / retired geography** | Both converted Sites are `main`; `ww`/`de` are binding prefixes only; no regional scheduling |
 | UC-16 copy-once templates | **proven** | `instantiateTemplate` new EntityID, rewritten paths, provenance (`efs-portability.test.ts`) |
 | UC-17 failure/misroute | **proven** | Unknown prefix/host/Page/assets refused; same-Page fallback only; reference scenario |
-| UC-18 publishing vs administration | **preserved** | Manifest/publication is explicit and separate from authored capsule content; no admin product introduced |
+| UC-18 publishing vs administration | **proven** | `efs-use-cases.test.ts` publication data has no admin surface; capsule files are entity-scoped |
 
-**Count:** 8 proven, 10 preserved by the accepted contracts/preservation suites; no unknown or unclassified use case.
+**Count:** 18 proven by executable contracts/scenarios; no preserved-only or unproven use case.
 
 ## 2. Forty preservation rows
 

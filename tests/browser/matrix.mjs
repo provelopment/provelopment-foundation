@@ -712,7 +712,9 @@ async function discoverFoundationScenarios() {
 /** Runs every Foundation-owned scenario, labelled and summarised exactly like a scenario in this file. */
 async function runFoundationScenarios(chrome, names) {
   const rows = [];
+  const only = process.env.FOUNDATION_BROWSER_ONLY?.trim();
   for (const file of names) {
+    if (only && !file.includes(only)) continue;
     const loaded = await import(pathToFileURL(join(HERE, file)).href);
     const scenario = loaded.default ?? loaded;
     const label = scenario.id ?? file.slice(0, -SCENARIO_SUFFIX.length);

@@ -93,8 +93,8 @@ describe("EFS actual App Router request branch (S3-E3)", () => {
     expect(open?.properties.publicEntries().map((entry) => entry.key)).not.toContain("contact.address");
   });
 
-  it("refuses an unclaimed prefix on a claimed host and a foreign host falls through", async () => {
+  it("refuses an unclaimed prefix and an unclaimed host when the EFS manifest is authoritative", async () => {
     await expect(request("my.provelopment.com", "/other/en-001/about")).rejects.toThrow("NOT_FOUND");
-    await expect(request("unclaimed.example", "/acme-co/en-001/about")).resolves.toBeNull();
+    await expect(request("unclaimed.example", "/acme-co/en-001/about")).rejects.toThrow("NOT_FOUND");
   });
 });

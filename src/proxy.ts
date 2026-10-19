@@ -53,11 +53,9 @@ import { SPOKE_SELECTION_HEADER, isInternalSpokePath } from "@/config/spoke-sele
 const SPOKE_ASSET_PREFIX = "/spokes/";
 
 /**
- * S3-E3 — hosts explicitly assigned to the EFS runtime by the deployment build.
- *
- * This is a deployment declaration, not hostname inference: when the variable is absent the EFS branch is
- * disabled and the existing reference Spokes keep their exact current behaviour. An EFS host is handed
- * through to the App Router, which resolves the binding and fails closed on an unknown prefix.
+ * The EFS host claims the BUILD projected from the explicit manifest. This is not a selection
+ * rule or a compatibility flag: a claimed host is handed to the App Router's binding resolver;
+ * an unclaimed host keeps the established exact-claim refusal.
  */
 const EFS_HOSTS_ENV = "FOUNDATION_EFS_HOSTS";
 
@@ -134,7 +132,7 @@ export function proxy(request: NextRequest) {
   if (pathname.startsWith(SPOKE_ASSET_PREFIX)) return spokeAsset(request);
 
   // 3 — which Spoke answers this host: exact claims in multi mode, nothing when unclaimed.
-  // An explicitly EFS-assigned host continues to the App Router EFS binding resolver instead.
+  // A manifest-claimed EFS host is resolved by the App Router's binding resolver.
   if (isEfsHost(request.headers.get("host"))) {
     return NextResponse.next({ request: { headers: new Headers(request.headers) } });
   }
@@ -152,5 +150,8 @@ export const config = {
    * `/_next/**` stays entirely outside this boundary, as does every path that looks like a static file —
    * EXCEPT a Spoke's own asset namespace, which must be checked on a dotted path too (M16).
    */
-  matcher: ["/((?!_next|.*\\..*).*)", "/spokes/:path*"],
+  matcher: [
+    "/((?!_next|.*\\..*).*)",
+    "/spokes/:path*",
+  ],
 };

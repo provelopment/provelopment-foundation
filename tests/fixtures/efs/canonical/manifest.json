@@ -3,48 +3,104 @@
     {
       "id": "e_00000000000000000000000000",
       "properties": {
-        "brand.logo": { "value": "/brand/acme.svg", "public": true },
-        "contact.address": { "value": "1 Corporate Way", "public": true },
-        "openingHours": { "value": "Mon-Fri 09:00-17:00", "public": true }
+        "brand.name": {
+          "value": "Acme",
+          "public": true
+        },
+        "brand.logo": {
+          "value": "/brand/acme.svg",
+          "public": true
+        },
+        "contact.address": {
+          "value": "1 Corporate Way",
+          "public": true
+        },
+        "openingHours": {
+          "value": "Mon-Fri 09:00-17:00",
+          "public": true
+        }
       },
       "facets": [
         {
           "id": "acme",
           "properties": {
-            "contact.phone": { "value": "+1 555 0100", "public": true }
+            "contact.phone": {
+              "value": "+1 555 0100",
+              "public": true
+            }
           },
           "sites": [
             {
               "id": "main",
               "properties": {
-                "brand.logo": { "value": "/brand/acme-main.svg", "public": true }
+                "brand.logo": {
+                  "value": "/brand/acme-main.svg",
+                  "public": true
+                }
               },
               "pages": [
                 {
                   "id": "home",
-                  "route": ["home"],
+                  "route": [
+                    "home"
+                  ],
                   "visibility": "public",
                   "fallbackLocaleKey": "en-001",
                   "representations": [
-                    { "locale": "en-001" },
-                    { "locale": "fr" }
-                  ]
+                    {
+                      "locale": "en-001"
+                    },
+                    {
+                      "locale": "fr"
+                    }
+                  ],
+                  "properties": {
+                    "nav.label": {
+                      "value": "Home",
+                      "public": true
+                    }
+                  }
                 },
                 {
                   "id": "about",
-                  "route": ["about"],
+                  "route": [
+                    "about"
+                  ],
                   "visibility": "public",
                   "fallbackLocaleKey": "en-001",
                   "representations": [
-                    { "locale": "en-001" },
-                    { "locale": "fr-CA" }
-                  ]
+                    {
+                      "locale": "en-001"
+                    },
+                    {
+                      "locale": "fr-CA"
+                    }
+                  ],
+                  "properties": {
+                    "nav.label": {
+                      "value": "About",
+                      "public": true
+                    }
+                  }
                 },
                 {
                   "id": "detail",
-                  "route": ["products", "detail"],
+                  "route": [
+                    "products",
+                    "detail"
+                  ],
                   "visibility": "unlisted",
-                  "representations": [{ "locale": "en-001" }]
+                  "representations": [
+                    {
+                      "locale": "en-001"
+                    }
+                  ],
+                  "properties": {
+                    "nav.label": {
+                      "value": "Detail",
+                      "public": true
+                    }
+                  }
                 }
               ]
             },
@@ -52,14 +108,29 @@
               "id": "outlet",
               "properties": {
                 "contact.address": null,
-                "brand.logo": { "value": "/brand/outlet.svg", "public": true }
+                "brand.logo": {
+                  "value": "/brand/outlet.svg",
+                  "public": true
+                }
               },
               "pages": [
                 {
                   "id": "home",
-                  "route": ["home"],
+                  "route": [
+                    "home"
+                  ],
                   "visibility": "public",
-                  "representations": [{ "locale": "fr" }]
+                  "representations": [
+                    {
+                      "locale": "fr"
+                    }
+                  ],
+                  "properties": {
+                    "nav.label": {
+                      "value": "Home",
+                      "public": true
+                    }
+                  }
                 }
               ]
             }
@@ -77,13 +148,61 @@
         {
           "id": "managed-acme",
           "host": "my.provelopment.com",
-          "prefix": ["acme-co"],
+          "prefix": [
+            "acme-co"
+          ],
           "entityId": "e_00000000000000000000000000",
           "facetId": "acme",
-          "siteIds": ["main"],
+          "siteIds": [
+            "main"
+          ],
           "siteMode": "closed",
           "defaultSiteId": "main",
-          "locales": ["en-001", "fr", "fr-CA"],
+          "locales": [
+            "en-001",
+            "fr",
+            "fr-CA"
+          ],
+          "defaultLocale": "en-001",
+          "canonical": true
+        },
+        {
+          "id": "browser-managed",
+          "host": "localhost",
+          "prefix": [
+            "acme-co"
+          ],
+          "entityId": "e_00000000000000000000000000",
+          "facetId": "acme",
+          "siteIds": [
+            "main"
+          ],
+          "siteMode": "closed",
+          "defaultSiteId": "main",
+          "locales": [
+            "en-001",
+            "fr",
+            "fr-CA"
+          ],
+          "defaultLocale": "en-001",
+          "canonical": true
+        },
+        {
+          "id": "browser-dedicated",
+          "host": "127.0.0.1",
+          "prefix": [],
+          "entityId": "e_00000000000000000000000000",
+          "facetId": "acme",
+          "siteIds": [
+            "main"
+          ],
+          "siteMode": "closed",
+          "defaultSiteId": "main",
+          "locales": [
+            "en-001",
+            "fr",
+            "fr-CA"
+          ],
           "defaultLocale": "en-001",
           "canonical": true
         }
@@ -100,10 +219,16 @@
           "prefix": [],
           "entityId": "e_00000000000000000000000000",
           "facetId": "acme",
-          "siteIds": ["main"],
+          "siteIds": [
+            "main"
+          ],
           "siteMode": "closed",
           "defaultSiteId": "main",
-          "locales": ["en-001", "fr", "fr-CA"],
+          "locales": [
+            "en-001",
+            "fr",
+            "fr-CA"
+          ],
           "defaultLocale": "en-001",
           "canonical": true
         }
@@ -117,13 +242,22 @@
         {
           "id": "open-acme",
           "host": "my.provelopment.com",
-          "prefix": ["acme-open"],
+          "prefix": [
+            "acme-open"
+          ],
           "entityId": "e_00000000000000000000000000",
           "facetId": "acme",
-          "siteIds": ["main", "outlet"],
+          "siteIds": [
+            "main",
+            "outlet"
+          ],
           "siteMode": "open",
           "defaultSiteId": "main",
-          "locales": ["en-001", "fr", "fr-CA"],
+          "locales": [
+            "en-001",
+            "fr",
+            "fr-CA"
+          ],
           "defaultLocale": "en-001",
           "canonical": true
         }

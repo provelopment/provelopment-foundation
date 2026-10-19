@@ -79,6 +79,16 @@ async function requestHeader(name: string): Promise<string | null> {
   }
 }
 
+/** The Host header without its development port. */
+function hostName(value: string | null): string | null {
+  if (!value) return null;
+  if (value.startsWith("[")) {
+    const end = value.indexOf("]");
+    return end > 0 ? value.slice(0, end + 1) : value;
+  }
+  return value.replace(/:\d+$/, "");
+}
+
 function runtime(): LoadedRuntime | null {
   const manifestPath = process.env[MANIFEST_ENV] ?? DEFAULT_MANIFEST;
   if (!existsSync(manifestPath)) return null;
@@ -145,15 +155,15 @@ export async function efsViewForCurrentRequest(
   const runtimeValue = runtime();
   if (!runtimeValue) return null;
   const { manifest, capsule } = runtimeValue;
-  const host = (await requestHeader("host")) ?? (await requestHeader("x-forwarded-host"));
+  const host = hostName((await requestHeader("host")) ?? (await requestHeader("x-forwarded-host")));
   if (!host) return null;
 
   const allBindings = manifest.publications.flatMap((publication) => publication.bindings);
-  const claimedHost = allBindings.some((binding) => binding.host.toLowerCase() === host.toLowerCase());
   const matched = matchBinding(host, `/${segments.join("/")}`, allBindings);
   if (!matched) {
-    if (claimedHost) notFound();
-    return null;
+    // When an explicit EFS manifest is present, it is the publication authority: a host it
+    // does not claim is not allowed to fall through to another runtime.
+    notFound();
   }
 
   if (matched.remaining.length === 0) {
@@ -264,7 +274,7 @@ export async function efsSitemapForCurrentRequest(): Promise<
 > {
   const runtimeValue = runtime();
   if (!runtimeValue) return null;
-  const host = (await requestHeader("host")) ?? (await requestHeader("x-forwarded-host"));
+  const host = hostName((await requestHeader("host")) ?? (await requestHeader("x-forwarded-host")));
   if (!host) return null;
   const claimed = runtimeValue.manifest.publications
     .flatMap((publication) => publication.bindings)
@@ -301,7 +311,7 @@ export async function efsSitemapForCurrentRequest(): Promise<
 export async function efsSitemapUrlForCurrentRequest(): Promise<string | null> {
   const runtimeValue = runtime();
   if (!runtimeValue) return null;
-  const host = (await requestHeader("host")) ?? (await requestHeader("x-forwarded-host"));
+  const host = hostName((await requestHeader("host")) ?? (await requestHeader("x-forwarded-host")));
   if (!host) return null;
   const binding = runtimeValue.manifest.publications
     .flatMap((publication) => publication.bindings)

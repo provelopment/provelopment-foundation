@@ -142,19 +142,35 @@ export function bindingIssues(bindings: readonly EfsBinding[]): readonly string[
 
   const byHost = new Map<string, EfsBinding[]>();
   for (const binding of bindings) {
-    const host = normalizeBindingHost(binding.host);
+    let host: string;
+    try {
+      host = normalizeBindingHost(binding.host);
+    } catch {
+      continue;
+    }
     byHost.set(host, [...(byHost.get(host) ?? []), binding]);
   }
 
+  const prefixOf = (binding: EfsBinding): readonly string[] => {
+    try {
+      return normalizePrefix(binding.prefix);
+    } catch (error) {
+      issues.push(
+        `Binding "${binding.id}" prefix: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return [];
+    }
+  };
+
   for (const [host, hostBindings] of byHost) {
-    const roots = hostBindings.filter((binding) => normalizePrefix(binding.prefix).length === 0);
+    const roots = hostBindings.filter((binding) => prefixOf(binding).length === 0);
     if (roots.length > 1) issues.push(`Host "${host}" has more than one dedicated-root binding.`);
     if (roots.length > 0 && hostBindings.length > roots.length) {
       issues.push(`Host "${host}" mixes a dedicated-root binding with prefix-scoped bindings.`);
     }
     const seen = new Map<string, string>();
     for (const binding of hostBindings) {
-      const key = prefixKey(normalizePrefix(binding.prefix));
+      const key = prefixKey(prefixOf(binding));
       const previous = seen.get(key);
       if (previous) {
         issues.push(`Host "${host}" has duplicate prefix "${key || "/"}" on "${previous}" and "${binding.id}".`);
@@ -307,13 +323,13 @@ export function entryRedirectPath(
   return `/${segments.join("/")}/`;
 }
 
-/** Owner-scoped published asset URL; no EntityID or filesystem path is exposed. */
+/** Owner-scoped published asset path; always same-origin, never an EntityID or external origin. */
 export function assetUrl(binding: EfsBinding, assetPath: string | readonly string[]): string {
   const segments = normalizePrefix(assetPath);
   if (segments.length === 0) throw new Error("An asset path must not be empty.");
-  return `https://${normalizeBindingHost(binding.host)}/${[
+  return `/${[
     ...normalizePrefix(binding.prefix),
-    "assets",
+    "owner-assets",
     ...segments,
   ].join("/")}`;
 }

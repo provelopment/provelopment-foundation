@@ -41,6 +41,14 @@ describe("EFS localization target (D31 / O-2)", () => {
       selectEntryLocale({
         supported: ["en-001", "fr"],
         defaultLocale: "en-001",
+        cookie: "theme=dark; NEXT_LOCALE=fr; session=abc",
+        acceptLanguage: "en-US",
+      }),
+    ).toEqual({ kind: "selected", locale: "fr", source: "cookie" });
+    expect(
+      selectEntryLocale({
+        supported: ["en-001", "fr"],
+        defaultLocale: "en-001",
         acceptLanguage: "de,fr;q=0.8,en;q=0.2",
       }),
     ).toEqual({ kind: "selected", locale: "fr", source: "accept-language" });

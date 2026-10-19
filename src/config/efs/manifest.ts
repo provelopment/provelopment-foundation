@@ -338,14 +338,22 @@ export function validateEfsManifest(input: unknown): EfsManifestResult {
       const siteMode =
         rawBinding.siteMode === "open" ? "open" : rawBinding.siteMode === "closed" ? "closed" : "";
       if (!siteMode) issues.push(`${bindingAt}.siteMode must be "closed" or "open".`);
-      const binding: EfsBinding = {
-        id: text(rawBinding.id, `${bindingAt}.id`, issues),
-        host: text(rawBinding.host, `${bindingAt}.host`, issues),
-        prefix: normalizePrefix(
+      let prefix: readonly string[] = [];
+      try {
+        prefix = normalizePrefix(
           arrayOf<unknown>(rawBinding.prefix, `${bindingAt}.prefix`, issues).map((segment) =>
             text(segment, `${bindingAt}.prefix[]`, issues),
           ),
-        ),
+        );
+      } catch (error) {
+        issues.push(
+          `${bindingAt}.prefix: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      const binding: EfsBinding = {
+        id: text(rawBinding.id, `${bindingAt}.id`, issues),
+        host: text(rawBinding.host, `${bindingAt}.host`, issues),
+        prefix,
         entityId,
         facetId,
         siteIds,

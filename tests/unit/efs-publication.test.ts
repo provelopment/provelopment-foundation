@@ -139,7 +139,7 @@ describe("EFS publication and routing (D31 / O-4, O-5)", () => {
   it("derives owner asset URLs without exposing an EntityID or source path", () => {
     const managed = loadedBindings().find((binding) => binding.id === "managed-acme")!;
     expect(assetUrl(managed, "brand/logo.svg")).toBe(
-      "https://my.provelopment.com/acme-co/assets/brand/logo.svg",
+      "/acme-co/owner-assets/brand/logo.svg",
     );
   });
 

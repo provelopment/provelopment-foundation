@@ -113,6 +113,29 @@ export function parseAcceptLanguage(header: string | null | undefined): readonly
     .sort((left, right) => right.q - left.q || left.order - right.order);
   return entries.map((entry) => entry.tag);
 }
+/** Extract the accepted `NEXT_LOCALE` preference from a raw Cookie header. */
+export function cookieLocalePreference(cookieHeader: string | undefined): string | undefined {
+  if (!cookieHeader) return undefined;
+  if (!cookieHeader.includes("=")) {
+    try {
+      return decodeURIComponent(cookieHeader.trim());
+    } catch {
+      return undefined;
+    }
+  }
+  for (const part of cookieHeader.split(";")) {
+    const separator = part.indexOf("=");
+    if (separator < 0) continue;
+    if (part.slice(0, separator).trim() !== "NEXT_LOCALE") continue;
+    try {
+      return decodeURIComponent(part.slice(separator + 1).trim());
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
 /**
  * Select the locale for a locale-less binding entry.
  *
@@ -140,8 +163,11 @@ export function selectEntryLocale(input: {
   }
 
   if (input.cookie !== undefined) {
-    const selected = findSupported(index, input.cookie);
-    if (selected) return { kind: "selected", locale: selected, source: "cookie" };
+    const preference = cookieLocalePreference(input.cookie);
+    if (preference !== undefined) {
+      const selected = findSupported(index, preference);
+      if (selected) return { kind: "selected", locale: selected, source: "cookie" };
+    }
   }
 
   for (const preference of parseAcceptLanguage(input.acceptLanguage)) {

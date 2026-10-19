@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Plus_Jakarta_Sans } from "next/font/google";
 
 import { layoutForContext, layoutMetadataForContext, spokeServerComposition } from "./server-composition";
+import { efsDescription, efsTitle, efsViewForCurrentRequest } from "./efs-request";
 import { requestPublicDestination } from "./request-context";
 import "../globals.css";
 
@@ -64,7 +65,19 @@ interface LocaleLayoutProps {
 }
 
 export async function generateMetadata({ params }: LocaleLayoutProps): Promise<Metadata> {
-  const { context, destination } = await requestPublicDestination((await params).segments ?? []);
+  const segments = (await params).segments ?? [];
+  const efs = await efsViewForCurrentRequest(segments);
+  if (efs) {
+    return {
+      title: efsTitle(efs),
+      description: efsDescription(efs),
+      alternates: {
+        canonical: efs.canonical,
+        languages: Object.fromEntries(efs.alternates.map((alternate) => [alternate.hreflang, alternate.href])),
+      },
+    };
+  }
+  const { context, destination } = await requestPublicDestination(segments);
   return layoutMetadataForContext(
     spokeServerComposition(context),
     destination.segments as string[],
@@ -72,9 +85,18 @@ export async function generateMetadata({ params }: LocaleLayoutProps): Promise<M
 }
 
 export default async function LocaleLayout({ children, params }: LocaleLayoutProps) {
+  const segments = (await params).segments ?? [];
+  const efs = await efsViewForCurrentRequest(segments);
+  if (efs) {
+    return (
+      <html lang={efs.locale} className={HTML_CLASS_NAME}>
+        <body className="min-h-full bg-white text-neutral-900 antialiased">{children}</body>
+      </html>
+    );
+  }
   // The context is the one the REQUEST selected (the boundary's exact hostname claim), and the shared
   // composition derives the whole document from it.
-  const { context, destination } = await requestPublicDestination((await params).segments ?? []);
+  const { context, destination } = await requestPublicDestination(segments);
   return layoutForContext(
     spokeServerComposition(context),
     destination.segments as string[],

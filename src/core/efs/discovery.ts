@@ -46,7 +46,7 @@ export function sitemapEntries(
           siteId: page.siteId,
           locale,
           localeKey: localePathKey(locale),
-          pageRoute: page.route,
+          pageRoute: page.route.length === 1 && page.route[0] === "home" ? [] : page.route,
         }),
       });
     }

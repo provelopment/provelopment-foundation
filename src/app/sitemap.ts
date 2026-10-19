@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 
+import { efsSitemapForCurrentRequest } from "@/app/[[...segments]]/efs-request";
 import { runtimeContextForRequest } from "@/config/spoke-request";
 
 import { sitemapForContext } from "./sitemap-context";
@@ -18,6 +19,8 @@ import { sitemapForContext } from "./sitemap-context";
  * alternative would advertise another Spoke's URLs under a hostname that Spoke does not own.
  */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const efs = await efsSitemapForCurrentRequest();
+  if (efs) return efs;
   const context = await runtimeContextForRequest();
   if (context === null) return [];
   return sitemapForContext(context);

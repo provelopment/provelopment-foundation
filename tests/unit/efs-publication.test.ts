@@ -131,8 +131,8 @@ describe("EFS publication and routing (D31 / O-4, O-5)", () => {
       },
     ]);
     expect(entries.map((entry) => entry.loc)).toEqual([
-      "https://my.provelopment.com/acme-co/jakarta/en-001/home",
-      "https://my.provelopment.com/acme-co/jakarta/fr/home",
+      "https://my.provelopment.com/acme-co/jakarta/en-001",
+      "https://my.provelopment.com/acme-co/jakarta/fr",
     ]);
   });
 

@@ -52,6 +52,8 @@ export function loadEfsPageSource(input: {
   readonly facetId: string;
   readonly siteId: string;
   readonly pageId: string;
+  /** The actual representation path key. When supplied, only that localized source is eligible. */
+  readonly localeKey?: string;
 }): EfsContentResult<EfsPageSource> {
   try {
     const root = realpathSync(input.root);
@@ -59,12 +61,14 @@ export function loadEfsPageSource(input: {
     const facet = safeSegment(input.facetId, "Facet path segment");
     const site = safeSegment(input.siteId, "Site path segment");
     const page = safeSegment(input.pageId, "Page path segment");
+    const locale = input.localeKey ? safeSegment(input.localeKey, "Locale path segment") : undefined;
     const directory = join(root, entity, facet, site, "pages");
-    const jsonPath = join(directory, `${page}.json`);
-    const markdownPath = join(directory, `${page}.md`);
+    const pageDirectory = join(directory, page);
+    const jsonPath = locale ? join(pageDirectory, `${locale}.json`) : join(directory, `${page}.json`);
+    const markdownPath = locale ? join(pageDirectory, `${locale}.md`) : join(directory, `${page}.md`);
 
     if (!existsSync(jsonPath) && !existsSync(markdownPath)) {
-      return { kind: "rejected", reason: `Page "${page}" does not exist in this owner capsule.` };
+      return { kind: "rejected", reason: `Page "${page}" has no source for the requested representation.` };
     }
 
     const selected = existsSync(jsonPath) ? jsonPath : markdownPath;

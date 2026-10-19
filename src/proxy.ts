@@ -52,6 +52,25 @@ import { SPOKE_SELECTION_HEADER, isInternalSpokePath } from "@/config/spoke-sele
  */
 const SPOKE_ASSET_PREFIX = "/spokes/";
 
+/**
+ * S3-E3 — hosts explicitly assigned to the EFS runtime by the deployment build.
+ *
+ * This is a deployment declaration, not hostname inference: when the variable is absent the EFS branch is
+ * disabled and the existing reference Spokes keep their exact current behaviour. An EFS host is handed
+ * through to the App Router, which resolves the binding and fails closed on an unknown prefix.
+ */
+const EFS_HOSTS_ENV = "FOUNDATION_EFS_HOSTS";
+
+function isEfsHost(host: string | null): boolean {
+  if (!host) return false;
+  const normalized = host.trim().toLowerCase().split(":")[0];
+  return (process.env[EFS_HOSTS_ENV] ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean)
+    .includes(normalized);
+}
+
 /** Nothing answers this request: no Spoke, never another Spoke's content. */
 function refuse(): NextResponse {
   return new NextResponse("Not Found", {
@@ -115,6 +134,11 @@ export function proxy(request: NextRequest) {
   if (pathname.startsWith(SPOKE_ASSET_PREFIX)) return spokeAsset(request);
 
   // 3 — which Spoke answers this host: exact claims in multi mode, nothing when unclaimed.
+  // An explicitly EFS-assigned host continues to the App Router EFS binding resolver instead.
+  if (isEfsHost(request.headers.get("host"))) {
+    return NextResponse.next({ request: { headers: new Headers(request.headers) } });
+  }
+
   const routing = hostRoutingForBuild();
   const entry = selectedEntry(routing, request.headers.get("host"));
   if (entry === null) return refuse();

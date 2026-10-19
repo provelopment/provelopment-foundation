@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import { EfsPageView } from "@/components/efs/efs-page";
+import { efsDescription, efsTitle, efsViewForCurrentRequest } from "./efs-request";
 import { pageForContext, pageMetadataForContext, spokeServerComposition } from "./server-composition";
 import { requestPublicDestination } from "./request-context";
 
@@ -39,7 +41,25 @@ interface PageRouteProps {
 }
 
 export async function generateMetadata({ params }: PageRouteProps): Promise<Metadata> {
-  const { context, destination } = await requestPublicDestination((await params).segments ?? []);
+  const segments = (await params).segments ?? [];
+  const efs = await efsViewForCurrentRequest(segments);
+  if (efs) {
+    return {
+      title: efsTitle(efs),
+      description: efsDescription(efs),
+      alternates: {
+        canonical: efs.canonical,
+        languages: Object.fromEntries(efs.alternates.map((alternate) => [alternate.hreflang, alternate.href])),
+      },
+      openGraph: {
+        title: efsTitle(efs),
+        description: efsDescription(efs),
+        url: efs.canonical,
+        locale: efs.locale,
+      },
+    };
+  }
+  const { context, destination } = await requestPublicDestination(segments);
   return pageMetadataForContext(
     spokeServerComposition(context),
     destination.segments as string[],
@@ -47,6 +67,9 @@ export async function generateMetadata({ params }: PageRouteProps): Promise<Meta
 }
 
 export default async function PageRoute({ params }: PageRouteProps) {
-  const { context, destination } = await requestPublicDestination((await params).segments ?? []);
+  const segments = (await params).segments ?? [];
+  const efs = await efsViewForCurrentRequest(segments);
+  if (efs) return <EfsPageView view={efs} />;
+  const { context, destination } = await requestPublicDestination(segments);
   return pageForContext(spokeServerComposition(context), destination.segments as string[]);
 }

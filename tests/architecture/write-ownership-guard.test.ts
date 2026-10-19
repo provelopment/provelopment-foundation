@@ -192,6 +192,14 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
     "OS temp only: the disposable copy of the committed synthetic fixture it re-configures and authors its own " +
     "public and unlisted pages into, behind its own dev server — every write through the harness's own guarded " +
     "writers, and the copy removed when the run ends (TEMPLATE-PV-A1)",
+  "tests/integration/efs-independent-installations.test.ts":
+    "OS temp only: two independent Installation roots (manifest + copied canonical capsule), each served " +
+    "through the real EFS request boundary and removed afterwards; the committed fixture and deployment " +
+    "are only ever READ (R04)",
+  "tests/integration/efs-publication-isolation.test.ts":
+    "OS temp only: disposable Installation roots and owner-scoped capsule Pages it authors for the " +
+    "many-to-many publication isolation proofs and removes afterwards; the committed fixture and deployment " +
+    "are only ever READ (R04)",
   "tests/unit/unlisted-visibility-contract.test.ts":
     "OS temp only: the disposable one-Spoke Installations it authors for the publication contract's sitemap, " +
     "metadata, regional and cross-Spoke proofs (manifest, configuration, dictionaries and its own pages), " +

@@ -48,6 +48,14 @@
                 "site.label": {
                   "value": "Global",
                   "public": true
+                },
+                "description.en": {
+                  "value": "This website is a working deployment of the Provelopment Foundation template: the same public code, downloadable and deployable by anyone. It is the template's own reference site, not a client website.",
+                  "public": true
+                },
+                "description.de": {
+                  "value": "Diese Website ist eine laufende Installation der Open-Source-Vorlage Provelopment Foundation: derselbe öffentliche Code, den jeder herunterladen und selbst einsetzen kann. Sie ist die Referenzseite der Vorlage, nicht die Website eines Kunden.",
+                  "public": true
                 }
               },
               "pages": [
@@ -155,6 +163,14 @@
                 "site.label": {
                   "value": "Germany",
                   "public": true
+                },
+                "description.en": {
+                  "value": "This website is a working deployment of the Provelopment Foundation template: the same public code, downloadable and deployable by anyone. It is the template's own reference site, not a client website.",
+                  "public": true
+                },
+                "description.de": {
+                  "value": "Diese Website ist eine laufende Installation der Open-Source-Vorlage Provelopment Foundation: derselbe öffentliche Code, den jeder herunterladen und selbst einsetzen kann. Sie ist die Referenzseite der Vorlage, nicht die Website eines Kunden.",
+                  "public": true
                 }
               },
               "pages": [
@@ -166,7 +182,7 @@
                   "visibility": "public",
                   "properties": {
                     "nav.label": {
-                      "value": "Home",
+                      "value": "Start",
                       "public": true
                     },
                     "internal.pageNotes": {
@@ -191,7 +207,7 @@
                   "visibility": "public",
                   "properties": {
                     "nav.label": {
-                      "value": "About",
+                      "value": "Über uns",
                       "public": true
                     },
                     "internal.pageNotes": {
@@ -335,7 +351,7 @@
             "de",
             "en"
           ],
-          "defaultLocale": "en",
+          "defaultLocale": "de",
           "canonical": true
         }
       ]

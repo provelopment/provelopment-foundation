@@ -161,6 +161,28 @@ export async function efsViewForCurrentRequest(
   const allBindings = manifest.publications.flatMap((publication) => publication.bindings);
   const matched = matchBinding(host, `/${segments.join("/")}`, allBindings);
   if (!matched) {
+    // Preserve the released Spoke's root/locale-shorthand completion for a converted host. It is
+    // deterministic only when that host has exactly ONE canonical binding; anything ambiguous is
+    // refused rather than guessed.
+    const hostBindings = allBindings.filter(
+      (binding) => binding.canonical !== false && binding.host.toLowerCase() === host.toLowerCase(),
+    );
+    if (hostBindings.length === 1) {
+      const only = hostBindings[0];
+      if (segments.length === 0) {
+        const entry = entryRedirectPath(only, {
+          cookie: (await requestHeader("cookie")) ?? undefined,
+          acceptLanguage: await requestHeader("accept-language"),
+        });
+        redirect(entry.length > 1 ? entry.replace(/\/$/, "") : entry);
+      }
+      const shorthand = only.locales.find(
+        (locale) => localePathKey(locale) === segments[0]?.toLowerCase(),
+      );
+      if (only.siteMode === "closed" && shorthand) {
+        redirect(`/${[...only.prefix, ...segments].join("/")}`);
+      }
+    }
     // When an explicit EFS manifest is present, it is the publication authority: a host it
     // does not claim is not allowed to fall through to another runtime.
     notFound();
@@ -264,6 +286,10 @@ export function efsTitle(view: EfsView): string {
 }
 
 export function efsDescription(view: EfsView): string | undefined {
+  const localized = view.properties.get(`description.${view.localeKey}`);
+  if (localized?.public && typeof localized.value === "string" && localized.value.trim()) {
+    return localized.value;
+  }
   return contentDescription(view.source);
 }
 

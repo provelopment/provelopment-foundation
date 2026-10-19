@@ -134,18 +134,20 @@ export function EfsPageView({
               </div>
             ) : null}
           </dl>
-          <nav className="mt-10 flex flex-wrap gap-4 text-sm" aria-label="Languages">
-            {view.alternates.map((alternate) => (
-              <a
-                key={alternate.hreflang}
-                href={alternate.href}
-                hrefLang={alternate.hreflang}
-                aria-current={alternate.hreflang === view.locale ? "page" : undefined}
-              >
-                {alternate.hreflang}
-              </a>
-            ))}
-          </nav>
+          {withShell ? null : (
+            <nav className="mt-10 flex flex-wrap gap-4 text-sm" aria-label="Languages">
+              {view.alternates.map((alternate) => (
+                <a
+                  key={alternate.hreflang}
+                  href={alternate.href}
+                  hrefLang={alternate.hreflang}
+                  aria-current={alternate.hreflang === view.locale ? "page" : undefined}
+                >
+                  {alternate.hreflang}
+                </a>
+              ))}
+            </nav>
+          )}
           <script
             type="application/ld+json"
             dangerouslySetInnerHTML={{

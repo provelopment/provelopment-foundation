@@ -46,7 +46,7 @@ const SPOKES = [
     legacySite: "de",
     hosts: [{ host: "foundation-template-germany.provelopment.com", id: "germany-web" }],
     locales: ["de", "en"],
-    defaultLocale: "en",
+    defaultLocale: "de",
     pages: [
       { id: "home", route: ["home"], labels: { de: "Start", en: "Home" } },
       { id: "about", route: ["about"], labels: { de: "Über uns", en: "About" } },
@@ -139,6 +139,15 @@ function buildEntity(config, definition) {
               id: definition.site,
               properties: {
                 "site.label": { value: site.label, public: true },
+                "description.en": { value: config.site.description ?? "", public: true },
+                ...Object.fromEntries(
+                  (config.i18n?.locales ?? [])
+                    .filter((locale) => typeof locale.description === "string")
+                    .map((locale) => [
+                      `description.${locale.code.toLowerCase()}`,
+                      { value: locale.description, public: true },
+                    ]),
+                ),
               },
               pages,
             },

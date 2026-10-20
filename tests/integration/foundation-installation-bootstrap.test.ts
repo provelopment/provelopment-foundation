@@ -102,6 +102,9 @@ function dependenciesFor(options: {
       file: operationalStateFileOf(options.targetRoot),
     }),
     hasher: { sha256Hex },
+    // Determinism is asserted GIVEN the same injected entropy. Production establishment supplies
+    // secure bytes; independent establishments therefore mint independent identities.
+    entropy: { randomBytes: (byteLength: number) => Uint8Array.from({ length: byteLength }, (_, index) => index + 1) },
   };
 }
 

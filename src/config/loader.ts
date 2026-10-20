@@ -88,7 +88,7 @@ export function parseSiteConfig(raw: unknown): SiteConfig {
   assertLocationSelectionValid({ sites, regions, bindings: pageBindings });
 
   return {
-    url: json.site.url,
+    url: json.site.url ?? (json.publication ? `https://${json.publication.host}` : ""),
     name: json.site.name,
     tagline: json.site.tagline,
     description: json.site.description,

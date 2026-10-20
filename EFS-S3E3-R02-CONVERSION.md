@@ -13,6 +13,12 @@ the reserved implicit Spoke cannot authorize anything. A host introduced only by
 but a host claimed by a different Spoke is a conflict. Ordinary one-website establishment converts a
 legacy-shaped seed into an explicit one-Spoke EFS Installation at establishment time.
 
+**R06:** ordinary establishment mints a fresh permanent EntityID per independently established website
+from the injected secure entropy port; the fixed `e_…0001` fallback is gone. An existing explicit seed —
+including an imported or moved capsule — keeps its identity and declarations byte-for-byte. The publication
+host comes only from the authored `publication.host`; `site.url` is informational and cannot create or
+modify a binding. Empty optional tagline/description values are omitted rather than declared.
+
 ## Before / after
 
 | Concern | Before | After (R02) |

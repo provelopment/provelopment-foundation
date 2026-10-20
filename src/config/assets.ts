@@ -434,7 +434,7 @@ export function assertConfiguredCompactLogoAvailableFor(
         `  - site.assets.logoCompact: "${configured}" is neither an absolute URL nor a same-origin path, so no ` +
         "origin can be confirmed for it.\n" +
         "Runtime artwork is always delivered from THIS deployment's own origin: configure an absolute URL on that " +
-        'origin ("site.url", which the schema requires) or a same-origin path this deployment serves.',
+        'origin (the informational "site.url") or a same-origin path this deployment serves.',
     );
   }
 

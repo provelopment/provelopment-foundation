@@ -312,6 +312,12 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
     "disposable target roots it establishes into, and the seeded capsule whose ignore rule it proves (B4B)",
   "tests/integration/foundation-installation-cli.test.ts":
     "disposable target roots it establishes into through the command line (B4B)",
+  "tests/integration/efs-established-one-website.test.ts":
+    "a disposable seed's configuration and target root under OS temp — the R06 publication-authority proof (S3-E3-R06)",
+  "tests/integration/efs-established-publication-authority.test.ts":
+    "a disposable seed's configuration and target root under OS temp — the R06 publication-authority proof (S3-E3-R06)",
+  "tests/integration/efs-established-identity.test.ts":
+    "disposable seeds, targets and a portable copy of an established capsule under OS temp — the R06 identity and move proof (S3-E3-R06)",
   // FOUNDATION-MULTISITE-M20 — the multi-Spoke establishment proof and the authoring-directory contract
   // write only disposable trees of their own. The REAL capsule is COPIED into OS temp and only ever READ
   // (the copy is what establishment is given), and the authoring contract builds its own throwaway tree.

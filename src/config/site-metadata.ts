@@ -23,7 +23,10 @@
 import type { SiteConfig } from "./site-config";
 
 /** The description THIS locale advertises where the site's own words stand alone. */
-export function siteDescriptionForLocale(config: SiteConfig, localePath: string): string {
+export function siteDescriptionForLocale(
+  config: SiteConfig,
+  localePath: string,
+): string | undefined {
   return (
     config.locales.find((locale) => locale.code === localePath)?.description ?? config.description
   );

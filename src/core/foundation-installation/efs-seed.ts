@@ -1,5 +1,5 @@
 /**
- * ORDINARY ONE-WEBSITE ESTABLISHMENT BECOMES AN EXPLICIT EFS INSTALLATION (`S3-E3-R05`)
+ * ORDINARY ONE-WEBSITE ESTABLISHMENT BECOMES AN EXPLICIT EFS INSTALLATION (`S3-E3-R06`)
  * ====================================================================================
  *
  * A new owner supplies one ordinary website: `site.config.json`, dictionaries, authored pages and
@@ -16,12 +16,25 @@
  *
  * The conversion is DATA IN / DATA OUT: no filesystem, no clock, no framework. Source bytes are
  * copied unchanged; only their owner-scoped paths and the explicit declarations are new. A seed that
- * already carries `efs/manifest.json` is left exactly as authored.
+ * already carries `efs/manifest.json` is left exactly as authored, including every Entity identity
+ * and publication.
+ *
+ * TWO AUTHORITIES ARE NOT INFERRED
+ * -------------------------------
+ *   · The EntityID is minted ONCE from the 16 bytes the caller supplies through the establishment
+ *     entropy port. It is never derived from a name, host, Site, repository, path, clock or label,
+ *     and an already-explicit seed is never re-minted.
+ *   · The publication host is authored in `site.config.json` as `publication.host`. `site.url` is
+ *     ordinary authored information and is NEVER read here: a content property cannot create a
+ *     public claim or change a canonical address.
  *
  * The generated Spoke id (`main`) is an authoring-time default recorded in `spokes.json`, not a
  * hidden runtime exemption: from that moment every request resolves it from the declaration like any
  * other Spoke. The conversion never runs at request time.
  */
+import { mintEntityId } from "@/core/efs/identity";
+import { normalizeBindingHost, normalizePrefix } from "@/core/efs/publication";
+
 import type { InstallationSeedTopology } from "./establishment";
 
 /** One authored file, relative to the Installation capsule. */
@@ -35,9 +48,11 @@ export interface ExplicitEfsSeed {
   readonly topology: InstallationSeedTopology;
 }
 
+/** The one authority that mints an Entity identity; it answers exactly 16 secure bytes. */
+export type EntityIdEntropySource = () => Uint8Array;
+
 const SPOKE_ID = "main";
 const FACET_ID = "main";
-const ENTITY_ID = "e_00000000000000000000000001";
 const SPOKE_ROOT = `spokes/${SPOKE_ID}`;
 
 interface RawSite {
@@ -47,13 +62,25 @@ interface RawSite {
   readonly defaultLocale?: unknown;
 }
 
+/**
+ * The explicit publication authority. A host is required; a prefix is optional and, when absent,
+ * defaults to this Site's code (the ordinary authoring default). A content URL is deliberately not
+ * part of this shape.
+ */
+interface RawPublication {
+  readonly host?: unknown;
+  readonly prefix?: unknown;
+}
+
 interface RawConfiguration {
   readonly site?: {
+    /** Ordinary authored information. Never a binding, canonical origin or publication authority. */
     readonly url?: unknown;
     readonly name?: unknown;
     readonly tagline?: unknown;
     readonly description?: unknown;
   };
+  readonly publication?: RawPublication;
   readonly i18n?: {
     readonly defaultLocale?: unknown;
     readonly locales?: readonly { readonly code?: unknown }[];
@@ -73,6 +100,51 @@ function safeSegment(value: string): string {
     .replace(/[^a-z0-9_-]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return normalized.length > 0 ? normalized : "page";
+}
+
+/** The one explicit host/prefix authority, or an actionable refusal. */
+function publicationAuthority(
+  config: RawConfiguration,
+  siteCode: string,
+  siteCount: number,
+): { host: string; prefix: readonly string[] } {
+  const host = text(config.publication?.host);
+  if (host === undefined) {
+    throw new Error(
+      "The authored site.config.json declares no publication host. Add " +
+        '`"publication": { "host": "<public hostname>" }`; `site.url` is informational and never ' +
+        "creates a publication claim.",
+    );
+  }
+
+  let normalizedHost: string;
+  try {
+    normalizedHost = normalizeBindingHost(host);
+  } catch (error) {
+    throw new Error(
+      `The authored publication.host is not a usable hostname: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+
+  const rawPrefix = config.publication?.prefix;
+  if (rawPrefix !== undefined && siteCount > 1) {
+    throw new Error(
+      "publication.prefix is ambiguous for an Installation with more than one Site. Declare one " +
+        "publication per Site; the ordinary single-website default remains the Site code.",
+    );
+  }
+  const prefix =
+    rawPrefix === undefined
+      ? [safeSegment(siteCode)]
+      : normalizePrefix(
+          Array.isArray(rawPrefix)
+            ? rawPrefix.flatMap((segment) => (text(segment) ? [text(segment) as string] : []))
+            : text(rawPrefix) ?? "",
+        );
+
+  return { host: normalizedHost, prefix };
 }
 
 function configuredSites(
@@ -126,8 +198,15 @@ function pageSources(
 /**
  * Convert an ordinary one-website seed. A seed that already carries `efs/manifest.json` is returned
  * unchanged, with the explicit topology its own declaration describes.
+ *
+ * `entityEntropy` is invoked ONLY when the seed is not already explicit. That is what prevents a
+ * later establishment, import or move from re-minting an identity the authored Installation already
+ * carries.
  */
-export function explicitSingleWebsiteEfsSeed(files: readonly EfsSeedFile[]): ExplicitEfsSeed {
+export function explicitSingleWebsiteEfsSeed(
+  files: readonly EfsSeedFile[],
+  entityEntropy: EntityIdEntropySource,
+): ExplicitEfsSeed {
   if (files.some((file) => file.path === "efs/manifest.json")) {
     return {
       files,
@@ -144,28 +223,26 @@ export function explicitSingleWebsiteEfsSeed(files: readonly EfsSeedFile[]): Exp
     );
   }
   const config = JSON.parse(decoder.decode(configFile.bytes)) as RawConfiguration;
-  const origin = text(config.site?.url);
-  if (!origin) {
-    throw new Error("The authored site.config.json must declare site.url; an EFS binding needs a host.");
-  }
-  let host: string;
-  try {
-    host = new URL(origin).hostname;
-  } catch {
-    throw new Error(`The authored site.url "${origin}" is not an absolute URL.`);
-  }
+
+  // THE IDENTITY IS MINTED ONCE, FROM INJECTED SECURE ENTROPY. No authored value is consulted: a
+  // name, URL, Site, repository, path or label can never decide it.
+  const entityId = mintEntityId(entityEntropy());
 
   const globalLocales = (config.i18n?.locales ?? [])
     .map((locale) => text(locale.code))
     .filter((locale): locale is string => locale !== undefined);
   const globalDefault = text(config.i18n?.defaultLocale) ?? globalLocales[0];
   const sites = configuredSites(config);
+  const brandName = text(config.site?.name) ?? "Website";
   const moved: EfsSeedFile[] = files
     .filter((file) => file.path !== ".gitignore")
     .map((file) => ({ path: `${SPOKE_ROOT}/${file.path}`, bytes: file.bytes }));
 
   const declaredSites = sites.map((site) => {
-    const locales = [...new Set((site.locales && site.locales.length > 0 ? site.locales : globalLocales).filter(Boolean))];
+    const locales = [
+      ...new Set((site.locales && site.locales.length > 0 ? site.locales : globalLocales).filter(Boolean)),
+    ];
+    const authority = publicationAuthority(config, site.code, sites.length);
     const pages = new Map<
       string,
       { id: string; route: string[]; representations: { locale: string }[] }
@@ -180,12 +257,35 @@ export function explicitSingleWebsiteEfsSeed(files: readonly EfsSeedFile[]): Exp
         page.representations.push({ locale });
         pages.set(key, page);
         pageFiles.push({
-          path: `efs/capsule/${ENTITY_ID}/${FACET_ID}/${safeSegment(site.code)}/pages/${pageId}/${safeSegment(
+          path: `efs/capsule/${entityId}/${FACET_ID}/${safeSegment(site.code)}/pages/${pageId}/${safeSegment(
             locale,
           )}${source.path.endsWith(".json") ? ".json" : ".md"}`,
           bytes: source.bytes,
         });
       }
+    }
+
+    // AN ORDINARY WEBSITE MAY NOT HAVE AUTHORED A HOME PAGE. The reserved `home` route is the
+    // Site's root representation, so leaving it absent would turn establishment into a guaranteed
+    // runtime 404. Supply the smallest valid explicit starter document instead of inventing a route
+    // at request time. An authored Home — in any locale — is never changed.
+    const hasAuthoredHome = [...pages.values()].some(
+      (page) => page.route.length === 1 && page.route[0] === "home",
+    );
+    if (!hasAuthoredHome && locales.length > 0) {
+      const home = { id: "home", route: ["home"], representations: [] as { locale: string }[] };
+      for (const locale of locales) {
+        home.representations.push({ locale });
+        pageFiles.push({
+          path: `efs/capsule/${entityId}/${FACET_ID}/${safeSegment(
+            site.code,
+          )}/pages/home/${safeSegment(locale)}.json`,
+          bytes: encoder.encode(
+            `${JSON.stringify({ schemaVersion: 1, title: brandName, sections: [] }, null, 2)}\n`,
+          ),
+        });
+      }
+      pages.set("home", home);
     }
 
     const defaultLocale =
@@ -203,14 +303,14 @@ export function explicitSingleWebsiteEfsSeed(files: readonly EfsSeedFile[]): Exp
         id: `${SPOKE_ID}-${safeSegment(site.code)}-publication`,
         spokeId: SPOKE_ID,
         presentationSiteCode: site.code,
-        entityId: ENTITY_ID,
+        entityId,
         facetId: FACET_ID,
         bindings: [
           {
             id: `${SPOKE_ID}-${safeSegment(site.code)}-web`,
-            host,
-            prefix: [site.code],
-            entityId: ENTITY_ID,
+            host: authority.host,
+            prefix: authority.prefix,
+            entityId,
             facetId: FACET_ID,
             siteIds: [safeSegment(site.code)],
             siteMode: "closed" as const,
@@ -232,18 +332,21 @@ export function explicitSingleWebsiteEfsSeed(files: readonly EfsSeedFile[]): Exp
   }
 
   const properties: Record<string, { value: unknown; public: boolean }> = {
-    "brand.name": { value: text(config.site?.name) ?? "Website", public: true },
-    "brand.tagline": { value: text(config.site?.tagline) ?? "", public: true },
-    "brand.description": { value: text(config.site?.description) ?? "", public: true },
+    "brand.name": { value: brandName, public: true },
   };
-  if (text(config.contact?.email)) {
-    properties["contact.email"] = { value: text(config.contact?.email), public: true };
+  const tagline = text(config.site?.tagline);
+  if (tagline !== undefined) properties["brand.tagline"] = { value: tagline, public: true };
+  const description = text(config.site?.description);
+  if (description !== undefined) {
+    properties["brand.description"] = { value: description, public: true };
   }
+  const email = text(config.contact?.email);
+  if (email !== undefined) properties["contact.email"] = { value: email, public: true };
 
   const manifest = {
     entities: [
       {
-        id: ENTITY_ID,
+        id: entityId,
         properties,
         facets: [
           {

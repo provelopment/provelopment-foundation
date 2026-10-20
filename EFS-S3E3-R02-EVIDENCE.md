@@ -10,7 +10,17 @@ ambiguous or host-conflicting owner is refused. Production has ONE runtime: expl
 released Page/locale resolver is retained only as a non-production test utility for the synthetic
 suites. Ordinary one-website establishment converts its authored seed into an explicit one-Spoke
 EFS Installation (`spokes.json`, `efs/manifest.json`, owner-scoped capsule) before writing the target.
-The full browser matrix at R05 is **12,545 / 12,545** checks passing.
+The full browser matrix at R05 is **12,545 / 12,545** checks passing. The final R06 tree again passes
+**12,545 / 12,545**.
+
+**R06 correction:** ordinary establishment now mints a fresh permanent EntityID for each independent
+website from injected 16-byte secure entropy; it never reuses `e_00000000000000000000000001`, never derives
+identity from authored data, and never re-mints an already-explicit or imported Entity. Publication
+authority is the explicit `publication.host` declaration in `site.config.json`; `site.url` is only
+informational and can neither create nor change a binding. Absent optional tagline/description properties
+remain absent, and an unauthored Home receives an explicit valid starter declaration. The focused R06
+tests are `efs-establishment-identity.test.ts`, `efs-established-identity.test.ts` and
+`efs-established-publication-authority.test.ts`.
 
 ## 1. Eighteen accepted use cases
 

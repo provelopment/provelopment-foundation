@@ -13,6 +13,7 @@
  * composition rather than changing establishment's semantics.
  */
 import path from "node:path";
+import { randomBytes } from "node:crypto";
 
 import {
   establishFoundationInstallation,
@@ -90,6 +91,7 @@ export async function establishInstallationFromDirectories(
       }),
       store,
       hasher: { sha256Hex },
+      entropy: { randomBytes: (byteLength) => Uint8Array.from(randomBytes(byteLength)) },
     },
   );
 }

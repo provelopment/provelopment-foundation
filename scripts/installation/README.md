@@ -49,6 +49,21 @@ expresses is the hierarchy `Foundation Installation → Spoke Hub → 1..* Spoke
 a Site is a **Page Hub** (one page concept and its route, one localized representation per language). A
 **Spoke Hub** is the group of Spokes an Installation declares and is never shortened to "Hub".
 
+An **implicit (legacy) seed is converted at establishment time** into an explicit one-Spoke EFS
+Installation: establishment mints one permanent EntityID from 16 cryptographically secure bytes, copies the
+authored material beneath `spokes/main`, writes `spokes.json` and `efs/manifest.json`, and an owner-scoped
+`efs/capsule`. The authored seed must state its public host explicitly:
+
+```json
+"publication": { "host": "www.example.com" }
+```
+
+`site.url` is ordinary authored information and is never read as a publication authority. A seed without
+`publication.host` is refused with that instruction rather than inventing a public claim. Optional
+`site.tagline` and `site.description` may be absent; absent values stay absent. An authored Home is
+preserved; if none exists, establishment adds the smallest valid explicit Home Page instead of leaving the
+Site root unresolved.
+
 `--name` and `--repository` describe **this installation**, and are recorded in its operational record.
 
 **An existing installation's capsule is a valid seed** — it is the ordinary case. Such a capsule carries its

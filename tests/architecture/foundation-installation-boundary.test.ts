@@ -81,11 +81,13 @@ describe("the lifecycle is ONE installation's, and there is no other installatio
     );
   });
 
-  it("imports nothing outside itself except the pure Foundation-release contract", () => {
+  it("imports nothing outside itself except the pure Foundation-release and EFS contracts", () => {
     for (const file of files) {
       for (const specifier of importsOf(file)) {
         expect(
-          specifier.startsWith("./") || specifier.startsWith("@/core/foundation-release/"),
+          specifier.startsWith("./") ||
+            specifier.startsWith("@/core/foundation-release/") ||
+            specifier.startsWith("@/core/efs/"),
           `${relative(file)} imports "${specifier}"`,
         ).toBe(true);
       }

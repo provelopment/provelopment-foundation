@@ -74,6 +74,9 @@ describe("EFS ordinary establishment and capsule portability (S3-E3-R01)", () =>
     const bundle = exportEntityCapsule(established.manifest, established.entityId, established.files);
     const imported = importEntityCapsule(JSON.stringify(bundle));
     expect(imported.ok).toBe(true);
+    if (imported.ok && imported.bundle) {
+      expect(imported.bundle.entityId).toBe(established.entityId);
+    }
     expect(diagnoseCapsule(bundle)).toEqual([]);
     expect(diagnoseCapsule({ ...bundle, files: [] })).toContain(
       'Page "home" has no source for "en-001".',

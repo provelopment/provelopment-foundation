@@ -8,6 +8,9 @@
       "favicon": "https://synthetic.example.test/assets/favicon.svg"
     }
   },
+  "publication": {
+    "host": "synthetic.example.test"
+  },
   "i18n": {
     "defaultLocale": "en",
     "locales": [

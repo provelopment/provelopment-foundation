@@ -79,6 +79,7 @@ import {
   portableInstallationSeed,
   type InstallationSeedTopology,
 } from "@/core/foundation-installation/establishment";
+import { ENTITY_ID_ENTROPY_BYTES } from "@/core/efs/identity";
 import { explicitSingleWebsiteEfsSeed } from "@/core/foundation-installation/efs-seed";
 import {
   beginInstallationPromotion,
@@ -282,7 +283,7 @@ export async function establishFoundationInstallation(
   request: FoundationEstablishmentRequest,
   dependencies: FoundationEstablishmentDependencies,
 ): Promise<FoundationEstablishmentOutcome> {
-  const { clock, acquisition, payload, seed, target, store, hasher } = dependencies;
+  const { clock, acquisition, payload, seed, target, store, hasher, entropy } = dependencies;
   const now = () => utcInstant(clock.now());
   const inCapsule = (relative: string): string => `${request.capsuleDirectory}/${relative}`;
 
@@ -410,7 +411,9 @@ export async function establishFoundationInstallation(
     try {
       prepared =
         suppliedTopology.mode === "legacy"
-          ? explicitSingleWebsiteEfsSeed(portableSeedFiles)
+          ? explicitSingleWebsiteEfsSeed(portableSeedFiles, () =>
+              entropy.randomBytes(ENTITY_ID_ENTROPY_BYTES),
+            )
           : { files: portableSeedFiles, topology: suppliedTopology };
     } catch (error) {
       return refused(

@@ -20,6 +20,9 @@ export const ENTITY_ID_PREFIX = "e_";
 /** Crockford Base32: `i`, `l`, `o` and `u` are deliberately absent. */
 const CROCKFORD_ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
 
+/** 128 bits of entropy, in bytes, required to mint one EntityID. */
+export const ENTITY_ID_ENTROPY_BYTES = 16;
+
 /** 128 bits encoded in 26 Base32 symbols (two leading padding bits). */
 const ENTITY_ID_PAYLOAD_LENGTH = 26;
 
@@ -69,8 +72,8 @@ export function isEntityId(value: unknown): value is EntityId {
  * which `ENTITY_ID_PATTERN` enforces on every later read.
  */
 export function mintEntityId(entropy: Uint8Array): EntityId {
-  if (entropy.length !== 16) {
-    throw new Error(`EntityID entropy must be exactly 16 bytes, received ${entropy.length}.`);
+  if (entropy.length !== ENTITY_ID_ENTROPY_BYTES) {
+    throw new Error(`EntityID entropy must be exactly ${ENTITY_ID_ENTROPY_BYTES} bytes, received ${entropy.length}.`);
   }
 
   let value = BigInt(0);

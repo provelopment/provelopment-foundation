@@ -1,8 +1,7 @@
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ headers: new Map<string, string>() }));
 
@@ -19,16 +18,16 @@ vi.mock("next/navigation", () => ({
   },
 }));
 
-import { efsViewForCurrentRequest } from "@/app/[[...segments]]/efs-request";
+import { materializeEfsInstallation, selectEfsInstallation } from "../support/efs-installation";
 
 const fixture = join(process.cwd(), "tests", "fixtures", "efs", "canonical");
 const previous = { manifest: process.env.FOUNDATION_EFS_MANIFEST, capsule: process.env.FOUNDATION_EFS_CAPSULE };
 const roots: string[] = [];
 
-function installation(host: string, spokeId: string): string {
-  const root = mkdtempSync(join(tmpdir(), "efs-installation-"));
-  roots.push(root);
-  cpSync(join(fixture, "capsule"), join(root, "capsule"), { recursive: true });
+function installation(host: string, spokeId: string) {
+  const root = materializeEfsInstallation({ mode: "flat", spokes: [spokeId] });
+  roots.push(root.root);
+  cpSync(join(fixture, "capsule"), join(root.root, "capsule"), { recursive: true });
   const manifest = JSON.parse(readFileSync(join(fixture, "manifest.json"), "utf8")) as {
     publications: Array<{ spokeId: string; bindings: Array<Record<string, unknown>> }>;
   };
@@ -38,25 +37,29 @@ function installation(host: string, spokeId: string): string {
     host,
     prefix: [],
   };
-  mkdirSync(join(root, "efs"), { recursive: true });
-  writeFileSync(join(root, "efs", "manifest.json"), JSON.stringify(manifest), "utf8");
-  return root;
+  mkdirSync(join(root.root, "efs"), { recursive: true });
+  writeFileSync(join(root.root, "efs", "manifest.json"), JSON.stringify(manifest), "utf8");
+  return root.root;
 }
 
-function request(root: string, host: string, path: string) {
+async function request(root: string, host: string, path: string) {
+  selectEfsInstallation(root);
   process.env.FOUNDATION_EFS_MANIFEST = join(root, "efs", "manifest.json");
   process.env.FOUNDATION_EFS_CAPSULE = join(root, "capsule");
   state.headers.set("host", host);
+  vi.resetModules();
+  const { efsViewForCurrentRequest } = await import("@/app/[[...segments]]/efs-request");
   return efsViewForCurrentRequest(path.split("/").filter(Boolean));
 }
 
-describe("one Entity functions independently in two on-disk Installations (R04)", () => {
+afterAll(() => {
+  process.env.FOUNDATION_EFS_MANIFEST = previous.manifest;
+  process.env.FOUNDATION_EFS_CAPSULE = previous.capsule;
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+describe("one Entity functions independently in two on-disk Installations (R05)", () => {
   beforeEach(() => state.headers.clear());
-  afterEach(() => {
-    process.env.FOUNDATION_EFS_MANIFEST = previous.manifest;
-    process.env.FOUNDATION_EFS_CAPSULE = previous.capsule;
-    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-  });
 
   it("preserves content identity while each Installation owns its route and Spoke", async () => {
     const first = installation("first.example", "first-spoke");

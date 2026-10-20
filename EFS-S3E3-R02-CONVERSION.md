@@ -7,6 +7,12 @@ The shared shell (header, navigation, footer, dictionaries, layout switcher, lan
 contact form) is reused from the same Spoke context. The legacy **page resolver is not used** for a
 converted host.
 
+**R05:** production now has ONE runtime. A publication's owner is resolved from its explicit
+`spokeId`/`spokeHubId` against `spokes.json` on Page, asset, metadata, sitemap and robots; `null` and
+the reserved implicit Spoke cannot authorize anything. A host introduced only by a binding is allowed,
+but a host claimed by a different Spoke is a conflict. Ordinary one-website establishment converts a
+legacy-shaped seed into an explicit one-Spoke EFS Installation at establishment time.
+
 ## Before / after
 
 | Concern | Before | After (R02) |
@@ -24,7 +30,7 @@ converted host.
 | Assets | `/spokes/<segment>/assets/**` | Shared shell assets unchanged; EFS owner assets at `/<prefix>/owner-assets/**` (logo, favicon) |
 | Site Hubs / Inspection hosts | `provelopment-foundation.vercel.app` inspection host | Explicit Foundation binding for the inspection host; no implicit default |
 | Publication bindings | Implicit Spoke hostname | Three explicit bindings: Foundation host, inspection host, Germany host |
-| Publication ownership | Not declared | Each publication names its owning Spoke (`foundation`, `germany`) explicitly; the runtime refuses a host-selected Spoke that differs |
+| Publication ownership | Not declared | Each publication names its owning Spoke (`foundation`, `germany`) explicitly. Page, asset, metadata, sitemap and robots all resolve that owner against `spokes.json`; an unclaimed host may be introduced by a binding, a host claimed by another Spoke is refused |
 | Presentation source | Legacy Site found through `prefix[0]` | Each publication names `presentationSiteCode` explicitly (`ww`, `de`); public URL base comes from the binding, not from a country or Site name |
 | URL grammar | `/ww/<locale>/...`, `/de/<locale>/...` | **Unchanged** — prefix is the explicit binding base; Site `main` is closed |
 | Geographic behavior | Germany `business.regions`, timezone, regional generation | Retired. `berlin`/`frankfurt` are ordinary Pages; no timezone/region/DST scheduling exists in the manifest or capsule |
@@ -63,6 +69,16 @@ representations and Pages are refused.
 - `tests/unit/efs-public-rendering.test.tsx` — private property/nav-label leakage and external logo
   refusal.
 - `tests/integration/efs-assets.test.ts` — owner isolation, traversal, nested-prefix route.
+- `tests/unit/efs-owner.test.ts` — owner resolution against real flat and identified Hub
+  Installations; reserved implicit, wrong-Hub, ambiguous and undeclared owners refused.
+- `tests/integration/efs-ownership-runtime.test.ts` — one rule on Page, metadata, asset, sitemap and
+  robots, including a binding-introduced host and a host-conflict refusal.
+- `tests/integration/efs-established-one-website.test.ts` — an ordinary one-website seed is
+  established as an explicit EFS Installation and immediately serves through it.
+- `tests/unit/efs-establishment-seed.test.ts` — establishment-time conversion produces valid
+  `spokes.json` + `efs/manifest.json` + owner-scoped capsule; an EFS seed is left unchanged.
+- `tests/unit/legacy-test-runtime.test.ts` — the released resolver cannot be selected when
+  `NODE_ENV=production`.
 - `tests/integration/efs-publication-isolation.test.ts` — one Entity across Facets, multiple
   Entities under one Spoke, and one Entity through two distinct Spokes, all through the actual EFS
   request/rendering boundary.

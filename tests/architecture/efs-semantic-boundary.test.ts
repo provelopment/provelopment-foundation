@@ -50,10 +50,42 @@ describe("EFS semantic boundary (R03)", () => {
   it("resolves publication ownership from declarations, never from a host or prefix match", () => {
     const request = source("app/[[...segments]]/efs-request.ts");
     expect(request).toContain("publicationForBinding(manifest.publications, matched.binding)");
-    expect(request).toContain("publicationOwnedBy(publication, context)");
-    expect(request).toContain("runtimeContextForCurrentRequest");
+    expect(request).toContain("efsPublicationOwnerForRequest(publication, host)");
+    expect(request).not.toContain("publicationOwnedBy(publication, context)");
+    expect(request).not.toContain("runtimeContextForCurrentRequest");
     expect(request).not.toContain("publication.spokeId === matched.binding.prefix");
     expect(request).not.toContain("binding.host === publication.spokeId");
+  });
+
+  it("has no null-context or reserved-implicit owner bypass on any EFS surface", () => {
+    for (const file of [
+      "config/efs/owner.ts",
+      "app/[[...segments]]/efs-request.ts",
+      "app/[[...segments]]/layout.tsx",
+      "app/[[...segments]]/page.tsx",
+      "app/[[...segments]]/server-composition.tsx",
+      "app/efs-asset-response.ts",
+      "app/sitemap.ts",
+      "app/robots.ts",
+    ]) {
+      const text = source(file);
+      expect(text, file).not.toContain("IMPLICIT_SPOKE_ID");
+      expect(text, file).not.toContain("context.id ===");
+      expect(text, file).not.toContain("context === null ||");
+    }
+    const owner = source("config/efs/owner.ts");
+    expect(owner).toContain("publicationOwnedBy(publication, runtimeIdentity(spoke))");
+    expect(owner).toContain("installationRuntimeIndexForBuild()");
+    expect(owner).toContain("host-is-claimed-by-another-spoke");
+  });
+
+  it("allows the retired resolver only through the non-production test utility", () => {
+    const utility = source("app/[[...segments]]/legacy-test-runtime.ts");
+    expect(utility).toContain('process.env.NODE_ENV !== "production"');
+    expect(utility).toContain("FOUNDATION_ENABLE_LEGACY_TEST_RUNTIME");
+    const request = source("app/[[...segments]]/efs-request.ts");
+    expect(request).toContain("if (legacyTestRuntimeEnabled()) return null;");
+    expect(request).toContain("missingEfsInstallation();");
   });
 
   it("keeps the EFS resolver and locale authority free of Site/country inference", () => {

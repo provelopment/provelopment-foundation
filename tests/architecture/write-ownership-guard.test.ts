@@ -188,10 +188,20 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
   // synthetic fixture (its origin replaced, one regional page configured, its own public/unlisted pages
   // authored) behind ONE dev server. The committed fixture, the selected deployment and the repository are only
   // ever READ, and the copy is removed when the run ends.
+  "tests/browser/efs.scenario.mjs":
+    "OS temp only: the disposable explicit Installation it assembles for the EFS fixture's declared Spoke, removed when the scenario ends; the repository, committed fixture and deployment are only ever READ (R05)",
+  "tests/browser/efs-semantic.scenario.mjs":
+    "OS temp only: the disposable explicit Installation declaring the neutral publication's real Spoke, removed when the scenario ends; the repository and committed fixture are only ever READ (R05)",
   "tests/browser/unlisted-visibility.scenario.mjs":
     "OS temp only: the disposable copy of the committed synthetic fixture it re-configures and authors its own " +
     "public and unlisted pages into, behind its own dev server — every write through the harness's own guarded " +
     "writers, and the copy removed when the run ends (TEMPLATE-PV-A1)",
+  "tests/support/efs-installation.ts":
+    "OS temp only: the disposable explicit Installation trees (flat or identified Spoke Hubs) used by the EFS ownership proofs; copied from the committed synthetic fixture and removed by exact ownership (R05)",
+  "tests/integration/efs-ownership-runtime.test.ts":
+    "OS temp only: one disposable explicit Installation, its manifest and copied canonical capsule, removed afterwards; the committed fixture and deployment are only ever READ (R05)",
+  "tests/unit/efs-owner.test.ts":
+    "OS temp only: disposable explicit and legacy Installation roots it authors to prove owner resolution against real declarations, removed by exact ownership (R05)",
   "tests/integration/efs-independent-installations.test.ts":
     "OS temp only: two independent Installation roots (manifest + copied canonical capsule), each served " +
     "through the real EFS request boundary and removed afterwards; the committed fixture and deployment " +

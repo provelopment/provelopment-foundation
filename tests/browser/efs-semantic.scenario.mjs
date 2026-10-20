@@ -7,6 +7,8 @@
  * no `de-DE`/`en-DE`, city record, region, timezone or implicit address appears. Explicitly authored
  * contact properties DO appear, proving that explicit data is not being suppressed to fake neutrality.
  */
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 export const id = "efs-semantic";
@@ -26,18 +28,33 @@ async function start(harness) {
   };
   process.env.FOUNDATION_EFS_MANIFEST = path.join(root, "manifest.json");
   process.env.FOUNDATION_EFS_CAPSULE = path.join(root, "capsule");
+  // The neutral publication names the REAL Spoke `north-spoke`; declare it in a disposable explicit
+  // Installation so the owner check resolves a genuine runtime identity.
+  const installation = mkdtempSync(path.join(tmpdir(), "foundation-efs-semantic-"));
+  cpSync(
+    path.join(harness.repositoryRoot, "deployment", "spokes", "foundation"),
+    path.join(installation, "spokes", "north-spoke"),
+    { recursive: true },
+  );
+  mkdirSync(path.join(installation, "spokes"), { recursive: true });
+  writeFileSync(
+    path.join(installation, "spokes.json"),
+    `${JSON.stringify({ spokes: [{ id: "north-spoke", root: "spokes/north-spoke" }] }, null, 2)}\n`,
+    "utf8",
+  );
   let last = null;
   for (const offset of PORT_OFFSETS) {
     const port = harness.basePort + offset;
-    const server = harness.startDevServer(port, { synthetic: false });
+    const server = harness.startDevServer(port, { synthetic: false, deploymentRoot: installation });
     try {
       await harness.waitForServer(`http://localhost:${port}/zz/de/frankfurt`, 240000);
-      return { server, port, previous };
+      return { server, port, previous, installation };
     } catch (error) {
       last = error;
       await harness.stopServer(server);
     }
   }
+  rmSync(installation, { recursive: true, force: true });
   process.env.FOUNDATION_EFS_MANIFEST = previous.manifest;
   process.env.FOUNDATION_EFS_CAPSULE = previous.capsule;
   throw last ?? new Error("no EFS semantic port answered");
@@ -117,6 +134,7 @@ export async function run(_chrome, harness) {
       await harness.stopServer(started.server);
       process.env.FOUNDATION_EFS_MANIFEST = started.previous.manifest;
       process.env.FOUNDATION_EFS_CAPSULE = started.previous.capsule;
+      rmSync(started.installation, { recursive: true, force: true });
     }
   }
   return rows;

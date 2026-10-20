@@ -2,19 +2,12 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const state = vi.hoisted(() => ({
-  headers: new Map<string, string>(),
-  spoke: { id: "implicit" } as { id: string; spokeHubId?: string },
-}));
+const state = vi.hoisted(() => ({ headers: new Map<string, string>() }));
 
 vi.mock("next/headers", () => ({
   headers: async () => ({ get: (key: string) => state.headers.get(key) ?? null }),
-}));
-
-vi.mock("@/config/spoke-request", () => ({
-  runtimeContextForCurrentRequest: async () => state.spoke,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -26,7 +19,18 @@ vi.mock("next/navigation", () => ({
   },
 }));
 
-import { efsViewForCurrentRequest } from "@/app/[[...segments]]/efs-request";
+import { materializeEfsInstallation, selectEfsInstallation } from "../support/efs-installation";
+import { LEGACY_TEST_RUNTIME_ENV } from "@/app/[[...segments]]/legacy-test-runtime";
+
+// The canonical fixture's publications name REAL Spokes (`acme-spoke`). Declare that Spoke in a
+// disposable explicit Installation before the runtime modules are loaded, so ownership is checked
+// against a genuine hierarchy rather than a mocked context.
+const installation = materializeEfsInstallation({ mode: "flat", spokes: ["acme-spoke"] });
+selectEfsInstallation(installation.root);
+vi.resetModules();
+const { efsViewForCurrentRequest } = await import("@/app/[[...segments]]/efs-request");
+
+afterAll(() => installation.cleanup());
 
 function request(host: string, path: string) {
   state.headers.set("host", host);
@@ -36,7 +40,6 @@ function request(host: string, path: string) {
 describe("EFS actual App Router request branch (S3-E3)", () => {
   beforeEach(() => {
     state.headers.clear();
-    state.spoke = { id: "implicit" };
     process.env.FOUNDATION_EFS_MANIFEST = join(
       process.cwd(),
       "tests",
@@ -165,6 +168,16 @@ describe("EFS actual App Router request branch (S3-E3)", () => {
     );
   });
 
+  it("gives a controlled setup diagnostic when a production installation has no EFS declaration", async () => {
+    delete process.env.FOUNDATION_EFS_MANIFEST;
+    delete process.env.FOUNDATION_EFS_CAPSULE;
+    delete process.env[LEGACY_TEST_RUNTIME_ENV];
+    await expect(request("my.provelopment.com", "/acme-co/en-001/about")).rejects.toThrow(
+      /declares no EFS manifest/,
+    );
+    process.env[LEGACY_TEST_RUNTIME_ENV] = "1";
+  });
+
   it("refuses a publication whose declared Spoke does not own the host-selected context", async () => {
     const directory = mkdtempSync(join(tmpdir(), "efs-owner-"));
     const source = JSON.parse(
@@ -187,7 +200,6 @@ describe("EFS actual App Router request branch (S3-E3)", () => {
     const manifest = join(directory, "manifest.json");
     writeFileSync(manifest, JSON.stringify(source), "utf8");
     process.env.FOUNDATION_EFS_MANIFEST = manifest;
-    state.spoke = { id: "foundation" };
     await expect(
       request("foundation-template.provelopment.com", "/acme-co/en-001/about"),
     ).rejects.toThrow("NOT_FOUND");

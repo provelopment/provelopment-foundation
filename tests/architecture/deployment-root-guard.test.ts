@@ -221,6 +221,7 @@ describe("deployment-owned paths are spelled in ONE place", () => {
       "tests/setup/production-state-integrity.ts",
       "tests/setup/real-deployment.ts",
       "tests/support/disposable-deployment.ts",
+      "tests/support/efs-installation.ts",
       "tests/support/installation-establishment-fixture.ts",
       "tests/support/synthetic-deployment-root.ts",
       "tests/unit/foundation-installation-establishment.test.ts",

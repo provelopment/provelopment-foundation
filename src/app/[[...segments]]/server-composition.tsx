@@ -79,7 +79,6 @@ import { dictionaryAccessForRuntimeContext } from "@/config/runtime-dictionaries
 import type { SiteConfig } from "@/config/site-config";
 import { effectiveSitePageConfig } from "@/config/site-page-config";
 import type { EfsView } from "./efs-request";
-import { IMPLICIT_SPOKE_ID } from "@/core/spoke";
 import { publicPathBase, publicationOwnedBy } from "@/core/efs/publication";
 import { siteDescriptionForLocale } from "@/config/site-metadata";
 import { spokeSwitcherForRenderingSpoke } from "@/config/spoke-routing";
@@ -1164,7 +1163,7 @@ export async function layoutForEfsContext(
   children: ReactNode,
   htmlClassName: string,
 ): Promise<ReactNode | null> {
-  if (context.id !== IMPLICIT_SPOKE_ID && !publicationOwnedBy(view.publication, context)) {
+  if (!publicationOwnedBy(view.publication, context)) {
     throw new Error(
       `EFS publication "${view.publication.id}" is owned by Spoke "${view.publication.spokeId}", ` +
         `not the context selected for this request.`,

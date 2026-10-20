@@ -79,6 +79,7 @@ import {
   portableInstallationSeed,
   type InstallationSeedTopology,
 } from "@/core/foundation-installation/establishment";
+import { explicitSingleWebsiteEfsSeed } from "@/core/foundation-installation/efs-seed";
 import {
   beginInstallationPromotion,
   completeInstallationPromotion,
@@ -367,33 +368,66 @@ export async function establishFoundationInstallation(
     //    way, is refused by that authority with its own words, and the refusal reaches the operator as an
     //    unusable seed. There is no precedence rule, no migration guess and no default Spoke here either.
     category = FAILURE_CATEGORY.installation;
-    const seedTopology = await seed.topology();
+    const suppliedTopology = await seed.topology();
     const suppliedSeedFiles = await seed.files();
-    const seedIssues = seedRefusals(suppliedSeedFiles, seedTopology);
-    if (seedIssues.length > 0) {
+
+    // 4a. THE PORTABLE CAPSULE. A source installation's capsule is the ordinary seed, and it carries
+    //     that installation's own records: its adoption record names the release THAT installation
+    //     adopted, so it is not authored material and does not travel.
+    const { portable: portableSeedFiles, notInherited } =
+      portableInstallationSeed(suppliedSeedFiles);
+
+    // 4b. THE AUTHORED INPUT MUST BE USABLE — its shape, its generated state and its configuration.
+    //     Judged on the seed AS SUPPLIED (after removing only the source's own records).
+    const suppliedIssues = seedRefusals(portableSeedFiles, suppliedTopology);
+    if (suppliedIssues.length > 0) {
       return refused(
         FAILURE_CATEGORY.installation,
         `the authored input cannot become a complete Foundation installation (${seed.description}):`,
-        seedIssues,
+        suppliedIssues,
+      );
+    }
+    if (
+      suppliedTopology.mode !== "legacy" &&
+      !portableSeedFiles.some((file) => file.path === "efs/manifest.json")
+    ) {
+      return refused(
+        FAILURE_CATEGORY.installation,
+        `the authored input cannot become a complete Foundation installation (${seed.description}):`,
+        [
+          "the explicit Installation declares no efs/manifest.json — every established Installation " +
+            "must name its publications, and a production request cannot fall back to the retired " +
+            "Page/locale resolver",
+        ],
       );
     }
 
-    // 4b. THE PORTABLE CAPSULE. A source installation's capsule is the ordinary seed, and it carries that
-    //     installation's own records: its adoption record names the release THAT installation adopted, so it
-    //     is not authored material and does not travel. Excluding it here is what makes the documented
-    //     procedure work, and excluding it EXACTLY ONCE is why it reaches neither the authored digest nor the
-    //     target. `notInherited` is carried out to the operator rather than dropped, and the source is never
-    //     read again, never modified and never deleted.
-    const { portable: seedFiles, notInherited } = portableInstallationSeed(suppliedSeedFiles);
+    // 4c. ORDINARY ONE-WEBSITE ESTABLISHMENT BECOMES EXPLICIT EFS. A legacy-shaped seed is converted
+    //     at establishment time into one declared Spoke + explicit Entity/Facet/Site/Page/publication
+    //     declarations. The conversion is persisted in the Installation; nothing is inferred at request
+    //     time, and a seed that already declares EFS is unchanged.
+    let prepared: { files: readonly FoundationContentFile[]; topology: InstallationSeedTopology };
+    try {
+      prepared =
+        suppliedTopology.mode === "legacy"
+          ? explicitSingleWebsiteEfsSeed(portableSeedFiles)
+          : { files: portableSeedFiles, topology: suppliedTopology };
+    } catch (error) {
+      return refused(
+        FAILURE_CATEGORY.installation,
+        "the authored configuration is not a valid Foundation configuration:",
+        [error instanceof Error ? error.message : String(error)],
+      );
+    }
+    const seedTopology = prepared.topology;
+    const seedFiles = prepared.files;
 
-    // 4c. EVERY SPOKE ROOT'S OWN CONFIGURATION (FOUNDATION-MULTISITE-M20). The surfaces were checked per
+    // 4d. EVERY SPOKE ROOT'S OWN CONFIGURATION (FOUNDATION-MULTISITE-M20). The surfaces were checked per
     //     Spoke root above; the CONFIGURATION must be validated the same way, or an explicit Installation
-    //     would be validated against a file its shape never has. The legacy implicit root is the one-root
-    //     case of the same rule, so its diagnostics are unchanged; an explicit Spoke's problem names the
-    //     file AND the Spoke, because an operator must know WHICH one is wrong.
+    //     would be validated against a file its shape never has.
     const configurations =
       seedTopology.mode === "legacy"
-        ? [{ path: "site.config.json", where: "" }]
+        ? []
         : seedTopology.spokes.map((spoke) => ({
             path: `${spoke.locator.replace(/\/+$/, "")}/site.config.json`,
             where: ` (declared Spoke "${spoke.id}")`,

@@ -6,6 +6,8 @@
  * prefix and dedicated host, Home entry, nested Page, binding-derived canonical/hreflang,
  * owner-scoped asset bytes, sitemap/robots and responsive rendering.
  */
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 export const id = "efs-runtime";
@@ -59,20 +61,36 @@ async function start(harness) {
     manifest: process.env.FOUNDATION_EFS_MANIFEST,
     capsule: process.env.FOUNDATION_EFS_CAPSULE,
   };
+  // The EFS fixture's publication names the REAL Spoke `acme-spoke`. Its owner must exist in an
+  // explicit Installation hierarchy, so the scenario builds a disposable Installation that declares
+  // it, rather than relying on an implicit/mocked context.
+  const installation = mkdtempSync(path.join(tmpdir(), "foundation-efs-browser-"));
+  cpSync(
+    path.join(harness.repositoryRoot, "deployment", "spokes", "foundation"),
+    path.join(installation, "spokes", "acme-spoke"),
+    { recursive: true },
+  );
+  mkdirSync(path.join(installation, "spokes"), { recursive: true });
+  writeFileSync(
+    path.join(installation, "spokes.json"),
+    `${JSON.stringify({ spokes: [{ id: "acme-spoke", root: "spokes/acme-spoke" }] }, null, 2)}\n`,
+    "utf8",
+  );
   process.env.FOUNDATION_EFS_MANIFEST = manifest;
   process.env.FOUNDATION_EFS_CAPSULE = capsule;
   let last = null;
   for (const offset of PORT_OFFSETS) {
     const port = harness.basePort + offset;
-    const server = harness.startDevServer(port, { synthetic: false });
+    const server = harness.startDevServer(port, { synthetic: false, deploymentRoot: installation });
     try {
       await harness.waitForServer(`${base(port)}/acme-co/en-001/about`, 240000);
-      return { server, port, previous };
+      return { server, port, previous, installation };
     } catch (error) {
       last = error;
       await harness.stopServer(server);
     }
   }
+  rmSync(installation, { recursive: true, force: true });
   process.env.FOUNDATION_EFS_MANIFEST = previous.manifest;
   process.env.FOUNDATION_EFS_CAPSULE = previous.capsule;
   throw last ?? new Error("no EFS port answered");
@@ -251,6 +269,7 @@ export async function run(chrome, harness) {
       await harness.stopServer(started.server);
       process.env.FOUNDATION_EFS_MANIFEST = started.previous.manifest;
       process.env.FOUNDATION_EFS_CAPSULE = started.previous.capsule;
+      rmSync(started.installation, { recursive: true, force: true });
     }
   }
   return rows;

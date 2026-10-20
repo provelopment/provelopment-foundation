@@ -3,9 +3,8 @@ import { extname, join, sep } from "node:path";
 
 import { headers } from "next/headers";
 
-import { normalizePrefix, matchBinding, publicationForBinding, publicationOwnedBy } from "@/core/efs/publication";
-import { IMPLICIT_SPOKE_ID } from "@/core/spoke";
-import { runtimeContextForCurrentRequest } from "@/config/spoke-request";
+import { normalizePrefix, matchBinding, publicationForBinding } from "@/core/efs/publication";
+import { efsPublicationOwnerForRequest } from "@/config/efs/owner";
 import { deploymentPaths } from "@/config/deployment-root";
 import { loadEfsManifest } from "@/config/efs/manifest";
 
@@ -71,14 +70,8 @@ export async function serveOwnerAsset(
   const binding = matched.binding;
   const publication = publicationForBinding(loaded.manifest.publications, binding);
   if (!publication) return assetNotFound();
-  const context = await runtimeContextForCurrentRequest();
-  if (
-    context !== null &&
-    context.id !== IMPLICIT_SPOKE_ID &&
-    !publicationOwnedBy(publication, context)
-  ) {
-    return assetNotFound();
-  }
+  // The SAME owner rule as Page resolution: declaration + declared Installation hierarchy.
+  if (efsPublicationOwnerForRequest(publication, host).kind === "refused") return assetNotFound();
   const entity = loaded.manifest.entities.find((candidate) => candidate.id === binding.entityId);
   const facet = entity?.facets.find((candidate) => candidate.id === binding.facetId);
   if (!entity || !facet) return assetNotFound();

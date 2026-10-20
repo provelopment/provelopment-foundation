@@ -8,8 +8,8 @@ import {
   spokeServerComposition,
 } from "./server-composition";
 import { efsDescription, efsPublicSegments, efsTitle, efsViewForCurrentRequest } from "./efs-request";
+import { legacyTestRuntimeEnabled, missingEfsInstallation } from "./legacy-test-runtime";
 import { requestPublicDestination } from "./request-context";
-import { runtimeContextForCurrentRequest } from "@/config/spoke-request";
 import { assetUrl } from "@/core/efs/publication";
 import "../globals.css";
 
@@ -88,6 +88,7 @@ export async function generateMetadata({ params }: LocaleLayoutProps): Promise<M
       },
     };
   }
+  if (!legacyTestRuntimeEnabled()) missingEfsInstallation();
   const { context, destination } = await requestPublicDestination(segments);
   return layoutMetadataForContext(
     spokeServerComposition(context),
@@ -99,17 +100,14 @@ export default async function LocaleLayout({ children, params }: LocaleLayoutPro
   const segments = (await params).segments ?? [];
   const efs = await efsViewForCurrentRequest(segments);
   if (efs) {
-    const context = await runtimeContextForCurrentRequest();
-    if (context) {
-      const shell = await layoutForEfsContext(
-        context,
-        efs,
-        efsPublicSegments(efs),
-        children,
-        HTML_CLASS_NAME,
-      );
-      if (shell) return shell;
-    }
+    const shell = await layoutForEfsContext(
+      efs.context,
+      efs,
+      efsPublicSegments(efs),
+      children,
+      HTML_CLASS_NAME,
+    );
+    if (shell) return shell;
     return (
       <html lang={efs.locale} className={HTML_CLASS_NAME}>
         <body className="min-h-full bg-white text-neutral-900 antialiased">{children}</body>
@@ -117,7 +115,9 @@ export default async function LocaleLayout({ children, params }: LocaleLayoutPro
     );
   }
   // The context is the one the REQUEST selected (the boundary's exact hostname claim), and the shared
-  // composition derives the whole document from it.
+  // composition derives the whole document from it. Only the isolated non-production test utility may
+  // reach this path; a real installation must have a verified EFS publication.
+  if (!legacyTestRuntimeEnabled()) missingEfsInstallation();
   const { context, destination } = await requestPublicDestination(segments);
   return layoutForContext(
     spokeServerComposition(context),

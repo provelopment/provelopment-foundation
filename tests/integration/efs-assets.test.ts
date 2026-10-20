@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ headers: new Map<string, string>() }));
 
@@ -8,10 +8,17 @@ vi.mock("next/headers", () => ({
   headers: async () => ({ get: (key: string) => state.headers.get(key) ?? null }),
 }));
 
-import { serveOwnerAsset } from "@/app/efs-asset-response";
-import { GET as GET_NESTED } from "@/app/[site]/[locale]/owner-assets/[...path]/route";
+import { materializeEfsInstallation, selectEfsInstallation } from "../support/efs-installation";
 
-describe("EFS owner-scoped asset delivery (S3-E3-R01)", () => {
+const installation = materializeEfsInstallation({ mode: "flat", spokes: ["acme-spoke"] });
+selectEfsInstallation(installation.root);
+vi.resetModules();
+const { serveOwnerAsset } = await import("@/app/efs-asset-response");
+const { GET: GET_NESTED } = await import("@/app/[site]/[locale]/owner-assets/[...path]/route");
+
+afterAll(() => installation.cleanup());
+
+describe("EFS owner-scoped asset delivery (S3-E3-R05)", () => {
   beforeEach(() => {
     state.headers.clear();
     state.headers.set("host", "my.provelopment.com");

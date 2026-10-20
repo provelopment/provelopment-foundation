@@ -5,8 +5,9 @@ import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 
 import { loadEfsPageSource, type EfsPageSource } from "@/adapters/content/efs-content";
-import { runtimeContextForCurrentRequest } from "@/config/spoke-request";
-import { IMPLICIT_SPOKE_ID } from "@/core/spoke";
+import { efsPublicationOwnerForRequest } from "@/config/efs/owner";
+import { legacyTestRuntimeEnabled, missingEfsInstallation } from "./legacy-test-runtime";
+import type { SpokeRuntimeContext } from "@/config/installation-runtime";
 import {
   canonicalUrl,
   contentSegments,
@@ -14,7 +15,6 @@ import {
   matchBinding,
   parseContentRoute,
   publicationForBinding,
-  publicationOwnedBy,
   type EfsBinding,
 } from "@/core/efs/publication";
 import {
@@ -59,6 +59,8 @@ const DEFAULT_CAPSULE = join(DEPLOYMENT.root, "efs", "capsule");
 export interface EfsView {
   readonly publication: EfsPublicationDeclaration;
   readonly binding: EfsBinding;
+  /** The VERIFIED owner context: the publication's declared Spoke, resolved in this Installation. */
+  readonly context: SpokeRuntimeContext;
   readonly entity: EfsEntityDeclaration;
   readonly facet: EfsFacetDeclaration;
   readonly site: EfsSiteDeclaration;
@@ -106,8 +108,7 @@ function runtime(): LoadedRuntime | null {
       ? undefined
       : rawOverride;
   // An EMPTY manifest override is authoring failure, never a switch that revives the retired
-  // Page/locale runtime. Legacy installations are selected by the ABSENCE of an EFS declaration,
-  // not by a production compatibility flag.
+  // Page/locale runtime. The production request path has ONE runtime: explicit EFS.
   if (override !== undefined && override.trim() === "") {
     throw new Error(
       `EFS manifest path is empty; ${MANIFEST_ENV} must name a manifest or be left unset.`,
@@ -125,7 +126,10 @@ function runtime(): LoadedRuntime | null {
     if (override !== undefined || existsSync(capsulePath) || existsSync(dirname(manifestPath))) {
       throw new Error(`EFS manifest is missing at ${manifestPath}; the capsule cannot be served.`);
     }
-    return null;
+    // No EFS configuration at all. Only the isolated, non-production test utility may answer; a
+    // real installation receives a controlled setup diagnostic instead of an alternate runtime.
+    if (legacyTestRuntimeEnabled()) return null;
+    missingEfsInstallation();
   }
   if (!existsSync(capsulePath)) {
     throw new Error(`EFS capsule is missing at ${capsulePath}; the publication cannot be served.`);
@@ -148,17 +152,6 @@ function findSite(manifest: EfsManifest, entityId: string, facetId: string, site
     if (facet && site) return { entity, facet, site };
   }
   return null;
-}
-
-/**
- * Whether the host-selected Spoke is the publication's declared owner. A hostname, prefix or a name
- * match never substitutes: a different Spoke answering the host is unauthorized.
- */
-function publicationBelongsToContext(
-  publication: EfsPublicationDeclaration,
-  context: { readonly id: string; readonly spokeHubId?: string },
-): boolean {
-  return publicationOwnedBy(publication, context);
 }
 
 function pageForRoute(site: EfsSiteDeclaration, route: readonly string[]): EfsPageDeclaration | undefined {
@@ -225,14 +218,8 @@ export async function efsViewForCurrentRequest(
       const only = hostBindings[0];
       const onlyPublication = publicationForBinding(manifest.publications, only);
       if (!onlyPublication) notFound();
-      const context = await runtimeContextForCurrentRequest();
-      if (
-        context !== null &&
-        context.id !== IMPLICIT_SPOKE_ID &&
-        !publicationBelongsToContext(onlyPublication, context)
-      ) {
-        notFound();
-      }
+      const owner = efsPublicationOwnerForRequest(onlyPublication, host);
+      if (owner.kind === "refused") notFound();
       if (segments.length === 0) {
         const entry = entryRedirectPath(only, {
           cookie: (await requestHeader("cookie")) ?? undefined,
@@ -254,18 +241,11 @@ export async function efsViewForCurrentRequest(
 
   const publication = publicationForBinding(manifest.publications, matched.binding);
   if (!publication) notFound();
-  // The host selection and the publication's OWNER must agree. A host or prefix that happens to
-  // resemble another Spoke/Entity/Facet name cannot establish publication ownership.
-  const context = await runtimeContextForCurrentRequest();
-  // A legacy one-Spoke Installation declares no Spoke collection, so the manifest's explicit owner is
-  // the only authority. An EXPLICIT collection must agree with the publication owner.
-  if (
-    context !== null &&
-    context.id !== IMPLICIT_SPOKE_ID &&
-    !publicationBelongsToContext(publication, context)
-  ) {
-    notFound();
-  }
+  // The publication's explicit owner and the Installation's declared hierarchy are the ONLY
+  // sources of ownership. A host or prefix that resembles a Spoke/Entity/Facet name is irrelevant.
+  const owner = efsPublicationOwnerForRequest(publication, host);
+  if (owner.kind === "refused") notFound();
+  const context = owner.context;
 
   if (matched.remaining.length === 0) {
     redirect(
@@ -332,6 +312,7 @@ export async function efsViewForCurrentRequest(
   return {
     publication,
     binding: matched.canonicalBinding,
+    context,
     entity,
     facet,
     site,
@@ -382,21 +363,22 @@ export async function efsSitemapForCurrentRequest(): Promise<
   if (!runtimeValue) return null;
   const host = hostName((await requestHeader("host")) ?? (await requestHeader("x-forwarded-host")));
   if (!host) return null;
-  const context = await runtimeContextForCurrentRequest();
-  const ownedPublications = runtimeValue.manifest.publications.filter(
-    (publication) =>
-      context === null ||
-      context.id === IMPLICIT_SPOKE_ID ||
-      publicationBelongsToContext(publication, context),
-  );
-  const claimed = ownedPublications
-    .flatMap((publication) => publication.bindings)
-    .filter((binding) => binding.canonical !== false && binding.host.toLowerCase() === host.toLowerCase());
+  const claimed: { publication: EfsPublicationDeclaration; binding: EfsBinding }[] = [];
+  for (const publication of runtimeValue.manifest.publications) {
+    for (const binding of publication.bindings) {
+      if (binding.canonical === false || binding.host.toLowerCase() !== host.toLowerCase()) continue;
+      // Discovery uses the SAME owner rule as Page and asset resolution. A binding whose
+      // publication has no verified owner contributes nothing — it cannot leak a sitemap entry.
+      const owner = efsPublicationOwnerForRequest(publication, host);
+      if (owner.kind === "refused") return null;
+      claimed.push({ publication, binding });
+    }
+  }
   if (claimed.length === 0) return null;
 
   const lastModified = new Date();
   const urls = new Set<string>();
-  for (const binding of claimed) {
+  for (const { binding } of claimed) {
     const entity = runtimeValue.manifest.entities.find((candidate) => candidate.id === binding.entityId);
     const facet = entity?.facets.find((candidate) => candidate.id === binding.facetId);
     if (!facet) continue;
@@ -426,15 +408,15 @@ export async function efsSitemapUrlForCurrentRequest(): Promise<string | null> {
   if (!runtimeValue) return null;
   const host = hostName((await requestHeader("host")) ?? (await requestHeader("x-forwarded-host")));
   if (!host) return null;
-  const context = await runtimeContextForCurrentRequest();
-  const binding = runtimeValue.manifest.publications
-    .filter(
-      (publication) =>
-        context === null ||
-        context.id === IMPLICIT_SPOKE_ID ||
-        publicationBelongsToContext(publication, context),
-    )
-    .flatMap((publication) => publication.bindings)
-    .find((candidate) => candidate.canonical !== false && candidate.host.toLowerCase() === host.toLowerCase());
-  return binding ? `https://${binding.host}/sitemap.xml` : null;
+  for (const publication of runtimeValue.manifest.publications) {
+    const binding = publication.bindings.find(
+      (candidate) =>
+        candidate.canonical !== false && candidate.host.toLowerCase() === host.toLowerCase(),
+    );
+    if (!binding) continue;
+    const owner = efsPublicationOwnerForRequest(publication, host);
+    if (owner.kind === "refused") return null;
+    return `https://${binding.host}/sitemap.xml`;
+  }
+  return null;
 }

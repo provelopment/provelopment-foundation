@@ -27,7 +27,7 @@ import { foundationSpoke } from "../support/spoke-contexts";
 
 async function rendered(view: EfsView): Promise<string> {
   const shell = await layoutForEfsContext(
-    foundationSpoke.context,
+    view.context,
     view,
     efsPublicSegments(view),
     <p>EFS page</p>,

@@ -2,16 +2,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ headers: new Map<string, string>() }));
 
 vi.mock("next/headers", () => ({
   headers: async () => ({ get: (key: string) => state.headers.get(key) ?? null }),
-}));
-
-vi.mock("@/config/spoke-request", () => ({
-  runtimeContextForCurrentRequest: async () => ({ id: "implicit" }),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -23,8 +19,18 @@ vi.mock("next/navigation", () => ({
   },
 }));
 
-import { efsViewForCurrentRequest } from "@/app/[[...segments]]/efs-request";
+import { materializeEfsInstallation, selectEfsInstallation } from "../support/efs-installation";
 import type { EfsManifest } from "@/config/efs/manifest";
+
+const installation = materializeEfsInstallation({
+  mode: "flat",
+  spokes: ["shared-spoke", "spoke-one", "spoke-two"],
+});
+selectEfsInstallation(installation.root);
+vi.resetModules();
+const { efsViewForCurrentRequest } = await import("@/app/[[...segments]]/efs-request");
+
+afterAll(() => installation.cleanup());
 
 const roots: string[] = [];
 const previous = { manifest: process.env.FOUNDATION_EFS_MANIFEST, capsule: process.env.FOUNDATION_EFS_CAPSULE };

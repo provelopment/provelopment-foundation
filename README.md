@@ -210,6 +210,7 @@ pnpm release:classify
 
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — current EFS boundaries and retained legacy-engine notes
 - [`CUSTOMIZING.md`](CUSTOMIZING.md) — configuration and authoring reference
+- [`BRAND_ASSETS.md`](BRAND_ASSETS.md) — the runtime asset-role and replacement contract
 - [`DEPLOYMENT.md`](DEPLOYMENT.md) — deployment runbook
 - [`deployment/README.md`](deployment/README.md) — the reference Installation
 - [`instruction-manuals/README.md`](instruction-manuals/README.md) — adopter operating manuals

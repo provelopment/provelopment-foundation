@@ -14,6 +14,7 @@
 //      Scope semantics live in `tests/browser/scope.mjs` (one harness, one discovery policy).
 // (requires a local Chrome/Chromium/Edge binary).
 import { spawn } from "node:child_process";
+import { request as httpRequest } from "node:http";
 import { existsSync, mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -541,9 +542,17 @@ function startDevServer(port, { synthetic = true, deploymentRoot = null } = {}) 
   const proc = spawn(process.execPath, [NEXT_BIN, "dev", "--port", String(port)], {
     cwd: ROOT,
     env: deploymentRoot !== null
-      ? { ...process.env, FOUNDATION_DEPLOYMENT_ROOT: deploymentRoot }
+      ? {
+          ...process.env,
+          FOUNDATION_DEPLOYMENT_ROOT: deploymentRoot,
+          FOUNDATION_ENABLE_LEGACY_TEST_RUNTIME: "1",
+        }
       : synthetic
-        ? { ...process.env, FOUNDATION_DEPLOYMENT_ROOT: DEPLOYMENT_ROOT }
+        ? {
+            ...process.env,
+            FOUNDATION_DEPLOYMENT_ROOT: DEPLOYMENT_ROOT,
+            FOUNDATION_ENABLE_LEGACY_TEST_RUNTIME: "1",
+          }
         : { ...process.env },
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
@@ -582,6 +591,38 @@ async function stopServer(server) {
 /** The dev servers started in this run, so a readiness wait can fail FAST when one dies. */
 const STARTED_SERVERS = [];
 
+/**
+ * A readiness probe that sends the REQUESTED hostname as `Host` while connecting to loopback.
+ *
+ * Windows does not resolve `*.localhost` through `getaddrinfo` (Chrome handles it internally), so a
+ * browser-ready virtual-host server could look unreachable to Node. The probe is what a browser does:
+ * connect to loopback and preserve the Host header the scenario is proving.
+ */
+function readyStatus(url) {
+  return new Promise((resolve) => {
+    const target = new URL(url);
+    const request = httpRequest(
+      {
+        host: "127.0.0.1",
+        port: target.port,
+        path: `${target.pathname}${target.search}`,
+        method: "GET",
+        headers: { host: target.host },
+      },
+      (response) => {
+        response.resume();
+        response.on("end", () => resolve(response.statusCode ?? 0));
+      },
+    );
+    request.setTimeout(12000, () => {
+      request.destroy();
+      resolve(0);
+    });
+    request.on("error", () => resolve(0));
+    request.end();
+  });
+}
+
 async function waitForServer(url, timeoutMs = 300000) {
   const end = Date.now() + timeoutMs;
   while (Date.now() < end) {
@@ -596,10 +637,7 @@ async function waitForServer(url, timeoutMs = 300000) {
         `dev server exited before serving ${url}\n--- dev server output ---\n${current.log()}`,
       );
     }
-    try {
-      const res = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(12000) });
-      if (res.status === 200) return;
-    } catch { /* not ready yet */ }
+    if ((await readyStatus(url)) === 200) return;
     await sleep(1500);
   }
   throw new Error(`dev server not ready: ${url}`);
@@ -712,7 +750,9 @@ async function discoverFoundationScenarios() {
 /** Runs every Foundation-owned scenario, labelled and summarised exactly like a scenario in this file. */
 async function runFoundationScenarios(chrome, names) {
   const rows = [];
+  const only = process.env.FOUNDATION_BROWSER_ONLY?.trim();
   for (const file of names) {
+    if (only && !file.includes(only)) continue;
     const loaded = await import(pathToFileURL(join(HERE, file)).href);
     const scenario = loaded.default ?? loaded;
     const label = scenario.id ?? file.slice(0, -SCENARIO_SUFFIX.length);

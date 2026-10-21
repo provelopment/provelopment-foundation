@@ -110,6 +110,8 @@ const SANCTIONED_DOMAIN_WRITERS: Record<string, string> = {
   "scripts/generate-country-code-reference.mjs":
     "<selected deployment>/content/COUNTRY-CODES.md — the ONE generated deployment document (ISO-B3A)",
   "scripts/ci/change-scope.mjs": "$GITHUB_OUTPUT — the CI runner's own file, never repository state (ISO-B3B)",
+  "scripts/efs/convert-reference.mjs":
+    "<selected deployment>/efs/manifest.json and <selected deployment>/efs/capsule/** — the explicit EFS capsule converted from the controlled reference Spokes. It reads deployment/spokes/** and never writes there (S3-E3-R02)",
   "scripts/release/release-construction.mjs":
     "the EMPTY destination directory the caller names — a release construction area outside the source repository. It reads committed bytes only, and writes no repository, deployment or generated state (R1B)",
   // ── FOUNDATION-B4B: the FIRST writers inside `src/**`, each owning exactly ONE installation ──────────
@@ -186,10 +188,28 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
   // synthetic fixture (its origin replaced, one regional page configured, its own public/unlisted pages
   // authored) behind ONE dev server. The committed fixture, the selected deployment and the repository are only
   // ever READ, and the copy is removed when the run ends.
+  "tests/browser/efs.scenario.mjs":
+    "OS temp only: the disposable explicit Installation it assembles for the EFS fixture's declared Spoke, removed when the scenario ends; the repository, committed fixture and deployment are only ever READ (R05)",
+  "tests/browser/efs-semantic.scenario.mjs":
+    "OS temp only: the disposable explicit Installation declaring the neutral publication's real Spoke, removed when the scenario ends; the repository and committed fixture are only ever READ (R05)",
   "tests/browser/unlisted-visibility.scenario.mjs":
     "OS temp only: the disposable copy of the committed synthetic fixture it re-configures and authors its own " +
     "public and unlisted pages into, behind its own dev server — every write through the harness's own guarded " +
     "writers, and the copy removed when the run ends (TEMPLATE-PV-A1)",
+  "tests/support/efs-installation.ts":
+    "OS temp only: the disposable explicit Installation trees (flat or identified Spoke Hubs) used by the EFS ownership proofs; copied from the committed synthetic fixture and removed by exact ownership (R05)",
+  "tests/integration/efs-ownership-runtime.test.ts":
+    "OS temp only: one disposable explicit Installation, its manifest and copied canonical capsule, removed afterwards; the committed fixture and deployment are only ever READ (R05)",
+  "tests/unit/efs-owner.test.ts":
+    "OS temp only: disposable explicit and legacy Installation roots it authors to prove owner resolution against real declarations, removed by exact ownership (R05)",
+  "tests/integration/efs-independent-installations.test.ts":
+    "OS temp only: two independent Installation roots (manifest + copied canonical capsule), each served " +
+    "through the real EFS request boundary and removed afterwards; the committed fixture and deployment " +
+    "are only ever READ (R04)",
+  "tests/integration/efs-publication-isolation.test.ts":
+    "OS temp only: disposable Installation roots and owner-scoped capsule Pages it authors for the " +
+    "many-to-many publication isolation proofs and removes afterwards; the committed fixture and deployment " +
+    "are only ever READ (R04)",
   "tests/unit/unlisted-visibility-contract.test.ts":
     "OS temp only: the disposable one-Spoke Installations it authors for the publication contract's sitemap, " +
     "metadata, regional and cross-Spoke proofs (manifest, configuration, dictionaries and its own pages), " +
@@ -283,6 +303,8 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
   "tests/support/installation-establishment-fixture.ts":
     "disposable platforms, releases, seeds and target roots under OS temp — the establishment proof's own " +
     "throwaway tree, removed by exact ownership (B4B)",
+  "tests/integration/efs-app-request.test.ts":
+    "OS temp only — one deliberately invalid manifest written to prove EFS fails with a controlled diagnostic rather than falling back (S3-E3-R02)",
   "tests/integration/foundation-installation-bootstrap.test.ts":
     "OS temp target roots and one deliberately half-written materialisation, plus the installation's own " +
     "generated asset mirror when the established tree is proved self-contained (B4B)",
@@ -290,6 +312,16 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
     "disposable target roots it establishes into, and the seeded capsule whose ignore rule it proves (B4B)",
   "tests/integration/foundation-installation-cli.test.ts":
     "disposable target roots it establishes into through the command line (B4B)",
+  "tests/support/efs-page-identity-seed.ts":
+    "a disposable one-Site fixture seed under OS temp — the R07 PageID, Home and integrity proofs' own authored inputs (S3-E3-R07)",
+  "tests/integration/efs-established-page-identity.test.ts":
+    "disposable seeds, targets and portable capsule copies under OS temp — the R07 PageID, source, Home and refusal proofs (S3-E3-R07)",
+  "tests/integration/efs-established-one-website.test.ts":
+    "a disposable seed's configuration and target root under OS temp — the R06 publication-authority proof (S3-E3-R06)",
+  "tests/integration/efs-established-publication-authority.test.ts":
+    "a disposable seed's configuration and target root under OS temp — the R06 publication-authority proof (S3-E3-R06)",
+  "tests/integration/efs-established-identity.test.ts":
+    "disposable seeds, targets and a portable copy of an established capsule under OS temp — the R06 identity and move proof (S3-E3-R06)",
   // FOUNDATION-MULTISITE-M20 — the multi-Spoke establishment proof and the authoring-directory contract
   // write only disposable trees of their own. The REAL capsule is COPIED into OS temp and only ever READ
   // (the copy is what establishment is given), and the authoring contract builds its own throwaway tree.
@@ -342,7 +374,7 @@ describe("the executable writer inventory is explicit", () => {
   });
 
   it("names the sanctioned durable domains, each as ONE document/domain and no more", () => {
-    expect(Object.keys(SANCTIONED_DOMAIN_WRITERS)).toHaveLength(7);
+    expect(Object.keys(SANCTIONED_DOMAIN_WRITERS)).toHaveLength(8);
     expect(SANCTIONED_DOMAIN_WRITERS["scripts/sync-runtime-assets.mjs"]).toContain("public/assets");
     expect(SANCTIONED_DOMAIN_WRITERS["scripts/generate-country-code-reference.mjs"]).toContain(
       "COUNTRY-CODES.md",

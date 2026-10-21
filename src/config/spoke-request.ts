@@ -143,5 +143,7 @@ export async function runtimeContextForCurrentRequest(): Promise<SpokeRuntimeCon
     return runtimeContextForSegment(selected);
   }
 
-  return runtimeContextForRequestHost(null);
+  // No boundary selection: resolve the CURRENT host. This keeps the App Router's one selector
+  // correct when an unclaimed host is forwarded to the explicit EFS resolver.
+  return runtimeContextForRequest();
 }

@@ -35,6 +35,7 @@ import {
 } from "../../src/config/deployment-build.mjs";
 
 import { captureProductionStateManifest, productionStateDrift } from "./production-state-manifest";
+import { LEGACY_TEST_RUNTIME_ENV } from "../../src/app/[[...segments]]/legacy-test-runtime";
 
 /**
  * The surfaces a copy must reproduce byte-for-byte for an authoring experiment to mean anything.
@@ -70,6 +71,10 @@ export function selectDisposableDeploymentCopy(): DisposableDeployment {
   const source = resolveDeploymentForBuild(process.env, process.cwd());
   const root = mkdtempSync(path.join(tmpdir(), "foundation-deployment-authoring-"));
   cpSync(source.root, root, { recursive: true });
+  // The authoring/legacy preservation suites exercise the released page resolver through a
+  // disposable copy. The explicit EFS manifest is a publication authority, so it must not travel
+  // into that copy: the real deployment keeps it, and the copy remains the legacy authoring subject.
+  rmSync(path.join(root, "efs"), { recursive: true, force: true });
 
   const fidelity = productionStateDrift(
     captureProductionStateManifest(source.root, FIDELITY_SURFACES),
@@ -86,6 +91,9 @@ export function selectDisposableDeploymentCopy(): DisposableDeployment {
 
   process.env[DEPLOYMENT_ROOT_ENV] = root;
   process.env[DEPLOYMENT_LAYOUT_ENV] = "override";
+  // The authoring/preservation suite drives the isolated released Page/locale utility against this
+  // copy. It is a test utility only (`legacyTestRuntimeEnabled` refuses NODE_ENV=production).
+  process.env[LEGACY_TEST_RUNTIME_ENV] = "1";
   // The compatibility configuration binding is published ONLY when the Installation HAS one. A MULTI-Spoke
   // Installation inlines no single configuration at all (S3F2A/M16 — there is no default Spoke to inline),
   // so `siteConfigFile` is empty and reading it would fail for exactly the deployment form the multi-Spoke

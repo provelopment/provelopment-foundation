@@ -312,15 +312,6 @@ const chooseSite = (code) => `(() => {
   return true;
 })()`;
 
-/** Choose a LOCATION exactly as a visitor does (value + change event on the control). */
-const chooseLocation = (region) => `(() => {
-  const control = document.querySelector('select[data-selector="location"]');
-  if (!control) return false;
-  control.value = ${JSON.stringify(region)};
-  control.dispatchEvent(new Event('change', { bubbles: true }));
-  return true;
-})()`;
-
 /** Choose a language exactly as a visitor does (value + change event on the control). */
 const chooseLanguage = (locale) => `(() => {
   const control = document.querySelector('select[data-selector="language"]');
@@ -365,16 +356,11 @@ export async function run(chrome, harness) {
   // Only CONFIGURATION is read here — the dictionaries that declare the UI vocabulary. The authored
   // pages are never read: they are the owner's editorial data, not an expectation (see AGENTS.md §14).
   const foundationDir = path.dirname(foundationConfigFile);
-  const germanyDir = path.dirname(germanyConfigFile);
   const dictionary = async (dir, locale) =>
     JSON.parse(await readFile(`${dir}/config/i18n/${locale}.json`, "utf8"));
   const foundationDictionary = {
     en: await dictionary(foundationDir, "en"),
     de: await dictionary(foundationDir, "de"),
-  };
-  const germanyDictionary = {
-    en: await dictionary(germanyDir, "en"),
-    de: await dictionary(germanyDir, "de"),
   };
   check(rows, "reference.config.siteUrl", reference.site?.url === REFERENCE_ORIGIN, String(reference.site?.url));
   check(
@@ -1149,204 +1135,87 @@ export async function run(chrome, harness) {
       `landed ${landedInGerman} (the cookie said en)`,
     );
 
-    // ── GERMANY: locations inside ONE site ──────────────────────────────────
+    // ── GERMANY: ordinary Pages, NO Location runtime (D28/D31/R03) ──────────
+    // The Germany Spoke still owns its historical `business.regions` authoring material, but the EFS
+    // shell no longer exposes a Location selector, a region route, a timezone or a regional address.
     await cdp.navigate(`${GERMANY_BASE_URL}/de/de`);
     await waitReady(cdp);
     await sleep(300);
     const germanyHomeSelectors = JSON.parse(await cdp.evaluate(REFERENCE_SELECTORS_PROBE));
     check(
       rows,
-      "reference.germany.locationAndLanguageButNoSiteControl",
+      "reference.germany.layoutAndLanguageOnly",
       germanyHomeSelectors.sitePresent === false &&
-        germanyHomeSelectors.locationPresent === true &&
+        germanyHomeSelectors.locationPresent === false &&
         germanyHomeSelectors.languagePresent === true &&
-        germanyHomeSelectors.layoutPresent === true,
+        germanyHomeSelectors.layoutPresent === true &&
+        germanyHomeSelectors.languageValue === "de",
       JSON.stringify(germanyHomeSelectors),
     );
     check(
       rows,
-      "reference.germany.selectors.orderOnGermany",
-      // M18 — ONE Site, so there is no Site control: the accepted order of the controls this Spoke DOES
-      // offer is Layout → Location → Language.
-      JSON.stringify(germanyHomeSelectors.selectorOrder ?? null) ===
-        JSON.stringify(["layout", "location", "language"]),
-      JSON.stringify(germanyHomeSelectors.selectorOrder ?? null),
+      "reference.germany.noLocationVocabulary",
+      (germanyHomeSelectors.locationOptions ?? []).length === 0 &&
+        (germanyHomeSelectors.siteOptions ?? []).length === 0,
+      JSON.stringify({ location: germanyHomeSelectors.locationOptions, site: germanyHomeSelectors.siteOptions }),
     );
-    check(
-      rows,
-      "reference.germany.currentLanguageAndLocation",
-      germanyHomeSelectors.languageValue === "de" && germanyHomeSelectors.locationValue === "",
-      JSON.stringify(germanyHomeSelectors),
-    );
-    check(
-      rows,
-      "reference.germany.locationVocabulary",
-      // The neutral choice and the two region labels, read from the Germany Spoke's own dictionary and
-      // configuration (never quoted here).
-      JSON.stringify(germanyHomeSelectors.locationOptions ?? null) ===
-        JSON.stringify([
-          germanyDictionary.de.location.unspecified,
-          ...Object.values(germanConfig.business.regions).map((region) => region.label),
-        ]),
-      JSON.stringify(germanyHomeSelectors.locationOptions ?? null),
-    );
-    // M18 — RETIRED, with reason: this check existed only to read the OLD Site selector's vocabulary, and a
-    // Spoke that owns exactly ONE Site offers no Site control (§11). Its surviving purpose — "this host
-    // serves Site `de`, and offers nothing to switch away from" — is proved by the configuration checks
-    // above, by Germany's canonical origin, and here by the ABSENCE of any Site vocabulary.
-    check(
-      rows,
-      "reference.germany.noSiteControlOnGermany",
-      germanyHomeSelectors.sitePresent === false && (germanyHomeSelectors.siteOptions ?? []).length === 0,
-      JSON.stringify(germanyHomeSelectors),
-    );
-    // The Layout choice is the visitor's: set it once, then change location and site around it.
     await cdp.evaluate(chooseLayout("menu-bar"));
-    await sleep(500);
+    await sleep(400);
 
-    check(
-      rows,
-      "reference.germany.locationBerlinApplies",
-      await cdp.evalBool(chooseLocation("berlin")),
-    );
-    // M18 — the DESTINATION is proved by ADDRESSING it, exactly as the control addresses it (see the note
-    // above: the visitor's choice cannot be applied on a page that has not hydrated at this origin).
+    // A city-named Page is an ordinary Page: exact URL, canonical, one h1, no regional context.
     await cdp.navigate(`${GERMANY_BASE_URL}/de/de/berlin`);
     await waitReady(cdp);
     const inBerlin = JSON.parse(await cdp.evaluate(REFERENCE_PROBE));
     const berlinSelectors = JSON.parse(await cdp.evaluate(REFERENCE_SELECTORS_PROBE));
     check(
       rows,
-      "reference.germany.locationStaysInsideGermany",
-      inBerlin.path === "/de/de/berlin",
-      String(inBerlin.path),
-    );
-    check(
-      rows,
-      "reference.germany.locationKeepsSiteLanguageAndLayout",
-      berlinSelectors.languageValue === "de" &&
-        berlinSelectors.locationValue === "berlin" &&
-        inBerlin.canonical.endsWith("/de/de/berlin"),
-      JSON.stringify({ ...berlinSelectors, canonical: inBerlin.canonical }),
-    );
-    check(
-      rows,
-      "reference.germany.locationRendersItsOwnPage",
-      // Route identity + context, not copy: the regional route, its canonical and the Location
-      // control's own value all name the same configured location.
+      "reference.germany.cityPageIsOrdinary",
       inBerlin.path === "/de/de/berlin" &&
         inBerlin.canonical.endsWith("/de/de/berlin") &&
-        berlinSelectors.locationValue === "berlin" &&
+        berlinSelectors.lang === "de" &&
         inBerlin.h1s.length === 1 &&
         inBerlin.h1s[0].trim() !== "",
-      JSON.stringify(inBerlin.h1s),
+      JSON.stringify({ path: inBerlin.path, canonical: inBerlin.canonical, lang: berlinSelectors.lang, h1s: inBerlin.h1s }),
     );
-
     check(
       rows,
-      "reference.germany.locationFrankfurtApplies",
-      await cdp.evalBool(chooseLocation("frankfurt")),
+      "reference.germany.cityPageHasNoLocationControl",
+      berlinSelectors.locationPresent === false &&
+        JSON.stringify(berlinSelectors.selectorOrder ?? null) === JSON.stringify(["layout", "language"]),
+      JSON.stringify(berlinSelectors),
     );
-    await cdp.navigate(`${GERMANY_BASE_URL}/de/de/frankfurt`);
+    check(
+      rows,
+      "reference.germany.cityPageHasNoRegionalRuntimeState",
+      !JSON.stringify(inBerlin).includes("Europe/Berlin") &&
+        !JSON.stringify(inBerlin).includes("Example Street") &&
+        !JSON.stringify(inBerlin).includes("data-region"),
+      "no timezone/address/region attribute",
+    );
+
+    // The same ordinary Page in the English representation: explicit `en`, never `en-DE`.
+    await cdp.navigate(`${GERMANY_BASE_URL}/de/en/frankfurt`);
     await waitReady(cdp);
-    const inFrankfurt = JSON.parse(await cdp.evaluate(REFERENCE_PROBE));
+    const englishFrankfurt = JSON.parse(await cdp.evaluate(REFERENCE_PROBE));
     const frankfurtSelectors = JSON.parse(await cdp.evaluate(REFERENCE_SELECTORS_PROBE));
     check(
       rows,
-      "reference.germany.secondLocationIsReachable",
-      inFrankfurt.path === "/de/de/frankfurt" && frankfurtSelectors.locationValue === "frankfurt",
-      `${inFrankfurt.path} / ${frankfurtSelectors.locationValue}`,
+      "reference.germany.englishCityPageRemainsEnglish",
+      englishFrankfurt.path === "/de/en/frankfurt" &&
+        englishFrankfurt.canonical.endsWith("/de/en/frankfurt") &&
+        frankfurtSelectors.lang === "en" &&
+        !JSON.stringify(englishFrankfurt).includes("en-DE") &&
+        !JSON.stringify(englishFrankfurt).includes("de-DE"),
+      JSON.stringify({ path: englishFrankfurt.path, canonical: englishFrankfurt.canonical, lang: frankfurtSelectors.lang, h1s: englishFrankfurt.h1s }),
     );
     check(
       rows,
-      "reference.germany.locationNeverChangesTheLanguage",
-      frankfurtSelectors.languageValue === "de",
-      JSON.stringify({ language: frankfurtSelectors.languageValue }),
+      "reference.germany.englishCityPageHasNoLocationControl",
+      frankfurtSelectors.locationPresent === false && frankfurtSelectors.languageValue === "en",
+      JSON.stringify(frankfurtSelectors),
     );
-
-    // The neutral choice returns to the site's own pages — still inside Germany.
-    check(
-      rows,
-      "reference.germany.neutralChoiceReturnsToTheSite",
-      await cdp.evalBool(chooseLocation("")),
-    );
-    // M18 — the NEUTRAL destination is proved by ADDRESSING it (see the insecure-dev-origin note above).
-    await cdp.navigate(`${GERMANY_BASE_URL}/de/de`);
-    await waitReady(cdp);
-    const backToAllLocations = JSON.parse(await cdp.evaluate(REFERENCE_SELECTORS_PROBE));
-    const allLocationsPath = await cdp.evaluate("location.pathname");
-    check(
-      rows,
-      "reference.germany.allLocationsIsNonRegional",
-      allLocationsPath === "/de/de" && backToAllLocations.locationValue === "",
-      `${allLocationsPath} / ${backToAllLocations.locationValue}`,
-    );
-    check(
-      rows,
-      "reference.germany.allLocationsUsesTheNeutralWording",
-      (backToAllLocations.locationOptions ?? [])[0] === germanyDictionary.de.location.unspecified,
-      String((backToAllLocations.locationOptions ?? [])[0]),
-    );
-
-    // ── A LOCATION NEVER LEAKS ACROSS A SITE SWITCH ─────────────────────────
-    await cdp.navigate(`${GERMANY_BASE_URL}/de/en/berlin`);
-    await waitReady(cdp);
-    await sleep(300);
-    const englishBerlin = JSON.parse(await cdp.evaluate(REFERENCE_SELECTORS_PROBE));
-    check(
-      rows,
-      "reference.germany.locationIsReadableInEnglishToo",
-      englishBerlin.locationValue === "berlin" &&
-        englishBerlin.languageValue === "en" &&
-        JSON.stringify(englishBerlin.locationOptions ?? null) ===
-          JSON.stringify([
-            germanyDictionary.en.location.unspecified,
-            ...Object.values(germanConfig.business.regions).map((region) => region.label),
-          ]),
-      JSON.stringify(englishBerlin),
-    );
-    // The neutral choice leaves the REGION, never the Spoke.
-    //
-    // M18 — RETIRED, with reason: `leaveForGlobal` existed only to switch Sites through the old Site
-    // control, and no such control exists once a Spoke owns ONE Site (§11); inventing a cross-Spoke
-    // selector to keep the assertion would violate M18. Its surviving purpose is preserved below as a
-    // LOCATION + LANGUAGE contract on Germany's own host: the neutral choice clears the region and returns
-    // to Site `de`'s own page in the ACTIVE language, and the visitor's Layout choice outlives both.
-    check(rows, "reference.germany.neutralChoiceAppliesFromEnglish", await cdp.evalBool(chooseLocation("")));
-    await cdp.navigate(`${GERMANY_BASE_URL}/de/en`);
-    await waitReady(cdp);
-    const afterNeutral = JSON.parse(await cdp.evaluate(REFERENCE_SELECTORS_PROBE));
-    const afterNeutralPath = await cdp.evaluate("location.pathname");
-    check(
-      rows,
-      "reference.germany.neutralChoiceClearsTheRegionInsideSiteDe",
-      afterNeutral.locationPresent === true &&
-        afterNeutral.locationValue === "" &&
-        afterNeutralPath === "/de/en",
-      `${afterNeutralPath} / location=${afterNeutral.locationValue}`,
-    );
-    check(
-      rows,
-      "reference.germany.locationNeverLeavesGermanyOrigin",
-      !afterNeutralPath.startsWith("/ww/"),
-      String(afterNeutralPath),
-    );
-    // M18 — RETIRED, with reason: the persistence of the visitor's Layout choice across location and language
-    // changes is proved at a SECURE dev origin by `layout-switcher` and `sidebar-state` in the Foundation-owned
-    // scenarios. What this origin can still prove is the chrome's own composition after those changes.
-    check(
-      rows,
-      "reference.germany.threeControlsRemainAfterLocationAndLanguageChanges",
-      JSON.stringify(afterNeutral.selectorOrder ?? null) === JSON.stringify(["layout", "location", "language"]),
-      JSON.stringify(afterNeutral.selectorOrder ?? null),
-    );
-    await cdp.evaluate(chooseLayout("sidebar"));
-    await sleep(400);
 
     // ── THE CONTROLS AT EVERY WIDTH, IN BOTH PRESENTATIONS AND LANGUAGES ────
-    // German text is longer than English, and this is the reference state with the most controls at once:
-    // M18 — with ONE Site there is no Site control, so the row is Layout + Location + Language and it must
-    // wrap rather than overflow, in either Layout, on Germany's site.
     for (const [name, viewport] of [
       ["desktop", VIEWPORTS.desktop],
       ["tablet", VIEWPORTS.tablet],
@@ -1375,15 +1244,18 @@ export async function run(chrome, harness) {
           );
           check(
             rows,
-            `reference.germany.threeControlsAt.${name}.${surface}.${localePath}`,
-            // M18 — ONE Site ⇒ Layout + Location + Language, in that order. (The Layout CHOICE itself is
-            // proved at a secure dev origin; this origin proves the row's composition at every width.)
-            JSON.stringify(state.selectors) === JSON.stringify(["layout", "location", "language"]),
+            `reference.germany.twoControlsAt.${name}.${surface}.${localePath}`,
+            JSON.stringify(state.selectors) === JSON.stringify(["layout", "language"]),
             JSON.stringify({ selectors: state.selectors, shellLayout: state.shellLayout }),
           );
         }
       }
     }
+    await cdp.evaluate(`document.cookie = "NEXT_LOCALE=; path=/; max-age=0"; true`);
+    await cdp.setViewport(VIEWPORTS.desktop.width, VIEWPORTS.desktop.height);
+    await cdp.navigate(url);
+    await waitReady(cdp);
+
     await cdp.evaluate(`document.cookie = "NEXT_LOCALE=; path=/; max-age=0"; true`);
     await cdp.setViewport(VIEWPORTS.desktop.width, VIEWPORTS.desktop.height);
     await cdp.navigate(url);

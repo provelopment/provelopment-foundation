@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+
+  "title": "Eine Website, die Ihnen gehört.",
+
+  "description": "Eine Live-Referenz für Provelopment Foundation: Sie zeigt, wie Seiten erstellt werden, wie zusammengehörige Websites eine Foundation-Installation nutzen können und wie Sie daraus Ihre eigene Website machen.",
+
+  "sections": [
+
+    {
+      "type": "hero",
+
+      "lede": "Foundation ist eine Open-Source-Websitevorlage, die verständlich aufgebaut, einfach anpassbar und frei einsetzbar ist. Betreiben Sie sie selbst, passen Sie sie an Ihre Anforderungen an und stellen Sie sie auf der Infrastruktur Ihrer Wahl bereit.",
+
+      "actions": [
+
+        { "label": "So funktioniert diese Website", "href": "/ww/de/about" },
+
+        {
+          "label": "Zum Foundation-Repository",
+          "href": "https://github.com/provelopment/provelopment-foundation",
+          "variant": "secondary"
+        }
+
+      ]
+    },
+
+    {
+      "type": "columns",
+
+      "heading": "Zwei Wege, eine Seite zu erstellen",
+
+      "ratio": "equal",
+
+      "items": [
+
+        {
+          "title": "Markdown",
+          "body": "Markdown eignet sich besonders für einfache Inhaltsseiten. Der Text bleibt übersichtlich und lässt sich mit wenigen Zeichen für Überschriften, Listen und Links bearbeiten. Die Seite **Über diese Website** verwendet Markdown."
+        },
+
+        {
+          "title": "JSON",
+          "body": "Deklaratives JSON eignet sich für Seiten, die stärker gegliedert werden sollen. Damit lassen sich Bereiche wie Hero, Spalten, Karten, Tabellen oder Fragen und Antworten zusammenstellen. **Diese Seite** verwendet JSON."
+        }
+
+      ]
+    },
+
+    {
+      "type": "callout",
+
+      "heading": "Ihre Website gehört Ihnen",
+
+      "body": "Provelopment-Dienstleistungen sind optional. Ihre Website, ihre Inhalte und ihr Code bleiben unter Ihrer Kontrolle.",
+
+      "surface": "muted"
+    },
+
+    {
+      "type": "cards",
+
+      "heading": "Über diese Website",
+
+      "items": [
+
+        {
+          "title": "Eine echte Foundation-Website",
+          "body": "Dies ist eine funktionierende Website auf Basis des öffentlich verfügbaren Foundation-Codes. Sie zeigt beide Arten der Seitenerstellung, mehrere Sprachen, unterschiedliche Layouts und eine zweite Demonstrations-Website für Deutschland.",
+          "action": { "label": "Mehr über diese Website erfahren", "href": "/ww/de/about" }
+        }
+
+      ]
+    },
+
+    {
+      "type": "prose",
+
+      "heading": "Für unterschiedliche Anforderungen",
+
+      "body": "Mit **Layout** wechseln Sie zwischen Seitenleisten- und Menüansicht, ohne die Seite oder ihren Inhalt zu verändern. Über **Sprache** können Sie diese Website auf Deutsch oder Englisch lesen.\n\nDiese Website hat keine eigenen Standorte, deshalb erscheint hier keine **Standort**-Auswahl. Die Demonstrations-Website für Deutschland zeigt mit **Berlin** und **Frankfurt**, wie standortbezogene Informationen eingebunden werden können. Sie ist eine eigenständige Website und über den Link in der Fußzeile erreichbar.\n\nDiese Auswahl dient nur als Beispiel. Verwenden Sie die Sprachen, Standorte und Websites, die zu Ihrer Organisation passen."
+    },
+
+    {
+      "type": "prose",
+
+      "heading": "Die vollständige Website ist öffentlich",
+
+      "body": "Dies ist eine echte Foundation-Website und kein Vorschaumodell. Der Inhalt dieser Seite stammt aus `home.json` im [öffentlichen Provelopment Foundation Repository](https://github.com/provelopment/provelopment-foundation). Dort finden Sie auch die Seite **Über diese Website**, die Konfiguration und das Styling. Ändern Sie den Quellcode, übernehmen Sie Ihre Änderungen und stellen Sie die Website aus Ihrem eigenen Repository bereit. Der Code bleibt Ihnen erhalten und kann von Ihnen genutzt, angepasst und auf der Infrastruktur Ihrer Wahl betrieben werden."
+    }
+
+  ]
+}

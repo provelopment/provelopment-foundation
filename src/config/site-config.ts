@@ -377,7 +377,12 @@ export interface SitePageOverrides {
 }
 
 export interface SiteConfig {
-  /** Absolute origin of the deployed site, used for SEO (sitemap, canonical URLs). */
+  /**
+   * Informational public origin, used only by the released (non-production test) Page/locale shell.
+   * It is NOT a publication authority: canonical URLs, assets, redirects and the sitemap come from
+   * the explicit EFS binding. When absent, an authored `publication.host` supplies the informational
+   * origin; EFS publication remains unchanged.
+   */
   readonly url: string;
   /**
    * S1 — the deployment's RESOLVED sites, in configuration order, and the default site (the one
@@ -413,8 +418,8 @@ export interface SiteConfig {
   /** Supported locales, in preferred order. */
   readonly locales: readonly LocaleConfig[];
   readonly name: string;
-  readonly tagline: string;
-  readonly description: string;
+  readonly tagline?: string;
+  readonly description?: string;
   /** Optional brand logo (absolute URL) for structured data (Phase S). */
   readonly logo?: string;
   /** FS-4 — canonical visual asset configuration (favicon/logo/OG image). */

@@ -107,6 +107,7 @@ async function establishedTarget(): Promise<{
         file: operationalStateFileOf(targetRoot),
       }),
       hasher: { sha256Hex },
+      entropy: { randomBytes: (byteLength: number) => Uint8Array.from({ length: byteLength }, (_, index) => index + 1) },
     },
   );
   expect(outcome.ok, JSON.stringify(outcome)).toBe(true);

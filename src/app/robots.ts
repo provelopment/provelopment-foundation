@@ -1,5 +1,7 @@
 import type { MetadataRoute } from "next";
 
+import { efsRuntimeDeclared, efsSitemapUrlForCurrentRequest } from "@/app/[[...segments]]/efs-request";
+import { legacyTestRuntimeEnabled, missingEfsInstallation } from "@/app/[[...segments]]/legacy-test-runtime";
 import { runtimeContextForRequest } from "@/config/spoke-request";
 
 import { robotsForContext } from "./robots-context";
@@ -15,6 +17,11 @@ import { robotsForContext } from "./robots-context";
  */
 export default async function robots(): Promise<MetadataRoute.Robots> {
   const rules = { userAgent: "*", allow: "/" } as const;
+
+  const efsSitemap = await efsSitemapUrlForCurrentRequest();
+  if (efsSitemap) return { rules, sitemap: efsSitemap };
+  if (efsRuntimeDeclared()) return { rules };
+  if (!legacyTestRuntimeEnabled()) missingEfsInstallation();
 
   const context = await runtimeContextForRequest();
   if (context === null) return { rules };

@@ -1,5 +1,7 @@
 import type { MetadataRoute } from "next";
 
+import { efsRuntimeDeclared, efsSitemapForCurrentRequest } from "@/app/[[...segments]]/efs-request";
+import { legacyTestRuntimeEnabled, missingEfsInstallation } from "@/app/[[...segments]]/legacy-test-runtime";
 import { runtimeContextForRequest } from "@/config/spoke-request";
 
 import { sitemapForContext } from "./sitemap-context";
@@ -18,6 +20,11 @@ import { sitemapForContext } from "./sitemap-context";
  * alternative would advertise another Spoke's URLs under a hostname that Spoke does not own.
  */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const efs = await efsSitemapForCurrentRequest();
+  if (efs) return efs;
+  // When EFS is the declared authority, an unclaimed host has no legacy inventory to fall back to.
+  if (efsRuntimeDeclared()) return [];
+  if (!legacyTestRuntimeEnabled()) missingEfsInstallation();
   const context = await runtimeContextForRequest();
   if (context === null) return [];
   return sitemapForContext(context);

@@ -114,10 +114,16 @@ export function proxy(request: NextRequest) {
   // 2 — a Spoke's own asset namespace is host-bound (static paths included — see the matcher).
   if (pathname.startsWith(SPOKE_ASSET_PREFIX)) return spokeAsset(request);
 
-  // 3 — which Spoke answers this host: exact claims in multi mode, nothing when unclaimed.
+  // 3 — which Spoke answers this host: an exact claim, or no selection at all. An unclaimed
+  // host is still handed to the App Router: EFS may own it, and otherwise the request context
+  // refuses it with the same 404. No second runtime is selected here.
   const routing = hostRoutingForBuild();
   const entry = selectedEntry(routing, request.headers.get("host"));
-  if (entry === null) return refuse();
+  if (entry === null) {
+    const forwarded = new Headers(request.headers);
+    forwarded.delete(SPOKE_SELECTION_HEADER);
+    return NextResponse.next({ request: { headers: forwarded } });
+  }
 
   // 4 — the PUBLIC request continues unchanged, carrying the boundary's selection privately upstream.
   return continueWithSelectedSpoke(request, entry);
@@ -128,5 +134,8 @@ export const config = {
    * `/_next/**` stays entirely outside this boundary, as does every path that looks like a static file —
    * EXCEPT a Spoke's own asset namespace, which must be checked on a dotted path too (M16).
    */
-  matcher: ["/((?!_next|.*\\..*).*)", "/spokes/:path*"],
+  matcher: [
+    "/((?!_next|.*\\..*).*)",
+    "/spokes/:path*",
+  ],
 };

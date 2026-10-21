@@ -29,10 +29,16 @@ import { afterAll } from "vitest";
 
 import { deploymentPaths } from "@/config/deployment-root";
 
+import { LEGACY_TEST_RUNTIME_ENV } from "@/app/[[...segments]]/legacy-test-runtime";
 import {
   cleanupSyntheticDeployment,
   selectSyntheticDeployment,
 } from "../support/synthetic-deployment-root";
+
+// The generic suite describes a synthetic, LEGACY-authored deployment. The released Page/locale
+// resolver is retained only as this isolated test utility; production has one EFS runtime. The gate
+// itself refuses `NODE_ENV=production`, so this can never become a production switch.
+process.env[LEGACY_TEST_RUNTIME_ENV] = "1";
 
 const synthetic = selectSyntheticDeployment();
 

@@ -1,0 +1,100 @@
+{
+  "entities": [
+    {
+      "id": "e_00000000000000000000000003",
+      "properties": {
+        "brand.name": {
+          "value": "North",
+          "public": true
+        },
+        "brand.logo": {
+          "value": "/brand/logo.svg",
+          "public": true
+        },
+        "contact.address": {
+          "value": "1 Owner Way",
+          "public": true
+        }
+      },
+      "facets": [
+        {
+          "id": "north",
+          "properties": {
+            "contact.phone": {
+              "value": "+1 555 0100",
+              "public": true
+            }
+          },
+          "sites": [
+            {
+              "id": "place",
+              "properties": {
+                "site.label": {
+                  "value": "North",
+                  "public": true
+                }
+              },
+              "pages": [
+                {
+                  "id": "city",
+                  "route": [
+                    "frankfurt"
+                  ],
+                  "visibility": "public",
+                  "representations": [
+                    {
+                      "locale": "de"
+                    },
+                    {
+                      "locale": "en"
+                    }
+                  ],
+                  "properties": {
+                    "nav.label": {
+                      "value": "Frankfurt",
+                      "public": true
+                    },
+                    "openingHours": {
+                      "value": "Mon-Fri 09:00-17:00",
+                      "public": true
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "publications": [
+    {
+      "id": "neutral",
+      "spokeId": "north-spoke",
+      "entityId": "e_00000000000000000000000003",
+      "facetId": "north",
+      "bindings": [
+        {
+          "id": "neutral-web",
+          "host": "localhost",
+          "prefix": [
+            "zz"
+          ],
+          "entityId": "e_00000000000000000000000003",
+          "facetId": "north",
+          "siteIds": [
+            "place"
+          ],
+          "siteMode": "closed",
+          "defaultSiteId": "place",
+          "locales": [
+            "de",
+            "en"
+          ],
+          "defaultLocale": "de",
+          "canonical": true
+        }
+      ]
+    }
+  ]
+}

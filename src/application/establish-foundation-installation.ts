@@ -55,6 +55,7 @@
  * Framework-neutral: ports in, plain data out. No filesystem, no clock, no network, no Git, no framework.
  */
 import { siteConfigFileSchema } from "@/config/schema";
+import { validateEfsManifest, type EfsManifest } from "@/config/efs/manifest";
 import {
   contentDigestSubject,
   RELEASE_DIGEST_SCOPE_ID,
@@ -79,6 +80,9 @@ import {
   portableInstallationSeed,
   type InstallationSeedTopology,
 } from "@/core/foundation-installation/establishment";
+import { ENTITY_ID_ENTROPY_BYTES } from "@/core/efs/identity";
+import { localePathKey } from "@/core/efs/locales";
+import { explicitSingleWebsiteEfsSeed } from "@/core/foundation-installation/efs-seed";
 import {
   beginInstallationPromotion,
   completeInstallationPromotion,
@@ -188,6 +192,134 @@ function seedRefusals(
 }
 
 /**
+ * THE COMPLETE ESTABLISHED EFS RESULT MUST BE VALID BEFORE ANY SUCCESSFUL STATE IS WRITTEN.
+ *
+ * Configuration validity alone is not enough: a converter can still emit two Pages with the same
+ * identity, two Pages claiming one route, a representation with no source, or a publication naming a
+ * Spoke this Installation does not declare. Those are facts about the RESULT, so they are checked here,
+ * after conversion and before the adoption record, candidate digest or materialisation.
+ *
+ * The manifest schema remains the one authority for declaration grammar and references. This function
+ * adds only the cross-check between that valid declaration and the capsule inventory establishment is
+ * about to write.
+ */
+function establishedEfsIssues(
+  files: readonly FoundationContentFile[],
+  topology: InstallationSeedTopology,
+): string[] {
+  const manifestFile = files.find((file) => file.path === "efs/manifest.json");
+  if (manifestFile === undefined) {
+    return [
+      "the established capsule has no efs/manifest.json — an installation cannot publish without an " +
+        "explicit Entity/Facet/Site/Page/publication declaration",
+    ];
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(new TextDecoder().decode(manifestFile.bytes));
+  } catch (error) {
+    return [
+      `efs/manifest.json is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+    ];
+  }
+  const validation = validateEfsManifest(parsed);
+  if (!validation.ok || validation.manifest === undefined) {
+    return validation.issues.map((issue) => `efs/manifest.json: ${issue}`);
+  }
+  const manifest: EfsManifest = validation.manifest;
+
+  const issues: string[] = [];
+  const filePaths = new Set<string>();
+  for (const file of files) {
+    if (filePaths.has(file.path)) {
+      issues.push(
+        `the established capsule would write "${file.path}" more than once — one Page representation ` +
+          "must never overwrite another Page's source",
+      );
+    }
+    filePaths.add(file.path);
+  }
+
+  if (topology.mode === "explicit" && !filePaths.has("spokes.json")) {
+    issues.push(
+      "the established Installation declares an explicit Spoke hierarchy but writes no spokes.json — " +
+        "every publication needs a declared owner",
+    );
+  }
+
+  const declaredSpokes = topology.mode === "explicit" ? topology.spokes : [];
+  for (const publication of manifest.publications) {
+    const matches = declaredSpokes.filter(
+      (spoke) =>
+        spoke.id === publication.spokeId &&
+        (spoke.spokeHubId ?? undefined) === (publication.spokeHubId ?? undefined),
+    );
+    const hub =
+      publication.spokeHubId === undefined ? "" : ` in Spoke Hub "${publication.spokeHubId}"`;
+    if (matches.length === 0) {
+      issues.push(
+        `publication "${publication.id}" names Spoke "${publication.spokeId}"${hub}, which this ` +
+          "Installation does not declare in spokes.json",
+      );
+    } else if (matches.length > 1) {
+      issues.push(
+        `publication "${publication.id}" matches more than one declared Spoke — a publication must ` +
+          "have exactly one owner",
+      );
+    }
+  }
+
+  const seenSourcePaths = new Set<string>();
+  for (const entity of manifest.entities) {
+    for (const facet of entity.facets) {
+      for (const site of facet.sites) {
+        const routes = new Set<string>();
+        for (const page of site.pages) {
+          const routeKey = page.route.join("/");
+          if (routes.has(routeKey)) {
+            issues.push(
+              `Site "${site.id}" declares route "/${routeKey}" more than once — distinct Pages must ` +
+                "have distinct routes",
+            );
+          }
+          routes.add(routeKey);
+
+          for (const representation of page.representations) {
+            let localeKey: string;
+            try {
+              localeKey = localePathKey(representation.locale);
+            } catch {
+              // The manifest schema has already reported the invalid locale tag.
+              continue;
+            }
+            const base =
+              `efs/capsule/${entity.id}/${facet.id}/${site.id}/pages/${page.id}/${localeKey}`;
+            const present = [`${base}.json`, `${base}.md`].filter((path) => filePaths.has(path));
+            if (present.length === 0) {
+              issues.push(
+                `Page "${page.id}" in Site "${site.id}" declares representation ` +
+                  `"${representation.locale}" but the capsule has neither ${base}.json nor ${base}.md`,
+              );
+            }
+            for (const path of present) {
+              if (seenSourcePaths.has(path)) {
+                issues.push(
+                  `Page source "${path}" is claimed by more than one Page representation`,
+                );
+              }
+              seenSourcePaths.add(path);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return issues;
+}
+
+/**
  * WHAT establishment needs, and what it must be given.
  *
  * Caller-agnostic by construction: the operator surface (`scripts/installation/index.mjs`) fills these from
@@ -281,7 +413,7 @@ export async function establishFoundationInstallation(
   request: FoundationEstablishmentRequest,
   dependencies: FoundationEstablishmentDependencies,
 ): Promise<FoundationEstablishmentOutcome> {
-  const { clock, acquisition, payload, seed, target, store, hasher } = dependencies;
+  const { clock, acquisition, payload, seed, target, store, hasher, entropy } = dependencies;
   const now = () => utcInstant(clock.now());
   const inCapsule = (relative: string): string => `${request.capsuleDirectory}/${relative}`;
 
@@ -367,33 +499,68 @@ export async function establishFoundationInstallation(
     //    way, is refused by that authority with its own words, and the refusal reaches the operator as an
     //    unusable seed. There is no precedence rule, no migration guess and no default Spoke here either.
     category = FAILURE_CATEGORY.installation;
-    const seedTopology = await seed.topology();
+    const suppliedTopology = await seed.topology();
     const suppliedSeedFiles = await seed.files();
-    const seedIssues = seedRefusals(suppliedSeedFiles, seedTopology);
-    if (seedIssues.length > 0) {
+
+    // 4a. THE PORTABLE CAPSULE. A source installation's capsule is the ordinary seed, and it carries
+    //     that installation's own records: its adoption record names the release THAT installation
+    //     adopted, so it is not authored material and does not travel.
+    const { portable: portableSeedFiles, notInherited } =
+      portableInstallationSeed(suppliedSeedFiles);
+
+    // 4b. THE AUTHORED INPUT MUST BE USABLE — its shape, its generated state and its configuration.
+    //     Judged on the seed AS SUPPLIED (after removing only the source's own records).
+    const suppliedIssues = seedRefusals(portableSeedFiles, suppliedTopology);
+    if (suppliedIssues.length > 0) {
       return refused(
         FAILURE_CATEGORY.installation,
         `the authored input cannot become a complete Foundation installation (${seed.description}):`,
-        seedIssues,
+        suppliedIssues,
+      );
+    }
+    if (
+      suppliedTopology.mode !== "legacy" &&
+      !portableSeedFiles.some((file) => file.path === "efs/manifest.json")
+    ) {
+      return refused(
+        FAILURE_CATEGORY.installation,
+        `the authored input cannot become a complete Foundation installation (${seed.description}):`,
+        [
+          "the explicit Installation declares no efs/manifest.json — every established Installation " +
+            "must name its publications, and a production request cannot fall back to the retired " +
+            "Page/locale resolver",
+        ],
       );
     }
 
-    // 4b. THE PORTABLE CAPSULE. A source installation's capsule is the ordinary seed, and it carries that
-    //     installation's own records: its adoption record names the release THAT installation adopted, so it
-    //     is not authored material and does not travel. Excluding it here is what makes the documented
-    //     procedure work, and excluding it EXACTLY ONCE is why it reaches neither the authored digest nor the
-    //     target. `notInherited` is carried out to the operator rather than dropped, and the source is never
-    //     read again, never modified and never deleted.
-    const { portable: seedFiles, notInherited } = portableInstallationSeed(suppliedSeedFiles);
+    // 4c. ORDINARY ONE-WEBSITE ESTABLISHMENT BECOMES EXPLICIT EFS. A legacy-shaped seed is converted
+    //     at establishment time into one declared Spoke + explicit Entity/Facet/Site/Page/publication
+    //     declarations. The conversion is persisted in the Installation; nothing is inferred at request
+    //     time, and a seed that already declares EFS is unchanged.
+    let prepared: { files: readonly FoundationContentFile[]; topology: InstallationSeedTopology };
+    try {
+      prepared =
+        suppliedTopology.mode === "legacy"
+          ? explicitSingleWebsiteEfsSeed(portableSeedFiles, () =>
+              entropy.randomBytes(ENTITY_ID_ENTROPY_BYTES),
+            )
+          : { files: portableSeedFiles, topology: suppliedTopology };
+    } catch (error) {
+      return refused(
+        FAILURE_CATEGORY.installation,
+        "the authored configuration is not a valid Foundation configuration:",
+        [error instanceof Error ? error.message : String(error)],
+      );
+    }
+    const seedTopology = prepared.topology;
+    const seedFiles = prepared.files;
 
-    // 4c. EVERY SPOKE ROOT'S OWN CONFIGURATION (FOUNDATION-MULTISITE-M20). The surfaces were checked per
+    // 4d. EVERY SPOKE ROOT'S OWN CONFIGURATION (FOUNDATION-MULTISITE-M20). The surfaces were checked per
     //     Spoke root above; the CONFIGURATION must be validated the same way, or an explicit Installation
-    //     would be validated against a file its shape never has. The legacy implicit root is the one-root
-    //     case of the same rule, so its diagnostics are unchanged; an explicit Spoke's problem names the
-    //     file AND the Spoke, because an operator must know WHICH one is wrong.
+    //     would be validated against a file its shape never has.
     const configurations =
       seedTopology.mode === "legacy"
-        ? [{ path: "site.config.json", where: "" }]
+        ? []
         : seedTopology.spokes.map((spoke) => ({
             path: `${spoke.locator.replace(/\/+$/, "")}/site.config.json`,
             where: ` (declared Spoke "${spoke.id}")`,
@@ -430,6 +597,20 @@ export async function establishFoundationInstallation(
         FAILURE_CATEGORY.installation,
         "the authored configuration is not a valid Foundation configuration:",
         configProblems,
+      );
+    }
+
+    // 4e. THE COMPLETE EFS RESULT. A valid authored configuration is not yet a valid Installation:
+    //     the generated manifest and the source inventory it declares must agree, identities/routes
+    //     must be unique, and every publication must name a Spoke this Installation really declares.
+    //     This runs BEFORE any adoption record, candidate digest or target materialisation, so an
+    //     invalid conversion leaves no successful installation state behind.
+    const efsProblems = establishedEfsIssues(seedFiles, seedTopology);
+    if (efsProblems.length > 0) {
+      return refused(
+        FAILURE_CATEGORY.installation,
+        "the established EFS declaration is not a valid Foundation publication:",
+        efsProblems,
       );
     }
 

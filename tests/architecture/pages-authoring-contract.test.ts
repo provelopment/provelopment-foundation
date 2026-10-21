@@ -367,7 +367,11 @@ describe("pages-authoring contract — the safe Markdown boundary", () => {
       .filter((file) => readFileSync(file, "utf8").includes("pageDocumentSchema"))
       .map(relative)
       .sort();
-    expect(schemaOwners).toEqual(["adapters/content/json-page.ts", "core/page-document.ts"]);
+    expect(schemaOwners).toEqual([
+      "adapters/content/json-page.ts",
+      "components/efs/efs-page.tsx",
+      "core/page-document.ts",
+    ]);
 
     const composers = sourceFiles
       .filter((file) => readFileSync(file, "utf8").includes("from \"@/components/site/page-document-content\""))
@@ -376,6 +380,7 @@ describe("pages-authoring contract — the safe Markdown boundary", () => {
     expect(composers).toEqual([
       "app/[[...segments]]/dedicated-pages.tsx",
       "app/[[...segments]]/server-composition.tsx",
+      "components/efs/efs-page.tsx",
     ]);
 
     // The composer is site-neutral and configuration-independent: it may compose the

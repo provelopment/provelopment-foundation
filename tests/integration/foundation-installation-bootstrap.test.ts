@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
@@ -102,6 +102,9 @@ function dependenciesFor(options: {
       file: operationalStateFileOf(options.targetRoot),
     }),
     hasher: { sha256Hex },
+    // Determinism is asserted GIVEN the same injected entropy. Production establishment supplies
+    // secure bytes; independent establishments therefore mint independent identities.
+    entropy: { randomBytes: (byteLength: number) => Uint8Array.from({ length: byteLength }, (_, index) => index + 1) },
   };
 }
 
@@ -177,12 +180,25 @@ describe("establishing an installation in a disposable target root", () => {
     }
     expect(existsSync(path.join(targetRoot, "src", "config", "deployment-root.ts"))).toBe(true);
 
-    // THE AUTHORED MATERIAL, from the seed: verbatim, inside the installation's capsule directory.
+    // THE AUTHORED MATERIAL, from the seed: verbatim inside the DECLARED Spoke root, which is the
+    // establishment-time conversion from an ordinary one-website seed to an explicit EFS Installation.
     const capsule = targetCapsule(targetRoot);
-    expect(readFileSync(path.join(capsule, "site.config.json"), "utf8")).toBe(
+    expect(readFileSync(path.join(capsule, "spokes", "main", "site.config.json"), "utf8")).toBe(
       readFileSync(path.join(seed, "site.config.json"), "utf8"),
     );
-    expect(existsSync(path.join(capsule, "content", "pages", "markdown"))).toBe(true);
+    expect(existsSync(path.join(capsule, "spokes", "main", "content", "pages", "markdown"))).toBe(true);
+    const declarations = JSON.parse(readFileSync(path.join(capsule, "spokes.json"), "utf8")) as {
+      spokes: { id: string; root: string }[];
+    };
+    expect(declarations.spokes).toEqual([{ id: "main", root: "spokes/main" }]);
+    const efsManifest = JSON.parse(
+      readFileSync(path.join(capsule, "efs", "manifest.json"), "utf8"),
+    ) as { publications: { spokeId: string; spokeHubId?: string }[] };
+    expect(efsManifest.publications.length).toBeGreaterThan(0);
+    for (const publication of efsManifest.publications) {
+      expect(publication.spokeId).toBe("main");
+      expect(publication.spokeHubId).toBeUndefined();
+    }
 
     // THE ADOPTION RECORD: this installation's own adoption of the release it runs, in the record's shape.
     const adoption = JSON.parse(readFileSync(path.join(capsule, "foundation-baseline.json"), "utf8")) as Record<
@@ -329,12 +345,26 @@ describe("establishing an installation in a disposable target root", () => {
     // A configuration that is not a Foundation configuration.
     const invalidConfig = syntheticSeed();
     writeFileSync(path.join(invalidConfig, "site.config.json"), '{ "site": { "name": 42 } }\n', "utf8");
+    // An EXPLICIT Installation that declares no EFS publication: it would establish with no production
+    // runtime, so establishment refuses it instead of leaving an apparently complete but unusable target.
+    const explicitNoEfs = syntheticSeed();
+    const explicitRoot = path.join(explicitNoEfs, "spokes", "main");
+    mkdirSync(explicitRoot, { recursive: true });
+    for (const entry of ["site.config.json", "config", "content"]) {
+      renameSync(path.join(explicitNoEfs, entry), path.join(explicitRoot, entry));
+    }
+    writeFileSync(
+      path.join(explicitNoEfs, "spokes.json"),
+      '{"spokes":[{"id":"main","root":"spokes/main"}]}\n',
+      "utf8",
+    );
 
     const cases: { label: string; seed: string; expected: RegExp }[] = [
       { label: "authored neither way", seed: noConfig, expected: /authored NEITHER way/ },
       { label: "carrying generated state", seed: withRecord, expected: /the seed contains operational-state\.json/ },
       { label: "no generated-state ignore rule", seed: noIgnore, expected: /does not ignore operational-state\.json/ },
       { label: "an invalid configuration", seed: invalidConfig, expected: /not a valid Foundation configuration/ },
+      { label: "an explicit Installation without EFS", seed: explicitNoEfs, expected: /declares no efs\/manifest\.json/ },
     ];
 
     for (const [index, entry] of cases.entries()) {

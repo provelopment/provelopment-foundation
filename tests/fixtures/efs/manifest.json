@@ -1,0 +1,217 @@
+{
+  "entities": [
+    {
+      "id": "e_00000000000000000000000000",
+      "properties": {
+        "brand.logo": {
+          "value": "/brand/acme.svg",
+          "public": true
+        },
+        "contact.address": {
+          "value": "1 Corporate Way",
+          "public": true
+        },
+        "contact.phone": {
+          "value": "+1 555 0100"
+        }
+      },
+      "facets": [
+        {
+          "id": "acme",
+          "properties": {
+            "openingHours": {
+              "value": "Facet desk hours",
+              "public": true
+            }
+          },
+          "sites": [
+            {
+              "id": "jakarta",
+              "properties": {
+                "brand.logo": {
+                  "value": "/brand/jakarta.svg",
+                  "public": true
+                }
+              },
+              "pages": [
+                {
+                  "id": "home",
+                  "route": [
+                    "home"
+                  ],
+                  "visibility": "public",
+                  "fallbackLocaleKey": "en-001",
+                  "representations": [
+                    {
+                      "locale": "en-001"
+                    },
+                    {
+                      "locale": "fr"
+                    }
+                  ]
+                },
+                {
+                  "id": "about",
+                  "route": [
+                    "about"
+                  ],
+                  "visibility": "public",
+                  "representations": [
+                    {
+                      "locale": "en-001"
+                    },
+                    {
+                      "locale": "fr-CA"
+                    }
+                  ]
+                },
+                {
+                  "id": "detail",
+                  "route": [
+                    "products",
+                    "detail"
+                  ],
+                  "visibility": "unlisted",
+                  "representations": [
+                    {
+                      "locale": "en-001"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "catalogue",
+              "properties": {
+                "contact.address": null
+              },
+              "pages": [
+                {
+                  "id": "home",
+                  "route": [
+                    "home"
+                  ],
+                  "representations": [
+                    {
+                      "locale": "fr"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "e_00000000000000000000000001",
+      "facets": [
+        {
+          "id": "beta",
+          "sites": [
+            {
+              "id": "main",
+              "pages": [
+                {
+                  "id": "home",
+                  "route": [
+                    "home"
+                  ],
+                  "visibility": "public",
+                  "representations": [
+                    {
+                      "locale": "en-001"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "publications": [
+    {
+      "id": "acme-managed",
+      "spokeId": "acme-spoke",
+      "entityId": "e_00000000000000000000000000",
+      "facetId": "acme",
+      "bindings": [
+        {
+          "id": "managed-acme",
+          "host": "my.provelopment.com",
+          "prefix": [
+            "acme-co"
+          ],
+          "entityId": "e_00000000000000000000000000",
+          "facetId": "acme",
+          "siteIds": [
+            "jakarta",
+            "catalogue"
+          ],
+          "siteMode": "open",
+          "defaultSiteId": "jakarta",
+          "locales": [
+            "en-001",
+            "fr",
+            "fr-CA"
+          ],
+          "defaultLocale": "en-001"
+        }
+      ]
+    },
+    {
+      "id": "acme-dedicated",
+      "spokeId": "acme-spoke",
+      "entityId": "e_00000000000000000000000000",
+      "facetId": "acme",
+      "bindings": [
+        {
+          "id": "dedicated-acme",
+          "host": "www.acme-co.com",
+          "prefix": [],
+          "entityId": "e_00000000000000000000000000",
+          "facetId": "acme",
+          "siteIds": [
+            "jakarta"
+          ],
+          "siteMode": "closed",
+          "defaultSiteId": "jakarta",
+          "locales": [
+            "en-001",
+            "fr",
+            "fr-CA"
+          ],
+          "defaultLocale": "en-001"
+        }
+      ]
+    },
+    {
+      "id": "beta-managed",
+      "spokeId": "beta-spoke",
+      "entityId": "e_00000000000000000000000001",
+      "facetId": "beta",
+      "bindings": [
+        {
+          "id": "managed-beta",
+          "host": "my.provelopment.com",
+          "prefix": [
+            "beta-co"
+          ],
+          "entityId": "e_00000000000000000000000001",
+          "facetId": "beta",
+          "siteIds": [
+            "main"
+          ],
+          "siteMode": "closed",
+          "defaultSiteId": "main",
+          "locales": [
+            "en-001"
+          ],
+          "defaultLocale": "en-001"
+        }
+      ]
+    }
+  ]
+}

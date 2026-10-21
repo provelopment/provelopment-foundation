@@ -248,10 +248,11 @@ export const siteAssetsSchema = z.object({
 export const siteSettingsSchema = z.object({
   url: z
     .url("must be an absolute URL including protocol, e.g. https://example.com")
-    .refine((url) => !url.endsWith("/"), "must not end with a trailing slash"),
+    .refine((url) => !url.endsWith("/"), "must not end with a trailing slash")
+    .optional(),
   name: z.string().min(1, "must not be empty"),
-  tagline: z.string().min(1, "must not be empty"),
-  description: z.string().min(1, "must not be empty"),
+  tagline: z.string().min(1, "must not be empty").optional(),
+  description: z.string().min(1, "must not be empty").optional(),
   /**
    * Phase S — optional brand logo (absolute URL). Consumed by JSON-LD
    * structured data (`logo`). Does NOT replace the generated OpenGraph image.
@@ -1316,6 +1317,18 @@ export const siteConfigFileSchema = z
   .object({
     site: siteSettingsSchema,
     i18n: i18nConfigSchema,
+    /**
+     * R06 — the explicit establishment-time publication authority. The host is the only value that
+     * creates a public claim; `site.url` remains informational. The ordinary converter requires this
+     * block, while an explicit EFS Installation declares its bindings in `efs/manifest.json`.
+     */
+    publication: z
+      .object({
+        host: z.string().min(1, "must not be empty"),
+        prefix: z.union([z.string(), z.array(z.string())]).optional(),
+      })
+      .strict()
+      .optional(),
   /**
    * S1 — the deployment's sites, in configuration order. Absent/empty → ONE implicit site
    * `ww` (the Worldwide site), so a deployment that never thinks about sites keeps a working

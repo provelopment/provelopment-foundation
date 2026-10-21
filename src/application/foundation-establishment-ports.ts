@@ -124,6 +124,18 @@ export interface FoundationContentHasher {
 }
 
 /**
+ * The one cryptographically secure entropy source establishment needs.
+ *
+ * Entity identity is minted ONCE at establishment. The source must answer cryptographically secure
+ * bytes from the platform's entropy mechanism; core modules stay free of `node:crypto`, and a test
+ * can inject a deterministic source without changing the contract.
+ */
+export interface FoundationEntropySource {
+  /** Exactly `byteLength` cryptographically secure random bytes. */
+  randomBytes(byteLength: number): Uint8Array;
+}
+
+/**
  * Everything one establishment needs. Assembled by the caller (the operator surface, a test, a future
  * controller) and injected whole, so the use case stays a pure orchestration of ports.
  *
@@ -146,4 +158,6 @@ export interface FoundationEstablishmentDependencies {
   readonly store: InstallationOperationalStateStore;
   /** The one cryptographic mechanism a content digest needs. */
   readonly hasher: FoundationContentHasher;
+  /** The one source an ordinary establishment mints a permanent Entity identity from. */
+  readonly entropy: FoundationEntropySource;
 }

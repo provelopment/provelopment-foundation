@@ -71,12 +71,15 @@ import { Section } from "@/components/ui/section";
 import { assertConfiguredCompactLogoAvailableFor, assertConfiguredIconAssetsExistFor } from "@/config/assets";
 import type { Dictionary } from "@/config/i18n/dictionary";
 import type { SpokeRuntimeContext } from "@/config/installation-runtime";
+import { canonicalLocaleTag, localePathKey } from "@/core/efs/locales";
 import { createRuntimeAssetOwnershipResolver } from "@/config/runtime-asset-resolver";
 import type { RuntimeAssetOwnershipResolver } from "@/config/runtime-asset-resolver";
 import type { RuntimeDictionaryAccess } from "@/config/runtime-dictionaries";
 import { dictionaryAccessForRuntimeContext } from "@/config/runtime-dictionaries";
 import type { SiteConfig } from "@/config/site-config";
 import { effectiveSitePageConfig } from "@/config/site-page-config";
+import type { EfsView } from "./efs-request";
+import { publicPathBase, publicationOwnedBy } from "@/core/efs/publication";
 import { siteDescriptionForLocale } from "@/config/site-metadata";
 import { spokeSwitcherForRenderingSpoke } from "@/config/spoke-routing";
 import { buildLanguageAlternates, type LanguageAlternateLocale } from "@/core/locale";
@@ -176,9 +179,12 @@ export interface SpokeServerComposition {
  * The UI configuration and the direction-link resolver are the accepted functions of the context's own
  * configuration. Nothing here selects a Spoke, remembers one, or reads a module-global authority.
  */
-export function spokeServerComposition(context: SpokeRuntimeContext): SpokeServerComposition {
-  const siteConfig = context.siteConfig;
-  const siteSet = siteSetOf(siteConfig.sites, siteConfig.defaultSite);
+export function spokeServerComposition(
+  context: SpokeRuntimeContext,
+  presentation?: { readonly siteConfig?: SiteConfig; readonly siteSet?: SiteSet },
+): SpokeServerComposition {
+  const siteConfig = presentation?.siteConfig ?? context.siteConfig;
+  const siteSet = presentation?.siteSet ?? siteSetOf(siteConfig.sites, siteConfig.defaultSite);
 
   // P6-1 — every configured UI icon leaf must be backed by a real file (or deliberately ""), judged
   // against the runtime namespaces THIS context resolves artwork from. Loud at composition time
@@ -1079,5 +1085,97 @@ export async function layoutForContext(
         </ClientRoutingProvider>
       </body>
     </html>
+  );
+}
+
+/**
+ * EFS's shared-shell presentation configuration. It keeps the approved visual/navigation/dictionary
+ * chrome but makes the EFS representation the ONLY locale authority: every site locale is explicit and
+ * canonicalised from its declared tag, while regions, page-region bindings, required-Location policy and
+ * legacy business timezone/locations are removed. No Site code, Facet name, Page name or URL prefix can
+ * therefore acquire geographic or language meaning on the EFS path.
+ */
+export function efsShellPresentationConfig(
+  source: SiteConfig,
+  view: EfsView,
+): SiteConfig | null {
+  const presentationSiteCode = view.publication.presentationSiteCode;
+  if (presentationSiteCode === undefined) return null;
+  const sourceSite = source.sites.find((candidate) => candidate.code === presentationSiteCode);
+  if (!sourceSite) {
+    throw new Error(
+      `EFS presentation Site "${presentationSiteCode}" is not declared by the owning Spoke ` +
+        `"${view.publication.spokeId}"; the shared shell cannot be composed.`,
+    );
+  }
+
+  const label = view.properties.get("site.label");
+  const site: ResolvedSite = {
+    ...sourceSite,
+    // The Site's CODE remains the owner's configuration identity (its dictionary/presentation
+    // source). Its PUBLIC base is the binding's explicit path segments, so a dedicated root, a
+    // single prefix and a multi-segment prefix all keep correct URLs without treating either as
+    // a country, locale or name.
+    code: sourceSite.code,
+    publicPathBase: publicPathBase(view.binding, view.site.id),
+    label: label?.public && typeof label.value === "string" ? label.value : view.site.id,
+    locales: view.binding.locales.map((locale) => ({
+      path: localePathKey(locale),
+      canonical: canonicalLocaleTag(locale),
+    })),
+    defaultLocale: localePathKey(view.binding.defaultLocale),
+    fallback: true,
+    isDefault: true,
+    locationSelection: null,
+  };
+  const overrides = Object.fromEntries(
+    Object.entries(source.sitePageOverrides)
+      .filter(([code]) => code === sourceSite.code)
+      .map(([, value]) => [site.code, value]),
+  );
+
+  return {
+    ...source,
+    url: new URL(view.canonical).origin,
+    sites: [site],
+    defaultSite: site,
+    hubs: [],
+    defaultLocale: site.defaultLocale,
+    locales: source.locales.filter((entry) =>
+      view.binding.locales.some((locale) => localePathKey(locale) === entry.code),
+    ),
+    sitePageOverrides: overrides,
+    business: { ...source.business, timezone: undefined, locations: [] },
+    regions: {},
+    pageBindings: [],
+  };
+}
+
+/**
+ * EFS's shared-shell entry. The EFS Page remains the content authority; this adapter supplies a
+ * presentation-only configuration with no routing/locale/location inference. `null` means the binding
+ * has no compatible shared shell, so the EFS-only document boundary applies.
+ */
+export async function layoutForEfsContext(
+  context: SpokeRuntimeContext,
+  view: EfsView,
+  segments: readonly string[],
+  children: ReactNode,
+  htmlClassName: string,
+): Promise<ReactNode | null> {
+  if (!publicationOwnedBy(view.publication, context)) {
+    throw new Error(
+      `EFS publication "${view.publication.id}" is owned by Spoke "${view.publication.spokeId}", ` +
+        `not the context selected for this request.`,
+    );
+  }
+  const siteConfig = efsShellPresentationConfig(context.siteConfig, view);
+  if (!siteConfig) return null;
+  const siteSet: SiteSet = { sites: siteConfig.sites, defaultSite: siteConfig.defaultSite };
+  return layoutForContext(
+    spokeServerComposition(context, { siteConfig, siteSet }),
+    segments,
+    children,
+    htmlClassName,
   );
 }

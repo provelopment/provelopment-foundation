@@ -1,0 +1,292 @@
+{
+  "entities": [
+    {
+      "id": "e_00000000000000000000000000",
+      "properties": {
+        "brand.name": {
+          "value": "Acme",
+          "public": true
+        },
+        "brand.logo": {
+          "value": "/brand/acme.svg",
+          "public": true
+        },
+        "contact.address": {
+          "value": "1 Corporate Way",
+          "public": true
+        },
+        "openingHours": {
+          "value": "Mon-Fri 09:00-17:00",
+          "public": true
+        }
+      },
+      "facets": [
+        {
+          "id": "acme",
+          "properties": {
+            "contact.phone": {
+              "value": "+1 555 0100",
+              "public": true
+            }
+          },
+          "sites": [
+            {
+              "id": "main",
+              "properties": {
+                "brand.logo": {
+                  "value": "/brand/acme-main.svg",
+                  "public": true
+                }
+              },
+              "pages": [
+                {
+                  "id": "home",
+                  "route": [
+                    "home"
+                  ],
+                  "visibility": "public",
+                  "fallbackLocaleKey": "en-001",
+                  "representations": [
+                    {
+                      "locale": "en-001"
+                    },
+                    {
+                      "locale": "fr"
+                    }
+                  ],
+                  "properties": {
+                    "nav.label": {
+                      "value": "Home",
+                      "public": true
+                    }
+                  }
+                },
+                {
+                  "id": "about",
+                  "route": [
+                    "about"
+                  ],
+                  "visibility": "public",
+                  "fallbackLocaleKey": "en-001",
+                  "representations": [
+                    {
+                      "locale": "en-001"
+                    },
+                    {
+                      "locale": "fr-CA"
+                    }
+                  ],
+                  "properties": {
+                    "nav.label": {
+                      "value": "About",
+                      "public": true
+                    }
+                  }
+                },
+                {
+                  "id": "detail",
+                  "route": [
+                    "products",
+                    "detail"
+                  ],
+                  "visibility": "unlisted",
+                  "representations": [
+                    {
+                      "locale": "en-001"
+                    }
+                  ],
+                  "properties": {
+                    "nav.label": {
+                      "value": "Detail",
+                      "public": true
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": "outlet",
+              "properties": {
+                "contact.address": null,
+                "brand.logo": {
+                  "value": "/brand/outlet.svg",
+                  "public": true
+                }
+              },
+              "pages": [
+                {
+                  "id": "home",
+                  "route": [
+                    "home"
+                  ],
+                  "visibility": "public",
+                  "representations": [
+                    {
+                      "locale": "fr"
+                    }
+                  ],
+                  "properties": {
+                    "nav.label": {
+                      "value": "Home",
+                      "public": true
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "publications": [
+    {
+      "id": "acme-managed",
+      "spokeId": "acme-spoke",
+      "entityId": "e_00000000000000000000000000",
+      "facetId": "acme",
+      "bindings": [
+        {
+          "id": "managed-acme",
+          "host": "my.provelopment.com",
+          "prefix": [
+            "acme-co"
+          ],
+          "entityId": "e_00000000000000000000000000",
+          "facetId": "acme",
+          "siteIds": [
+            "main"
+          ],
+          "siteMode": "closed",
+          "defaultSiteId": "main",
+          "locales": [
+            "en-001",
+            "fr",
+            "fr-CA"
+          ],
+          "defaultLocale": "en-001",
+          "canonical": true
+        },
+        {
+          "id": "browser-managed",
+          "host": "localhost",
+          "prefix": [
+            "acme-co"
+          ],
+          "entityId": "e_00000000000000000000000000",
+          "facetId": "acme",
+          "siteIds": [
+            "main"
+          ],
+          "siteMode": "closed",
+          "defaultSiteId": "main",
+          "locales": [
+            "en-001",
+            "fr",
+            "fr-CA"
+          ],
+          "defaultLocale": "en-001",
+          "canonical": true
+        },
+        {
+          "id": "browser-dedicated",
+          "host": "127.0.0.1",
+          "prefix": [],
+          "entityId": "e_00000000000000000000000000",
+          "facetId": "acme",
+          "siteIds": [
+            "main"
+          ],
+          "siteMode": "closed",
+          "defaultSiteId": "main",
+          "locales": [
+            "en-001",
+            "fr",
+            "fr-CA"
+          ],
+          "defaultLocale": "en-001",
+          "canonical": true
+        },
+        {
+          "id": "acme-nested",
+          "host": "my.provelopment.com",
+          "prefix": [
+            "acme",
+            "nested"
+          ],
+          "entityId": "e_00000000000000000000000000",
+          "facetId": "acme",
+          "siteIds": [
+            "main"
+          ],
+          "siteMode": "closed",
+          "defaultSiteId": "main",
+          "locales": [
+            "en-001",
+            "fr",
+            "fr-CA"
+          ],
+          "defaultLocale": "en-001",
+          "canonical": true
+        }
+      ]
+    },
+    {
+      "id": "acme-dedicated",
+      "spokeId": "acme-spoke",
+      "entityId": "e_00000000000000000000000000",
+      "facetId": "acme",
+      "bindings": [
+        {
+          "id": "dedicated-acme",
+          "host": "www.acme-co.com",
+          "prefix": [],
+          "entityId": "e_00000000000000000000000000",
+          "facetId": "acme",
+          "siteIds": [
+            "main"
+          ],
+          "siteMode": "closed",
+          "defaultSiteId": "main",
+          "locales": [
+            "en-001",
+            "fr",
+            "fr-CA"
+          ],
+          "defaultLocale": "en-001",
+          "canonical": true
+        }
+      ]
+    },
+    {
+      "id": "acme-open",
+      "spokeId": "acme-spoke",
+      "entityId": "e_00000000000000000000000000",
+      "facetId": "acme",
+      "bindings": [
+        {
+          "id": "open-acme",
+          "host": "my.provelopment.com",
+          "prefix": [
+            "acme-open"
+          ],
+          "entityId": "e_00000000000000000000000000",
+          "facetId": "acme",
+          "siteIds": [
+            "main",
+            "outlet"
+          ],
+          "siteMode": "open",
+          "defaultSiteId": "main",
+          "locales": [
+            "en-001",
+            "fr",
+            "fr-CA"
+          ],
+          "defaultLocale": "en-001",
+          "canonical": true
+        }
+      ]
+    }
+  ]
+}

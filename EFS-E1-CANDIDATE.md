@@ -1,5 +1,10 @@
 # EFS S3-E1 integrated candidate (disposable evidence)
 
+> **HISTORICAL CHECKPOINT.** The candidate described here was later completed and merged through
+> `S3-E3` R01–R07 at Foundation `main` `19d9195`. The "preliminary, unreleased, unmerged" status below
+> describes that checkpoint, not current state. Current behaviour is the merged source/tests; current
+> governance is the root workspace's `ACTIVE-WORK.md` and the `FOUNDATION-COMPLETE-A1`/`A1-R1` reports.
+
 **Status:** preliminary, unreleased, unmerged. This branch is **not** an implementation-release candidate and must not be
 deployed, merged or treated as `D21` evidence. It exists to prove the owner-accepted integrated S2 target in real Foundation
 candidate code with synthetic data.

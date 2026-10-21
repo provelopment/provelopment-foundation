@@ -52,8 +52,11 @@ pnpm test:browser:deployment
    - Install command: `pnpm install`
    - Build command: `pnpm build`
 3. Configure any optional contact webhook variables:
-   - `CONTACT_WEBHOOK_URL` — receiver URL, required when `features.contact.provider` is `webhook`;
-   - `CONTACT_WEBHOOK_TOKEN` — optional bearer token.
+   - `CONTACT_WEBHOOK_URL` — installation-wide receiver URL, required when
+     `features.contact.provider` is `webhook`;
+   - `CONTACT_WEBHOOK_TOKEN` — optional bearer token;
+   - optional per-Spoke overrides `CONTACT_WEBHOOK_URL__<SPOKE_KEY>` and
+     `CONTACT_WEBHOOK_TOKEN__<SPOKE_KEY>` for distinct receivers.
    They are read at request time and are not required at build time.
 4. Attach the authorized custom domains through the provider and DNS owner.
 5. Verify the publication manifest's binding hosts match the domains being attached. Canonical
@@ -87,8 +90,11 @@ Run these checks against the actual public host:
 ## Environment variables
 
 No variables are required for a default build. `CONTACT_WEBHOOK_URL` and
-`CONTACT_WEBHOOK_TOKEN` configure the optional webhook sender. A webhook provider without a URL
-surfaces a configuration error; it never silently falls back to the stub.
+`CONTACT_WEBHOOK_TOKEN` configure the optional webhook sender; the additive
+`CONTACT_WEBHOOK_URL__<SPOKE_KEY>` / `CONTACT_WEBHOOK_TOKEN__<SPOKE_KEY>` overrides may configure
+distinct Spoke receivers. The receiver is Spoke-owned; two Entities in one Spoke intentionally share
+it, and the receiver owns downstream routing/retention. A webhook provider without a URL surfaces a
+configuration error; it never silently falls back to the stub.
 
 Foundation provides same-origin Server Action protection and a honeypot. It does not provide
 server-side rate limiting or spam filtering; configure those at the edge or receiver.

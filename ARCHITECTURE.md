@@ -103,10 +103,21 @@ document boundary. The shell never changes Entity, Facet, Site, Page or publicat
 
 ### Contact inquiries
 
-The contact Server Action resolves its destination through the verified EFS publication owner for
-the current host, including an EFS-only host absent from legacy host routing. Legacy Spoke
-selection is consulted only when no EFS runtime is declared. A host with no owner has no contact
-destination; another Spoke's webhook is never borrowed.
+The contact Server Action receives the real request pathname on a private header that the edge proxy
+SETS and never merely forwards. It matches the exact EFS binding (host + longest prefix), resolves
+that publication's declared Spoke owner, and only then reads the owner's `features.contact`.
+
+- Different Spokes may own disjoint prefixes on one host; each Page's POST resolves its own Spoke.
+- An unclaimed host or prefix has no destination. A missing trusted path is refused, not guessed.
+- No form field, client header or client-supplied EntityID can select a publication.
+- Two Entities in one Spoke intentionally share that Spoke's receiver.
+- `CONTACT_WEBHOOK_URL` / `CONTACT_WEBHOOK_TOKEN` are installation-wide defaults. An Installation
+  with distinct receivers may use the additive `CONTACT_WEBHOOK_URL__<SPOKE_KEY>` /
+  `CONTACT_WEBHOOK_TOKEN__<SPOKE_KEY>` override; the key is the resolved owner identity, never
+  visitor input. The receiver owns its downstream routing and retention.
+
+Legacy Spoke selection is consulted only when no EFS runtime is declared. Another Spoke's receiver
+is never borrowed.
 
 ### Establishment, release and deployment
 

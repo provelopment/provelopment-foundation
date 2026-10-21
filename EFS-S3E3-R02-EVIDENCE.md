@@ -1,5 +1,9 @@
 # EFS S3-E3-R02 — final evidence ledger
 
+> **HISTORICAL EVIDENCE.** `D21` was subsequently accepted by the owner, and the implementation is
+> merged at Foundation `main` `19d9195`. Statements below that `D21` remains open describe this
+> checkpoint, not current status. Current behaviour is the merged source/tests.
+
 **Implementation:** converted reference Installation at `deployment/efs`; EFS content resolution plus
 the accepted shared shell. D21 remains for independent Architect/owner acceptance.
 

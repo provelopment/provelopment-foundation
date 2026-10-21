@@ -94,8 +94,18 @@ location-derived locale. Any such behavior would require a separate accepted con
 ### Capability configuration
 
 Analytics, maps directions, booking links and contact inquiry configuration remain in the owning
-Spoke's `site.config.json`. The contact Server Action resolves the EFS publication owner for the
-current host. The form is not a CRM and a webhook receiver is not guaranteed to answer a visitor.
+Spoke's `site.config.json`. The contact Server Action matches the exact host/prefix binding, resolves
+the owning Spoke, then reads that Spoke's `features.contact`. Different Spokes may share one host
+with disjoint prefixes; each resolves its own receiver. An unclaimed host/prefix, a missing trusted
+path, or a forged form/header/EntityID has no destination. Two Entities in one Spoke intentionally
+share that Spoke's receiver.
+
+`CONTACT_WEBHOOK_URL` and `CONTACT_WEBHOOK_TOKEN` are installation-wide defaults. For distinct
+Spoke receivers, set the additive `CONTACT_WEBHOOK_URL__<SPOKE_KEY>` and
+`CONTACT_WEBHOOK_TOKEN__<SPOKE_KEY>` overrides. `<SPOKE_KEY>` is the resolved owner identity
+upper-cased with non-alphanumeric runs replaced by `_` (for example `acme-spoke` →
+`ACME_SPOKE`). The receiver owns downstream routing/retention; Foundation sends no Entity/Spoke
+administrative IDs and is not a CRM.
 
 
 > `src/components`) should not need modification for rebranding.
@@ -2620,6 +2630,13 @@ output), plus Vercel's own product description where noted:
   disables analytics entirely if you prefer.
 
 ### Contact inquiries (`features.contact` + `/contact`)
+
+> **EFS CURRENT NOTE.** The receiver is owned by the Spoke that owns the exact host/prefix binding.
+> `CONTACT_WEBHOOK_URL`/`TOKEN` are installation-wide defaults; `CONTACT_WEBHOOK_URL__<SPOKE_KEY>`/
+> `TOKEN__<SPOKE_KEY>` are additive per-Spoke overrides. Two Entities in one Spoke intentionally
+> share that Spoke's receiver. The legacy folder paths below describe the retained legacy content
+> tree; EFS Page sources remain in the EFS capsule. The form is not a CRM and a receiver is not
+> guaranteed to answer a visitor.
 
 The `/contact` page and contact form are the inquiry capability. It is
 **content-driven** (`content/pages/markdown/<site>/<locale>/contact.md`, or its JSON

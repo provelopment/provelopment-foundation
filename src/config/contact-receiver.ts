@@ -95,4 +95,3 @@ export function contactReceiverLegacyGroups(
 export function contactOwnerLabel(owner: ContactOwnerIdentity): string {
   return owner.spokeHubId === undefined ? owner.id : `${owner.spokeHubId}/${owner.id}`;
 }
-

@@ -5,6 +5,7 @@ import {
   ContactInquiryMisconfigurationError,
   HONEYPOT_FIELD,
   type ContactField,
+  type ContactInquiryOrigin,
 } from "@/core/contact-inquiry";
 import type { ContactInquirySender } from "./contact-inquiry-sender";
 
@@ -35,6 +36,8 @@ export interface HandleContactSubmissionOptions {
    * `ContactInquiryMisconfigurationError` when config is not honoured.
    */
   readonly createSender: () => ContactInquirySender;
+  /** Server-derived publication provenance; absent only for a legacy non-EFS submission. */
+  readonly origin?: ContactInquiryOrigin;
   /** Diagnostics sink; must NEVER receive inquiry contents. */
   readonly log?: (message: string) => void;
 }
@@ -75,7 +78,7 @@ export async function handleContactSubmission(
     throw error;
   }
 
-  const result = await sender.send(parsed.data);
+  const result = await sender.send(parsed.data, options.origin);
   if (result.ok) return { status: "success" };
   if (result.kind === "unconfiguredDemo") return { status: "unconfiguredDemo" };
   return { status: "sendError" };

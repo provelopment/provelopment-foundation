@@ -27,6 +27,7 @@ import {
 import { resolveProperties, type EffectiveProperties } from "@/core/efs/properties";
 import { sitemapEntries, type DiscoveryPage } from "@/core/efs/discovery";
 import type { PageVisibility } from "@/core/page-document";
+import type { ContactInquiryOrigin } from "@/core/contact-inquiry";
 import { deploymentPaths } from "@/config/deployment-root";
 import { EFS_REQUEST_PATH_HEADER } from "@/config/efs/request-path";
 import {
@@ -301,7 +302,7 @@ export function efsRuntimeDeclared(): boolean {
 }
 
 /**
- * The verified owner context of the CURRENT EFS request.
+ * The verified owner context and trusted origin of the CURRENT EFS request.
  *
  * The contact Server Action is invoked by a POST whose path is the Page that hosted the form. The
  * edge proxy stamps that real pathname into a private upstream header and overwrites any client
@@ -314,10 +315,16 @@ export function efsRuntimeDeclared(): boolean {
  *
  * A missing trusted path is fail-closed rather than guessed from the host alone.
  */
-export async function efsContextForCurrentRequest(): Promise<SpokeRuntimeContext | null> {
+export interface EfsContactContext {
+  readonly context: SpokeRuntimeContext;
+  readonly origin: ContactInquiryOrigin;
+}
+
+export async function efsContactContextForCurrentRequest(): Promise<EfsContactContext | null> {
   const runtimeValue = runtime();
   if (!runtimeValue) return null;
-  const host = hostName((await requestHeader("host")) ?? (await requestHeader("x-forwarded-host")));
+  const rawHost = (await requestHeader("host")) ?? (await requestHeader("x-forwarded-host"));
+  const host = hostName(rawHost);
   const pathname = await requestHeader(EFS_REQUEST_PATH_HEADER);
   if (!host || !pathname || !pathname.startsWith("/")) return null;
 
@@ -327,7 +334,23 @@ export async function efsContextForCurrentRequest(): Promise<SpokeRuntimeContext
   const publication = publicationForBinding(runtimeValue.manifest.publications, matched.binding);
   if (!publication) return null;
   const owner = efsPublicationOwnerForRequest(publication, host);
-  return owner.kind === "resolved" ? owner.context : null;
+  if (owner.kind === "refused") return null;
+
+  const route = parseContentRoute(matched.canonicalBinding, matched.remaining);
+  const parsed = route.kind === "route" ? route.route : null;
+  return {
+    context: owner.context,
+    origin: {
+      publicationId: publication.id,
+      bindingId: matched.canonicalBinding.id,
+      entityId: matched.canonicalBinding.entityId,
+      facetId: matched.canonicalBinding.facetId,
+      ...(parsed?.siteId ? { siteId: parsed.siteId } : {}),
+      ...(parsed?.locale ? { locale: parsed.locale } : {}),
+      host: host.toLowerCase(),
+      path: pathname,
+    },
+  };
 }
 
 /** Resolve the current request through EFS, or `null` for a host the EFS manifest does not claim. */

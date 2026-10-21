@@ -2,7 +2,7 @@
 
 import { createContactInquirySender } from "@/adapters/contact-inquiry";
 import { handleContactSubmission, type ContactSubmissionState } from "@/application/contact-inquiry-service";
-import { efsContextForCurrentRequest, efsRuntimeDeclared } from "@/app/[[...segments]]/efs-request";
+import { efsContactContextForCurrentRequest, efsRuntimeDeclared } from "@/app/[[...segments]]/efs-request";
 import { runtimeContextForCurrentRequest } from "@/config/spoke-request";
 import type { SpokeRuntimeContext } from "@/config/installation-runtime";
 import type { ContactInquiryEnv } from "@/core/contact-inquiry";
@@ -66,9 +66,9 @@ export async function submitContactInquiry(
   // never selected by a form field or client header. The legacy selector is consulted ONLY when
   // this deployment declares no EFS runtime at all; once EFS is declared, an unclaimed host or
   // prefix has no destination.
-  const efsContext = await efsContextForCurrentRequest();
+  const efsContact = await efsContactContextForCurrentRequest();
   const context =
-    efsContext ??
+    efsContact?.context ??
     (efsRuntimeDeclared() ? null : await runtimeContextForCurrentRequest());
   if (context === null) {
     throw new Error(
@@ -80,6 +80,7 @@ export async function submitContactInquiry(
 
   return handleContactSubmission({
     values,
+    origin: efsContact?.origin,
     createSender: () => createContactInquirySender(context.siteConfig.contactFeature, env),
     log: (message) => console.error(message),
   });

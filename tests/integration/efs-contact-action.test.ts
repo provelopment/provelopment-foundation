@@ -151,12 +151,14 @@ function submission(extra: Record<string, string> = {}): FormData {
 
 function webhookFetch() {
   let captured = "";
-  const fetch = vi.fn(async (input: string | URL | Request) => {
+  const bodies: Record<string, unknown>[] = [];
+  const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     captured = String(input);
+    if (init?.body) bodies.push(JSON.parse(String(init.body)) as Record<string, unknown>);
     return { ok: true };
   });
   vi.stubGlobal("fetch", fetch);
-  return { fetch, captured: () => captured };
+  return { fetch, captured: () => captured, bodies: () => bodies };
 }
 
 describe("EFS contact publication ownership (FOUNDATION-COMPLETE-A1-R1)", () => {
@@ -172,16 +174,36 @@ describe("EFS contact publication ownership (FOUNDATION-COMPLETE-A1-R1)", () => 
 
   it("resolves two independent Spokes sharing one host by their own binding prefix", async () => {
     setRequest("shared.example", "/acme-co/en-001/about");
-    const { fetch, captured } = webhookFetch();
+    const { fetch, captured, bodies } = webhookFetch();
     const acme = await submitContactInquiry(initialContactSubmissionState, submission());
     expect(acme.status).toBe("success");
     expect(captured()).toBe("https://acme.example.test/inquiries");
+    expect(bodies()[0]?.origin).toEqual({
+      publicationId: "acme-managed",
+      bindingId: "managed-acme",
+      entityId: originalEntityId,
+      facetId: "acme",
+      siteId: "main",
+      locale: "en-001",
+      host: "shared.example",
+      path: "/acme-co/en-001/about",
+    });
 
     setRequest("shared.example", "/beta-co/en-001/about");
     const beta = await submitContactInquiry(initialContactSubmissionState, submission());
     expect(beta.status).toBe("success");
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(captured()).toBe("https://beta.example.test/inquiries");
+    expect(bodies()[1]?.origin).toEqual({
+      publicationId: "beta-managed",
+      bindingId: "beta-managed-web",
+      entityId: originalEntityId,
+      facetId: "acme",
+      siteId: "main",
+      locale: "en-001",
+      host: "shared.example",
+      path: "/beta-co/en-001/about",
+    });
   });
 
   it("falls back to the installation-wide receiver when a Spoke override is absent", async () => {
@@ -209,7 +231,7 @@ describe("EFS contact publication ownership (FOUNDATION-COMPLETE-A1-R1)", () => 
 
   it("ignores forged form fields, publication IDs and EntityIDs", async () => {
     setRequest("shared.example", "/acme-co/en-001/about");
-    const { captured } = webhookFetch();
+    const { captured, bodies } = webhookFetch();
 
     const result = await submitContactInquiry(
       initialContactSubmissionState,
@@ -223,15 +245,28 @@ describe("EFS contact publication ownership (FOUNDATION-COMPLETE-A1-R1)", () => 
     );
     expect(result.status).toBe("success");
     expect(captured()).toBe("https://acme.example.test/inquiries");
+    expect(bodies()[0]?.origin).toMatchObject({
+      publicationId: "acme-managed",
+      entityId: originalEntityId,
+      host: "shared.example",
+      path: "/acme-co/en-001/about",
+    });
   });
 
   it("keeps two Entities in one Spoke on that Spoke's intentional shared receiver", async () => {
     setRequest("shared.example", "/gamma-co/en-001/about");
-    const { captured } = webhookFetch();
+    const { captured, bodies } = webhookFetch();
 
     const result = await submitContactInquiry(initialContactSubmissionState, submission());
     expect(result.status).toBe("success");
     expect(captured()).toBe("https://acme.example.test/inquiries");
+    expect(bodies()[0]?.origin).toMatchObject({
+      publicationId: "acme-secondary",
+      bindingId: "acme-secondary-web",
+      entityId: secondEntityId,
+      siteId: "main",
+      path: "/gamma-co/en-001/about",
+    });
   });
 
   it("refuses to guess an owner when the trusted request path is absent", async () => {

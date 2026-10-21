@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { ContactInquirySender, SendInquiryResult } from "@/application/contact-inquiry-sender";
-import type { ContactInquiry } from "@/core/contact-inquiry";
+import type { ContactInquiry, ContactInquiryOrigin } from "@/core/contact-inquiry";
 
 export const WEBHOOK_TIMEOUT_MS = 10_000;
 
@@ -29,9 +29,14 @@ export interface WebhookInquiryPayload {
   readonly message: string;
   readonly locale: string;
   readonly submittedAt: string;
+  /** Additive, server-derived EFS provenance; omitted for a legacy non-EFS submission. */
+  readonly origin?: ContactInquiryOrigin;
 }
 
-export function buildWebhookPayload(inquiry: ContactInquiry): WebhookInquiryPayload {
+export function buildWebhookPayload(
+  inquiry: ContactInquiry,
+  origin?: ContactInquiryOrigin,
+): WebhookInquiryPayload {
   return {
     id: randomUUID(),
     name: inquiry.name,
@@ -40,6 +45,7 @@ export function buildWebhookPayload(inquiry: ContactInquiry): WebhookInquiryPayl
     message: inquiry.message,
     locale: inquiry.locale,
     submittedAt: new Date().toISOString(),
+    ...(origin ? { origin } : {}),
   };
 }
 
@@ -56,8 +62,8 @@ export function createWebhookContactInquirySender(
   const fetchImpl = options.fetchImpl ?? fetch;
 
   return {
-    async send(inquiry): Promise<SendInquiryResult> {
-      const payload = buildWebhookPayload(inquiry);
+    async send(inquiry, origin): Promise<SendInquiryResult> {
+      const payload = buildWebhookPayload(inquiry, origin);
       try {
         const response = await fetchImpl(options.url, {
           method: "POST",

@@ -1,4 +1,4 @@
-import type { ContactInquiry } from "@/core/contact-inquiry";
+import type { ContactInquiry, ContactInquiryOrigin } from "@/core/contact-inquiry";
 
 /**
  * Port for sending a validated contact inquiry to the configured integration.
@@ -13,5 +13,5 @@ export type SendInquiryResult =
   | { ok: false; kind: "unconfiguredDemo" };
 
 export interface ContactInquirySender {
-  send(inquiry: ContactInquiry): Promise<SendInquiryResult>;
+  send(inquiry: ContactInquiry, origin?: ContactInquiryOrigin): Promise<SendInquiryResult>;
 }

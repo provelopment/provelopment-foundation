@@ -15,6 +15,7 @@ import {
   ContactInquiryMisconfigurationError,
   HONEYPOT_FIELD,
   type ContactInquiry,
+  type ContactInquiryOrigin,
 } from "@/core/contact-inquiry";
 
 const validValues = (): Record<string, unknown> => ({
@@ -31,6 +32,17 @@ const validInquiry = (): ContactInquiry => ({
   subject: "Hello",
   message: "A real message.",
   locale: "en",
+});
+
+const validOrigin = (): ContactInquiryOrigin => ({
+  publicationId: "acme-publication",
+  bindingId: "acme-primary",
+  entityId: "e_00000000000000000000000001",
+  facetId: "website",
+  siteId: "main",
+  locale: "en",
+  host: "www.example.test",
+  path: "/en/contact",
 });
 
 /** fetch stub: Response-shaped object; `ok` mirrors the caller. */
@@ -114,6 +126,14 @@ describe("buildWebhookPayload (minimal external contract)", () => {
     expect(Object.hasOwn(payload, "subject")).toBe(false);
   });
 
+  it("adds server-derived publication origin only when supplied", () => {
+    const withOrigin = buildWebhookPayload(validInquiry(), validOrigin());
+    expect(withOrigin.origin).toEqual(validOrigin());
+    expect(withOrigin.origin).not.toHaveProperty("filesystemPath");
+    expect(withOrigin.origin).not.toHaveProperty("token");
+    expect(Object.hasOwn(buildWebhookPayload(validInquiry()), "origin")).toBe(false);
+  });
+
   it("sends no visitor telemetry (no ip/ua/cookies/referrer)", () => {
     const telemetryKeys = ["ip", "ipAddress", "userAgent", "cookie", "cookies", "referrer", "headers"];
     const payload = buildWebhookPayload(validInquiry());
@@ -165,7 +185,7 @@ describe("webhook adapter", () => {
       }),
     });
 
-    await sender.send(validInquiry());
+    await sender.send(validInquiry(), validOrigin());
 
     expect(capturedUrl).toBe("https://example.test/hook");
     expect(capturedInit.method).toBe("POST");
@@ -175,6 +195,7 @@ describe("webhook adapter", () => {
     const body = JSON.parse(String(capturedInit.body)) as Record<string, unknown>;
     expect(body.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(body.name).toBe("Jane Doe");
+    expect(body.origin).toEqual(validOrigin());
   });
 });
 
@@ -244,6 +265,22 @@ describe("handleContactSubmission (orchestration)", () => {
     });
 
     expect(state).toMatchObject({ status: "validationError", fieldErrors: { email: true } });
+  });
+
+  it("forwards the server-derived origin to the sender", async () => {
+    let seenOrigin: ContactInquiryOrigin | undefined;
+    const state = await handleContactSubmission({
+      values: validValues(),
+      origin: validOrigin(),
+      createSender: () => ({
+        async send(_inquiry, origin) {
+          seenOrigin = origin;
+          return { ok: true };
+        },
+      }),
+    });
+    expect(state.status).toBe("success");
+    expect(seenOrigin).toEqual(validOrigin());
   });
 
   it("maps stub outcome to the explicit demo state", async () => {

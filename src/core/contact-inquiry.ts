@@ -42,6 +42,24 @@ export const contactInquirySchema = z.object({
 
 export type ContactInquiry = z.infer<typeof contactInquirySchema>;
 
+/**
+ * Server-derived provenance for an inquiry submitted to an EFS publication.
+ *
+ * These values come from the resolved binding/publication, never from a form field. They contain no
+ * filesystem path, credential or visitor telemetry, and are additive to the webhook payload so existing
+ * receivers remain compatible.
+ */
+export interface ContactInquiryOrigin {
+  readonly publicationId: string;
+  readonly bindingId: string;
+  readonly entityId: string;
+  readonly facetId: string;
+  readonly siteId?: string;
+  readonly locale?: string;
+  readonly host: string;
+  readonly path: string;
+}
+
 export type ContactField = "name" | "email" | "subject" | "message";
 
 export type ContactProvider = "webhook" | "stub";

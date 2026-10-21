@@ -33,6 +33,7 @@
  * other Spoke. The conversion never runs at request time.
  */
 import { mintEntityId } from "@/core/efs/identity";
+import { localePathKey } from "@/core/efs/locales";
 import { normalizeBindingHost, normalizePrefix } from "@/core/efs/publication";
 
 import type { InstallationSeedTopology } from "./establishment";
@@ -100,6 +101,63 @@ function safeSegment(value: string): string {
     .replace(/[^a-z0-9_-]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return normalized.length > 0 ? normalized : "page";
+}
+
+/** Codepoint order, independent of the host locale: the allocation's deterministic order. */
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+/**
+ * The readable STARTING point for a PageID, derived from the authored route. It is not itself the
+ * identity: {@link allocatePageId} adds a deterministic suffix when two distinct routes reduce to
+ * the same word. A leading digit is prefixed so every allocation satisfies the PageID grammar.
+ */
+function pageIdBase(route: readonly string[]): string {
+  const normalized = route
+    .join("-")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const candidate = normalized.length > 0 ? normalized : "page";
+  return /^[a-z]/.test(candidate) ? candidate : `page-${candidate}`;
+}
+
+/** The first unused member of `base`, `base-2`, `base-3`, … in deterministic allocation order. */
+function allocatePageId(base: string, used: ReadonlySet<string>): string {
+  let candidate = base;
+  let suffix = 2;
+  while (used.has(candidate)) candidate = `${base}-${suffix++}`;
+  return candidate;
+}
+
+/** The Site's default locale, normalized to the exact spelling the Site declares. */
+function declaredDefaultLocale(
+  site: { readonly code: string; readonly defaultLocale?: string },
+  locales: readonly string[],
+  globalDefault: string | undefined,
+): string {
+  if (locales.length === 0) {
+    throw new Error(
+      `Site "${site.code}" declares no locale. An EFS publication needs at least one authored locale.`,
+    );
+  }
+  const candidate =
+    site.defaultLocale ??
+    (globalDefault !== undefined &&
+    locales.some((locale) => localePathKey(locale) === localePathKey(globalDefault))
+      ? globalDefault
+      : locales[0]);
+  const actual = locales.find(
+    (locale) => localePathKey(locale) === localePathKey(candidate),
+  );
+  if (actual === undefined) {
+    throw new Error(
+      `Site "${site.code}" declares default locale "${candidate}", which it does not serve ` +
+        `(it serves: ${locales.join(", ")}).`,
+    );
+  }
+  return actual;
 }
 
 /** The one explicit host/prefix authority, or an actionable refusal. */
@@ -243,58 +301,107 @@ export function explicitSingleWebsiteEfsSeed(
       ...new Set((site.locales && site.locales.length > 0 ? site.locales : globalLocales).filter(Boolean)),
     ];
     const authority = publicationAuthority(config, site.code, sites.length);
-    const pages = new Map<
-      string,
-      { id: string; route: string[]; representations: { locale: string }[] }
-    >();
-    const pageFiles: EfsSeedFile[] = [];
+    const defaultLocale = declaredDefaultLocale(site, locales, globalDefault);
 
+    // GATHER AUTHORED PAGES FIRST. Identity allocation must see every route before it can decide a
+    // collision-free PageID; processing locale-by-locale would make the answer depend on file order.
+    const drafts = new Map<
+      string,
+      {
+        route: string[];
+        generated: boolean;
+        sources: Map<string, { path: string; bytes: Uint8Array }>;
+      }
+    >();
     for (const locale of locales) {
       for (const source of pageSources(files, site.code, locale)) {
         const key = source.route.join("/");
-        const pageId = safeSegment(source.route.join("-"));
-        const page = pages.get(key) ?? { id: pageId, route: source.route, representations: [] };
-        page.representations.push({ locale });
-        pages.set(key, page);
-        pageFiles.push({
-          path: `efs/capsule/${entityId}/${FACET_ID}/${safeSegment(site.code)}/pages/${pageId}/${safeSegment(
-            locale,
-          )}${source.path.endsWith(".json") ? ".json" : ".md"}`,
-          bytes: source.bytes,
-        });
+        const draft = drafts.get(key) ?? {
+          route: source.route,
+          generated: false,
+          sources: new Map(),
+        };
+        draft.sources.set(locale, { path: source.path, bytes: source.bytes });
+        drafts.set(key, draft);
       }
     }
 
     // AN ORDINARY WEBSITE MAY NOT HAVE AUTHORED A HOME PAGE. The reserved `home` route is the
     // Site's root representation, so leaving it absent would turn establishment into a guaranteed
     // runtime 404. Supply the smallest valid explicit starter document instead of inventing a route
-    // at request time. An authored Home — in any locale — is never changed.
-    const hasAuthoredHome = [...pages.values()].some(
-      (page) => page.route.length === 1 && page.route[0] === "home",
+    // at request time. An authored Home — in any locale — is never replaced.
+    const hasAuthoredHome = [...drafts.values()].some(
+      (draft) => draft.route.length === 1 && draft.route[0] === "home",
     );
-    if (!hasAuthoredHome && locales.length > 0) {
-      const home = { id: "home", route: ["home"], representations: [] as { locale: string }[] };
-      for (const locale of locales) {
-        home.representations.push({ locale });
-        pageFiles.push({
-          path: `efs/capsule/${entityId}/${FACET_ID}/${safeSegment(
-            site.code,
-          )}/pages/home/${safeSegment(locale)}.json`,
-          bytes: encoder.encode(
-            `${JSON.stringify({ schemaVersion: 1, title: brandName, sections: [] }, null, 2)}\n`,
-          ),
-        });
-      }
-      pages.set("home", home);
+    if (!hasAuthoredHome) {
+      drafts.set("home", { route: ["home"], generated: true, sources: new Map() });
     }
 
-    const defaultLocale =
-      site.defaultLocale ?? (globalDefault && locales.includes(globalDefault) ? globalDefault : locales[0]);
+    const usedPageIds = new Set<string>();
+    const pages: {
+      id: string;
+      route: string[];
+      representations: { locale: string }[];
+      fallbackLocaleKey?: string;
+    }[] = [];
+    const pageFiles: EfsSeedFile[] = [];
+
+    for (const key of [...drafts.keys()].sort(compareText)) {
+      const draft = drafts.get(key);
+      if (draft === undefined) continue;
+      const pageId = allocatePageId(pageIdBase(draft.route), usedPageIds);
+      usedPageIds.add(pageId);
+      const representations = draft.generated
+        ? locales.map((locale) => ({ locale }))
+        : locales
+            .filter((locale) => draft.sources.has(locale))
+            .map((locale) => ({ locale }));
+      pages.push({ id: pageId, route: draft.route, representations });
+
+      for (const locale of locales) {
+        const source = draft.sources.get(locale);
+        const destination = `efs/capsule/${entityId}/${FACET_ID}/${safeSegment(
+          site.code,
+        )}/pages/${pageId}/${localePathKey(locale)}`;
+        if (draft.generated) {
+          pageFiles.push({
+            path: `${destination}.json`,
+            bytes: encoder.encode(
+              `${JSON.stringify({ schemaVersion: 1, title: brandName, sections: [] }, null, 2)}\n`,
+            ),
+          });
+        } else if (source !== undefined) {
+          pageFiles.push({
+            path: `${destination}${source.path.endsWith(".json") ? ".json" : ".md"}`,
+            bytes: source.bytes,
+          });
+        }
+      }
+    }
+
+    pages.sort((a, b) => compareText(a.id, b.id));
+
+    // PARTIAL HOME LOCALIZATION: the accepted same-Page fallback, never a fabricated translation and
+    // never an advertised representation that does not exist. Prefer the Site's explicit default
+    // locale when it has a Home; otherwise fall back deterministically to the first authored Home in
+    // this Site's locale order. `hreflang` continues to advertise only the representations present.
+    const home = pages.find((page) => page.route.length === 1 && page.route[0] === "home");
+    if (home !== undefined && home.representations.length < locales.length) {
+      const fallback =
+        home.representations.find(
+          (representation) =>
+            localePathKey(representation.locale) === localePathKey(defaultLocale),
+        ) ?? home.representations[0];
+      if (fallback !== undefined) {
+        home.fallbackLocaleKey = localePathKey(fallback.locale);
+      }
+    }
+
     return {
       site: {
         id: safeSegment(site.code),
         properties: { "site.label": { value: site.label, public: true } },
-        pages: [...pages.values()].sort((a, b) => a.id.localeCompare(b.id)),
+        pages,
       },
       locales,
       defaultLocale,

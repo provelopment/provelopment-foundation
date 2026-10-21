@@ -62,7 +62,10 @@ authored material beneath `spokes/main`, writes `spokes.json` and `efs/manifest.
 `publication.host` is refused with that instruction rather than inventing a public claim. Optional
 `site.tagline` and `site.description` may be absent; absent values stay absent. An authored Home is
 preserved; if none exists, establishment adds the smallest valid explicit Home Page instead of leaving the
-Site root unresolved.
+Site root unresolved. PageIDs are allocated deterministically from the complete authored route set, with a
+stable numeric suffix when two routes share a readable base; the authored route itself is never changed.
+Before writing successful installation state, establishment validates the generated manifest, Page/route/
+representation/source uniqueness, every declared source and every publication's declared Spoke owner.
 
 `--name` and `--repository` describe **this installation**, and are recorded in its operational record.
 

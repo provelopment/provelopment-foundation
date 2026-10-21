@@ -55,6 +55,7 @@
  * Framework-neutral: ports in, plain data out. No filesystem, no clock, no network, no Git, no framework.
  */
 import { siteConfigFileSchema } from "@/config/schema";
+import { validateEfsManifest, type EfsManifest } from "@/config/efs/manifest";
 import {
   contentDigestSubject,
   RELEASE_DIGEST_SCOPE_ID,
@@ -80,6 +81,7 @@ import {
   type InstallationSeedTopology,
 } from "@/core/foundation-installation/establishment";
 import { ENTITY_ID_ENTROPY_BYTES } from "@/core/efs/identity";
+import { localePathKey } from "@/core/efs/locales";
 import { explicitSingleWebsiteEfsSeed } from "@/core/foundation-installation/efs-seed";
 import {
   beginInstallationPromotion,
@@ -187,6 +189,134 @@ function seedRefusals(
   }
 
   return refusals;
+}
+
+/**
+ * THE COMPLETE ESTABLISHED EFS RESULT MUST BE VALID BEFORE ANY SUCCESSFUL STATE IS WRITTEN.
+ *
+ * Configuration validity alone is not enough: a converter can still emit two Pages with the same
+ * identity, two Pages claiming one route, a representation with no source, or a publication naming a
+ * Spoke this Installation does not declare. Those are facts about the RESULT, so they are checked here,
+ * after conversion and before the adoption record, candidate digest or materialisation.
+ *
+ * The manifest schema remains the one authority for declaration grammar and references. This function
+ * adds only the cross-check between that valid declaration and the capsule inventory establishment is
+ * about to write.
+ */
+function establishedEfsIssues(
+  files: readonly FoundationContentFile[],
+  topology: InstallationSeedTopology,
+): string[] {
+  const manifestFile = files.find((file) => file.path === "efs/manifest.json");
+  if (manifestFile === undefined) {
+    return [
+      "the established capsule has no efs/manifest.json — an installation cannot publish without an " +
+        "explicit Entity/Facet/Site/Page/publication declaration",
+    ];
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(new TextDecoder().decode(manifestFile.bytes));
+  } catch (error) {
+    return [
+      `efs/manifest.json is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+    ];
+  }
+  const validation = validateEfsManifest(parsed);
+  if (!validation.ok || validation.manifest === undefined) {
+    return validation.issues.map((issue) => `efs/manifest.json: ${issue}`);
+  }
+  const manifest: EfsManifest = validation.manifest;
+
+  const issues: string[] = [];
+  const filePaths = new Set<string>();
+  for (const file of files) {
+    if (filePaths.has(file.path)) {
+      issues.push(
+        `the established capsule would write "${file.path}" more than once — one Page representation ` +
+          "must never overwrite another Page's source",
+      );
+    }
+    filePaths.add(file.path);
+  }
+
+  if (topology.mode === "explicit" && !filePaths.has("spokes.json")) {
+    issues.push(
+      "the established Installation declares an explicit Spoke hierarchy but writes no spokes.json — " +
+        "every publication needs a declared owner",
+    );
+  }
+
+  const declaredSpokes = topology.mode === "explicit" ? topology.spokes : [];
+  for (const publication of manifest.publications) {
+    const matches = declaredSpokes.filter(
+      (spoke) =>
+        spoke.id === publication.spokeId &&
+        (spoke.spokeHubId ?? undefined) === (publication.spokeHubId ?? undefined),
+    );
+    const hub =
+      publication.spokeHubId === undefined ? "" : ` in Spoke Hub "${publication.spokeHubId}"`;
+    if (matches.length === 0) {
+      issues.push(
+        `publication "${publication.id}" names Spoke "${publication.spokeId}"${hub}, which this ` +
+          "Installation does not declare in spokes.json",
+      );
+    } else if (matches.length > 1) {
+      issues.push(
+        `publication "${publication.id}" matches more than one declared Spoke — a publication must ` +
+          "have exactly one owner",
+      );
+    }
+  }
+
+  const seenSourcePaths = new Set<string>();
+  for (const entity of manifest.entities) {
+    for (const facet of entity.facets) {
+      for (const site of facet.sites) {
+        const routes = new Set<string>();
+        for (const page of site.pages) {
+          const routeKey = page.route.join("/");
+          if (routes.has(routeKey)) {
+            issues.push(
+              `Site "${site.id}" declares route "/${routeKey}" more than once — distinct Pages must ` +
+                "have distinct routes",
+            );
+          }
+          routes.add(routeKey);
+
+          for (const representation of page.representations) {
+            let localeKey: string;
+            try {
+              localeKey = localePathKey(representation.locale);
+            } catch {
+              // The manifest schema has already reported the invalid locale tag.
+              continue;
+            }
+            const base =
+              `efs/capsule/${entity.id}/${facet.id}/${site.id}/pages/${page.id}/${localeKey}`;
+            const present = [`${base}.json`, `${base}.md`].filter((path) => filePaths.has(path));
+            if (present.length === 0) {
+              issues.push(
+                `Page "${page.id}" in Site "${site.id}" declares representation ` +
+                  `"${representation.locale}" but the capsule has neither ${base}.json nor ${base}.md`,
+              );
+            }
+            for (const path of present) {
+              if (seenSourcePaths.has(path)) {
+                issues.push(
+                  `Page source "${path}" is claimed by more than one Page representation`,
+                );
+              }
+              seenSourcePaths.add(path);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return issues;
 }
 
 /**
@@ -467,6 +597,20 @@ export async function establishFoundationInstallation(
         FAILURE_CATEGORY.installation,
         "the authored configuration is not a valid Foundation configuration:",
         configProblems,
+      );
+    }
+
+    // 4e. THE COMPLETE EFS RESULT. A valid authored configuration is not yet a valid Installation:
+    //     the generated manifest and the source inventory it declares must agree, identities/routes
+    //     must be unique, and every publication must name a Spoke this Installation really declares.
+    //     This runs BEFORE any adoption record, candidate digest or target materialisation, so an
+    //     invalid conversion leaves no successful installation state behind.
+    const efsProblems = establishedEfsIssues(seedFiles, seedTopology);
+    if (efsProblems.length > 0) {
+      return refused(
+        FAILURE_CATEGORY.installation,
+        "the established EFS declaration is not a valid Foundation publication:",
+        efsProblems,
       );
     }
 

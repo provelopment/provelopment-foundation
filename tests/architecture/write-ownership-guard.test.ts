@@ -312,6 +312,10 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
     "disposable target roots it establishes into, and the seeded capsule whose ignore rule it proves (B4B)",
   "tests/integration/foundation-installation-cli.test.ts":
     "disposable target roots it establishes into through the command line (B4B)",
+  "tests/support/efs-page-identity-seed.ts":
+    "a disposable one-Site fixture seed under OS temp — the R07 PageID, Home and integrity proofs' own authored inputs (S3-E3-R07)",
+  "tests/integration/efs-established-page-identity.test.ts":
+    "disposable seeds, targets and portable capsule copies under OS temp — the R07 PageID, source, Home and refusal proofs (S3-E3-R07)",
   "tests/integration/efs-established-one-website.test.ts":
     "a disposable seed's configuration and target root under OS temp — the R06 publication-authority proof (S3-E3-R06)",
   "tests/integration/efs-established-publication-authority.test.ts":

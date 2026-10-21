@@ -68,6 +68,7 @@ export class DirectorySeedSource implements FoundationInstallationSeedSource {
       mode: "explicit",
       spokes: roots.descriptors.map((descriptor) => ({
         id: descriptor.id,
+        ...(descriptor.spokeHubId === undefined ? {} : { spokeHubId: descriptor.spokeHubId }),
         // SEED-relative, because the pure rules address authored surfaces by seed-relative path. Which
         // spellings a locator may have was already decided by the authority above — this converts its
         // resolved answer, it does not judge it.

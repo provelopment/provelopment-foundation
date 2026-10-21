@@ -141,6 +141,11 @@ export interface InstallationSeedSpoke {
   /** The identity the manifest declares (`foundation`, `germany`, …). */
   readonly id: string;
   /**
+   * The OWNING Spoke Hub when the seed declares identified Hubs (FOUNDATION-ID-M3-P3). Absent for a
+   * flat declaration, where the local id is the complete identity.
+   */
+  readonly spokeHubId?: string;
+  /**
    * The Spoke root's Installation-relative POSIX locator, e.g. `spokes/germany`.
    *
    * An opaque spelling here: which spellings are acceptable is the declaration authority's rule, applied

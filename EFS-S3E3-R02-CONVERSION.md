@@ -19,6 +19,13 @@ including an imported or moved capsule — keeps its identity and declarations b
 host comes only from the authored `publication.host`; `site.url` is informational and cannot create or
 modify a binding. Empty optional tagline/description values are omitted rather than declared.
 
+**R07:** PageIDs are allocated once from the complete authored route set, deterministically and without
+collisions; a route whose readable base is already taken receives a stable numeric suffix, never a changed
+route. Establishment validates the full generated manifest and its Page/route/representation/source
+inventory, plus every publication's declared Spoke owner, before writing successful state. Partial Home
+localization uses an explicit same-Page fallback (default locale when it has Home, otherwise the first
+authored Home locale), never a fabricated translation or false `hreflang`.
+
 ## Before / after
 
 | Concern | Before | After (R02) |

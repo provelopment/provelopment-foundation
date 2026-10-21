@@ -22,6 +22,17 @@ remain absent, and an unauthored Home receives an explicit valid starter declara
 tests are `efs-establishment-identity.test.ts`, `efs-established-identity.test.ts` and
 `efs-established-publication-authority.test.ts`.
 
+**R07 correction:** PageIDs are allocated deterministically from the complete authored route set, with
+collision-free suffixes (`company-team` and `company-team-2` for the distinct routes `/company-team` and
+`/company/team`). Routes, source bytes and existing explicit identities are never rewritten. Establishment
+now validates the complete generated manifest, Page/route/representation/source uniqueness, source inventory
+and explicit Spoke ownership BEFORE writing an adoption record or materialising the target. Partially
+localized Home Pages use an explicit same-Page fallback to the default locale when present, otherwise to the
+first authored Home locale; no translation is invented and `hreflang` advertises only present representations.
+Executable evidence is in `efs-established-page-identity.test.ts` and
+`efs-established-home-default-absent.test.ts`. The final R07 tree passes **12,545 / 12,545** browser
+checks.
+
 ## 1. Eighteen accepted use cases
 
 | UC | Status | Evidence |

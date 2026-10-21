@@ -115,6 +115,11 @@ that publication's declared Spoke owner, and only then reads the owner's `featur
   with distinct receivers may use the additive `CONTACT_WEBHOOK_URL__<SPOKE_KEY>` /
   `CONTACT_WEBHOOK_TOKEN__<SPOKE_KEY>` override; the key is the resolved owner identity, never
   visitor input. The receiver owns its downstream routing and retention.
+- The webhook payload adds an optional server-derived `origin` object
+  (`publicationId`, `bindingId`, `entityId`, `facetId`, optional `siteId`/`locale`, `host`, `path`).
+  It is derived from the matched binding/publication, never from form data, and contains no filesystem
+  path, credential or visitor telemetry. Existing receivers remain compatible; a shared receiver can
+  attribute two Entities or Spokes reliably.
 
 Legacy Spoke selection is consulted only when no EFS runtime is declared. Another Spoke's receiver
 is never borrowed.
@@ -1285,7 +1290,7 @@ framework-free application port; the adopter owns the receiving system.
   distinct "misconfigured" state; it can never silently act as the demo stub.
   Non-loopback webhook endpoints must be HTTPS.
 - **External contract (minimal):** POST
-  `{ id, name, email, subject?, message, locale, submittedAt }`; a UUID `id`
+  `{ id, name, email, subject?, message, locale, submittedAt, origin? }`; a UUID `id`
   gives adopters a correlation/idempotency key without any Foundation storage.
   No visitor telemetry is collected.
 - **Security model:** server actions are POST-only endpoints with an implicit

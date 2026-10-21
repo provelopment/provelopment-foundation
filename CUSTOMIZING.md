@@ -107,6 +107,11 @@ upper-cased with non-alphanumeric runs replaced by `_` (for example `acme-spoke`
 `ACME_SPOKE`). The receiver owns downstream routing/retention; Foundation sends no Entity/Spoke
 administrative IDs and is not a CRM.
 
+The webhook payload includes an optional server-derived `origin`
+(`publicationId`, `bindingId`, `entityId`, `facetId`, optional `siteId`/`locale`, `host`, `path`) so a
+shared receiver can attribute an inquiry to the published website. It is never populated from a form
+field and contains no filesystem path, credential or visitor telemetry; existing clients may ignore it.
+
 
 > `src/components`) should not need modification for rebranding.
 
@@ -2666,7 +2671,7 @@ route up automatically) and **config-driven**:
     form fails loudly with a "misconfigured" state (it will NOT pretend to be
     the demo).
 - **Payload** (POST, `application/json`):
-  `{ id (UUID), name, email, subject?, message, locale, submittedAt }` — a
+  `{ id (UUID), name, email, subject?, message, locale, submittedAt, origin? }` — a
   minimal, stable contract. No visitor IP/user-agent/cookies are included.
 - **Success wording is precise:** "Your inquiry was submitted successfully"
   means your receiver accepted it — not that a human read it.
@@ -2706,7 +2711,7 @@ Unifying rules:
   `site.config.json`, `config/`, or `content/`; webhook secrets are read
   lazily from `process.env` by the contact server action.
 - **Privacy by default.** Contact webhook payloads are minimal
-  (`id`, `name`, `email`, `subject?`, `message`, `locale`, `submittedAt`) —
+  (`id`, `name`, `email`, `subject?`, `message`, `locale`, `submittedAt`, `origin?`) —
   no IP, user-agent, cookies, or referrer. Every outbound anchor renders with
   `rel="noreferrer" target="_blank"`.
 - **Loud failure.** A configured-but-invalid provider is rejected by the

@@ -93,8 +93,11 @@ No variables are required for a default build. `CONTACT_WEBHOOK_URL` and
 `CONTACT_WEBHOOK_TOKEN` configure the optional webhook sender; the additive
 `CONTACT_WEBHOOK_URL__<SPOKE_KEY>` / `CONTACT_WEBHOOK_TOKEN__<SPOKE_KEY>` overrides may configure
 distinct Spoke receivers. The receiver is Spoke-owned; two Entities in one Spoke intentionally share
-it, and the receiver owns downstream routing/retention. A webhook provider without a URL surfaces a
-configuration error; it never silently falls back to the stub.
+it, and the receiver owns downstream routing/retention. The webhook payload adds an optional
+server-derived `origin` (`publicationId`, `bindingId`, `entityId`, `facetId`, optional
+`siteId`/`locale`, `host`, `path`) so even a shared receiver can attribute the inquiry to the published
+website; it never comes from form data and contains no filesystem path or credential. A webhook
+provider without a URL surfaces a configuration error; it never silently falls back to the stub.
 
 Foundation provides same-origin Server Action protection and a honeypot. It does not provide
 server-side rate limiting or spam filtering; configure those at the edge or receiver.

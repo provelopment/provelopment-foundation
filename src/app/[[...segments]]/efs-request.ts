@@ -28,6 +28,7 @@ import { resolveProperties, type EffectiveProperties } from "@/core/efs/properti
 import { sitemapEntries, type DiscoveryPage } from "@/core/efs/discovery";
 import type { PageVisibility } from "@/core/page-document";
 import { deploymentPaths } from "@/config/deployment-root";
+import { EFS_REQUEST_PATH_HEADER } from "@/config/efs/request-path";
 import {
   loadEfsManifest,
   type EfsEntityDeclaration,
@@ -300,31 +301,33 @@ export function efsRuntimeDeclared(): boolean {
 }
 
 /**
- * The verified owner context of the CURRENT EFS host, independent of a Page route.
+ * The verified owner context of the CURRENT EFS request.
  *
- * The contact Server Action is invoked by a POST whose path is the page that hosted the form,
- * not necessarily a content route this module can resolve. It still needs exactly one owner.
- * Every canonical binding that claims the host must therefore agree on the publication owner;
- * otherwise the request is ambiguous and no Spoke's contact configuration is borrowed.
+ * The contact Server Action is invoked by a POST whose path is the Page that hosted the form. The
+ * edge proxy stamps that real pathname into a private upstream header and overwrites any client
+ * value. We match the FULL binding (host + longest prefix) and resolve the publication's declared
+ * owner from the Installation hierarchy. Consequently:
+ *
+ *   - different Spokes may own disjoint prefixes on one host, and each POST resolves its own owner;
+ *   - a host/prefix no binding claims has no destination;
+ *   - no client form field, header or EntityID selects a publication.
+ *
+ * A missing trusted path is fail-closed rather than guessed from the host alone.
  */
 export async function efsContextForCurrentRequest(): Promise<SpokeRuntimeContext | null> {
   const runtimeValue = runtime();
   if (!runtimeValue) return null;
   const host = hostName((await requestHeader("host")) ?? (await requestHeader("x-forwarded-host")));
-  if (!host) return null;
+  const pathname = await requestHeader(EFS_REQUEST_PATH_HEADER);
+  if (!host || !pathname || !pathname.startsWith("/")) return null;
 
-  const owners = new Map<string, SpokeRuntimeContext>();
-  for (const publication of runtimeValue.manifest.publications) {
-    const claimsHost = publication.bindings.some(
-      (binding) => binding.canonical !== false && binding.host.toLowerCase() === host.toLowerCase(),
-    );
-    if (!claimsHost) continue;
-    const owner = efsPublicationOwnerForRequest(publication, host);
-    if (owner.kind === "refused") return null;
-    const key = `${owner.context.spokeHubId ?? ""}/${owner.context.id}`;
-    owners.set(key, owner.context);
-  }
-  return owners.size === 1 ? [...owners.values()][0] : null;
+  const allBindings = runtimeValue.manifest.publications.flatMap((publication) => publication.bindings);
+  const matched = matchBinding(host, pathname, allBindings);
+  if (!matched) return null;
+  const publication = publicationForBinding(runtimeValue.manifest.publications, matched.binding);
+  if (!publication) return null;
+  const owner = efsPublicationOwnerForRequest(publication, host);
+  return owner.kind === "resolved" ? owner.context : null;
 }
 
 /** Resolve the current request through EFS, or `null` for a host the EFS manifest does not claim. */

@@ -1,5 +1,5 @@
 /**
- * OWNER-SCOPED EFS CONTENT ADAPTER (`D31`, Candidate CP-0...CP-5)
+ * OWNER-SCOPED EFS CONTENT ADAPTER (`D31`, merged EFS runtime CP-0...CP-5)
  * =============================================================
  *
  * It reads both synthetic and converted Entity-rooted capsules. Paths are explicit ownership

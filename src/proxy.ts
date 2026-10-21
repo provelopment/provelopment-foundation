@@ -7,6 +7,7 @@ import {
   type SpokeHostRoutingEntry,
 } from "@/config/spoke-routing";
 import { SPOKE_SELECTION_HEADER, isInternalSpokePath } from "@/config/spoke-selection";
+import { EFS_REQUEST_PATH_HEADER } from "@/config/efs/request-path";
 
 /**
  * THE REQUEST BOUNDARY: HOSTNAME DISPATCH (FOUNDATION-MULTISITE-M16/M17)
@@ -92,6 +93,10 @@ function selectedEntry(
 function continueWithSelectedSpoke(request: NextRequest, entry: SpokeHostRoutingEntry): NextResponse {
   const headers = new Headers(request.headers);
   headers.set(SPOKE_SELECTION_HEADER, entry.runtimeSegment);
+  // The public pathname is preserved, but the edge boundary is its authority. The Server Action
+  // reads this private upstream header to resolve the exact EFS publication binding; any value a
+  // client sent under the same name is discarded here.
+  headers.set(EFS_REQUEST_PATH_HEADER, request.nextUrl.pathname);
   return NextResponse.next({ request: { headers } });
 }
 
@@ -122,6 +127,7 @@ export function proxy(request: NextRequest) {
   if (entry === null) {
     const forwarded = new Headers(request.headers);
     forwarded.delete(SPOKE_SELECTION_HEADER);
+    forwarded.set(EFS_REQUEST_PATH_HEADER, pathname);
     return NextResponse.next({ request: { headers: forwarded } });
   }
 

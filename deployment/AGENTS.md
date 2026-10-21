@@ -80,11 +80,11 @@ another deployment
    did not create. If it is not beneath this capsule's `.test/`, it is not yours to delete — leave it
    and, if it looks wrong, report it.
 3. **Durable deployment tests live in `deployment/tests/**`.** A test belongs here when it answers a
-   question about *this* deployment: its own sites, languages, locations, routes, copy, assets,
+   question about *this* deployment: its own sites, languages, publications, routes, copy, assets,
    structured data and acceptance.
    **A test may READ this capsule; it may never use it as writable fixture space.** The authored state
-   (`spokes.json`, and the sole Spoke's `spokes/<spoke>/site.config.json`, `config/**`, `content/pages/**`
-   and `content/assets/**`) is the owner's content, and
+   (`spokes.json`, `efs/manifest.json`, the EFS capsule's Page sources, dictionaries and assets, and
+   each Spoke's `site.config.json`, `config/**` and `content/assets/**`) is the owner's content, and
    a test that mutated it would be editing the website — cleanup is best-effort and residue is damage
    (ISO-C1). A test that needs writable deployment state — planting a page, adding a dictionary, editing
    configuration — takes a DISPOSABLE COPY of the selected deployment
@@ -121,7 +121,7 @@ another deployment
    - an authored PAGE, DICTIONARY or ordinary artwork edit proves the authored-data contract: the
      deployment's own structural tests, the generated checks and a production build. Not the browser
      acceptance matrix — prose and artwork do not change shell or runtime behaviour.
-   - a CONFIGURATION, manifest, hostname, locale/site/location or asset-role change proves the full
+   - a CONFIGURATION, manifest, hostname, publication, locale or asset-role change proves the full
      deployment gate, including deployment browser acceptance.
    - a change that mixes authored data with configuration, or that leaves any path unclassifiable,
      escalates to the stronger scope. `content` never applies to a mixed change.

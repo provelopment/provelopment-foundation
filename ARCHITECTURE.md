@@ -8,6 +8,125 @@ small businesses in establishing and maintaining a web presence.
 The application is initially frontend-only but must remain capable of evolving
 into a full-stack application without requiring a fundamental architectural
 rewrite.
+## CURRENT PRODUCTION MODEL — EFS
+
+This section is the authority for the code currently served in production. The older
+Site/Location/region material later in this file describes the retained **legacy test runtime**
+and historical releases; it is not the production publication model.
+
+### Ownership and operation are separate trees
+
+```text
+content ownership:      Entity → Facet → Site → Page → localized representation
+operational ownership:  Foundation Installation → Spoke Hub → Spoke
+```
+
+- **Entity** owns content, identity and assets. It is not a customer account, login or CRM record.
+- **Facet** groups Sites inside one Entity.
+- **Site** is a content context, never a hostname, locale, country or publication prefix.
+- **Page** is language-neutral. Only its representations bear locale.
+- **Spoke** is a complete website/domain operating context inside an Installation.
+- **Publication** is an explicit many-to-many declaration linking one Entity/Facet, one owning
+  Spoke, an optional presentation Site and one or more public bindings.
+
+No identity is inferred from a host, prefix, folder name, Site name or locale spelling.
+
+### The manifest is the publication authority
+
+`deployment/efs/manifest.json` declares:
+
+- Entities, Facets, Sites and Pages;
+- each Page's route, representations, same-Page fallback and optional properties;
+- each publication's `spokeId`, optional `spokeHubId`, Entity, Facet and bindings;
+- each binding's host, prefix, Site set/mode, locales, default locale and canonical/alias role.
+
+`deployment/spokes.json` declares the real Spoke hierarchy. A publication owner is resolved from
+those two declarations only. A host the legacy host-routing table claims for another Spoke is a
+conflict and is refused. A host introduced only by an EFS binding is legitimate; its publication
+owner is the authority.
+
+There is one production request path. Legacy Page/locale composition is reachable only through a
+non-production test utility gated by `FOUNDATION_ENABLE_LEGACY_TEST_RUNTIME`; it is never a fallback
+from a malformed or incomplete EFS declaration.
+
+### Request resolution
+
+```text
+Host + path
+  → matchBinding (exact host, longest whole-segment prefix)
+  → publicationForBinding
+  → efsPublicationOwnerForRequest (publication Spoke + Installation hierarchy)
+  → parseContentRoute (Site/locale/Page route)
+  → Page declaration
+  → load and validate every declared representation source
+  → resolveRepresentation (exact locale, authored same-Page fallback, or refusal)
+  → one effective property cascade
+  → canonical/alternates/assets/sitemap from the effective canonical binding
+```
+
+A bare binding entry redirects to the entry locale chosen from explicit locale, cookie,
+`Accept-Language`, then the binding default. There is no geo-IP or location inference.
+
+### Source format and visibility
+
+Page sources live under the EFS capsule at
+`<entityId>/<facetId>/<siteId>/pages/<pageId>/<locale>.{json,md}`.
+
+- JSON wins over Markdown for the same representation.
+- A JSON document is validated against `src/core/page-document.ts`; invalid JSON is refused with
+  the source/property named. It is never rendered as generic fallback prose.
+- Visibility is the localized JSON document's optional `visibility`. Absent means public.
+- Markdown has no visibility vocabulary; a `visibility` front-matter key is refused.
+- The reserved Home document cannot be unlisted.
+- The effective visibility drives serving, `noindex, nofollow`, sitemap, navigation and alternates.
+- A missing translation may redirect only to an explicitly authored **public** same-Page fallback.
+- `hreflang` and `x-default` name only public representations; an unlisted representation is never
+  advertised by itself or a sibling.
+- An unlisted URL is not private and is not access-controlled.
+
+The manifest deliberately has no Page-level visibility field. One effective representation has one
+publication decision.
+
+### Metadata, assets and discovery
+
+Canonical URLs, Open Graph URLs, `hreflang`, `x-default`, assets and sitemap entries are derived
+from the effective canonical **binding**, never from `site.url`. `site.url` is optional
+informational configuration. The sitemap contains public representations only. Owner assets are
+served through binding-derived owner URLs and cannot be read across Entity/Spoke boundaries.
+
+### Presentation shell
+
+A publication may name `presentationSiteCode`, selecting a Site declared by its **owning Spoke's**
+`site.config.json`. That supplies dictionary, navigation, footer, branding, layout and
+accessibility chrome. The EFS Page remains the content authority. Omitting it uses the EFS-only
+document boundary. The shell never changes Entity, Facet, Site, Page or publication identity.
+
+### Contact inquiries
+
+The contact Server Action resolves its destination through the verified EFS publication owner for
+the current host, including an EFS-only host absent from legacy host routing. Legacy Spoke
+selection is consulted only when no EFS runtime is declared. A host with no owner has no contact
+destination; another Spoke's webhook is never borrowed.
+
+### Establishment, release and deployment
+
+- **Establishment** creates one autonomous Installation from an immutable release plus an authored
+  seed.
+- A release is a verified platform payload built from an exact source commit.
+- A demonstration deployment is not a release and not a customer Installation.
+- An Installation update changes authored material; an upgrade adopts a different immutable
+  release.
+- No automatic timezone, currency, language or geography is derived from IDs, names, routes,
+  Spokes or publication prefixes.
+
+### Legacy documentation boundary
+
+Sections below that describe country-coded Sites, regional pages, Location selectors, required
+locations, computed timezone/DST or country-derived locale document the retained legacy test
+runtime and historical product behavior. They are not current EFS instructions and must not be
+used to author a production Installation.
+
+
 
 ## Architectural Style
 
@@ -579,6 +698,10 @@ Constraints and rules:
 
 See `DEPLOYMENT.md` for the operational runbook.
 
+> **LEGACY MODEL NOTE.** The Installation/Spoke/Site vocabulary below includes the retained legacy
+> runtime. Current EFS Sites are content contexts, not countries, and publication prefixes are not
+> Site identities. Use the CURRENT PRODUCTION MODEL section above for production authoring.
+
 ## Installation, Spoke Hub, Spoke, Site Hub, Site
 
 The deployment vocabulary, from the outside in. The levels are never shortened, because they are different
@@ -915,6 +1038,10 @@ inference exists anywhere in `src/`.
   naming the offending locales instead of silently hiding an enabled CTA.
   Disabled/absent booking requires no label.
 
+> **LEGACY RUNTIME — NOT EFS.** Regional pages, region-driven operational identity and computed
+> hours below are retained for historical maintenance and tests. They are not current production
+> behavior and create no new capability.
+
 ## Regionalized pages & operating context (Phase K)
 
 Phase K separates **Locale** (how the site communicates) from **Region**
@@ -969,6 +1096,9 @@ Region = timezone + address + geo + contact + seven-day hours + holidays
 - **Sitemap.** Routes are derived per locale from that locale's content
   (page inventories may differ), so `/ja/toronto` is never emitted and a
   regional page only appears where it exists.
+
+> **LEGACY RUNTIME — NOT EFS.** The Location-first Page context below is retired from current
+> production. EFS has no required-location policy, location selector or location-derived locale.
 
 ## Locale + Location as first-class page context (Phase L)
 
@@ -1943,6 +2073,10 @@ Before making architectural changes, an agent should inspect the relevant
 repository instructions and existing implementation.
 
 ---
+
+> **LEGACY RUNTIME — NOT EFS.** The country-constrained Site model below is retained for the legacy
+> test runtime. Current EFS Sites are descriptors such as `main`; `ww`/country codes are refused as
+> SiteIDs and may appear only as authored publication prefixes. No geography is inferred.
 
 ## S1 — sites, languages and the four visitor dimensions
 

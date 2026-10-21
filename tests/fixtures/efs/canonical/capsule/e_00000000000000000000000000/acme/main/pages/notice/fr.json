@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "title": "Avis public",
+  "sections": [
+    {
+      "type": "prose",
+      "body": "La représentation française est publique et peut être annoncée."
+    }
+  ]
+}

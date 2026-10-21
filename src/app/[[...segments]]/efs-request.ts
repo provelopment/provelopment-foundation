@@ -26,6 +26,7 @@ import {
 } from "@/core/efs/locales";
 import { resolveProperties, type EffectiveProperties } from "@/core/efs/properties";
 import { sitemapEntries, type DiscoveryPage } from "@/core/efs/discovery";
+import type { PageVisibility } from "@/core/page-document";
 import { deploymentPaths } from "@/config/deployment-root";
 import {
   loadEfsManifest,
@@ -56,6 +57,13 @@ const DEPLOYMENT = deploymentPaths();
 const DEFAULT_MANIFEST = join(DEPLOYMENT.root, "efs", "manifest.json");
 const DEFAULT_CAPSULE = join(DEPLOYMENT.root, "efs", "capsule");
 
+export interface EfsNavigationItem {
+  readonly pageId: string;
+  readonly label: string;
+  readonly href: string;
+  readonly current: boolean;
+}
+
 export interface EfsView {
   readonly publication: EfsPublicationDeclaration;
   readonly binding: EfsBinding;
@@ -69,9 +77,15 @@ export interface EfsView {
   readonly locale: string;
   readonly localeKey: string;
   readonly source: EfsPageSource;
+  /** The effective representation's ONE publication decision, read from its source document. */
+  readonly visibility: PageVisibility;
   readonly properties: EffectiveProperties;
   readonly canonical: string;
   readonly alternates: readonly { readonly hreflang: string; readonly href: string }[];
+  /** Truthful `x-default` only while that representation is public. */
+  readonly xDefault?: string;
+  /** Public Pages whose representation for this locale (or its authored fallback) is public. */
+  readonly navigation: readonly EfsNavigationItem[];
   readonly home: boolean;
 }
 
@@ -166,6 +180,96 @@ function publicRoute(page: EfsPageDeclaration): readonly string[] {
   return page.route.length === 1 && page.route[0] === "home" ? [] : page.route;
 }
 
+/** Load and strictly validate ONE declared representation, or fail with its actionable reason. */
+function loadRepresentationSource(input: {
+  readonly capsule: string;
+  readonly entityId: string;
+  readonly facetId: string;
+  readonly siteId: string;
+  readonly page: EfsPageDeclaration;
+  readonly locale: string;
+}): EfsPageSource {
+  const result = loadEfsPageSource({
+    root: input.capsule,
+    entityId: input.entityId,
+    facetId: input.facetId,
+    siteId: input.siteId,
+    pageId: input.page.id,
+    routePath: input.page.route.join("/"),
+    localeKey: localePathKey(input.locale),
+  });
+  if (result.kind === "rejected") {
+    throw new Error(
+      `EFS Page "${input.page.id}" representation "${input.locale}" is refused: ${result.reason}`,
+    );
+  }
+  return result.value;
+}
+
+/** Every declared representation with the publication decision of the source that answers it. */
+function loadedRepresentations(input: {
+  readonly capsule: string;
+  readonly entityId: string;
+  readonly facetId: string;
+  readonly siteId: string;
+  readonly page: EfsPageDeclaration;
+}): readonly (PageRepresentation & { readonly source: EfsPageSource })[] {
+  return input.page.representations.map((representation) => {
+    const source = loadRepresentationSource({ ...input, locale: representation.locale });
+    return { ...representation, visibility: source.visibility, source };
+  });
+}
+
+/** Public navigation for this Site and locale, asked of each destination's own source. */
+function navigationFor(input: {
+  readonly capsule: string;
+  readonly entityId: string;
+  readonly facetId: string;
+  readonly site: EfsSiteDeclaration;
+  readonly page: EfsPageDeclaration;
+  readonly binding: EfsBinding;
+  readonly localeKey: string;
+}): readonly EfsNavigationItem[] {
+  const items: EfsNavigationItem[] = [];
+  for (const candidate of input.site.pages) {
+    const representation =
+      candidate.representations.find(
+        (entry) => localePathKey(entry.locale) === input.localeKey,
+      ) ??
+      candidate.representations.find(
+        (entry) =>
+          candidate.fallbackLocaleKey !== undefined &&
+          localePathKey(entry.locale) === localePathKey(candidate.fallbackLocaleKey),
+      );
+    if (!representation) continue;
+    const result = loadEfsPageSource({
+      root: input.capsule,
+      entityId: input.entityId,
+      facetId: input.facetId,
+      siteId: input.site.id,
+      pageId: candidate.id,
+      routePath: candidate.route.join("/"),
+      localeKey: localePathKey(representation.locale),
+    });
+    // A missing destination is not advertised (the released navigation rule). A malformed one
+    // is still refused at its own URL; it must not break an unrelated page's navigation.
+    if (result.kind === "rejected" || result.value.visibility !== "public") continue;
+    const label = candidate.properties?.["nav.label"];
+    items.push({
+      pageId: candidate.id,
+      label: label?.public === true && typeof label.value === "string" ? label.value : candidate.id,
+      href: `/${contentSegments(input.binding, {
+        siteId: input.site.id,
+        locale: representation.locale,
+        localeKey: localePathKey(representation.locale),
+        pageRoute: publicRoute(candidate),
+      }).join("/")}`,
+      current: candidate.id === input.page.id,
+    });
+  }
+  return items;
+}
+
 function localizedHref(
   binding: EfsBinding,
   siteId: string,
@@ -193,6 +297,34 @@ function contentDescription(source: EfsPageSource): string | undefined {
 /** Whether this deployment declares EFS (validating the declaration). */
 export function efsRuntimeDeclared(): boolean {
   return runtime() !== null;
+}
+
+/**
+ * The verified owner context of the CURRENT EFS host, independent of a Page route.
+ *
+ * The contact Server Action is invoked by a POST whose path is the page that hosted the form,
+ * not necessarily a content route this module can resolve. It still needs exactly one owner.
+ * Every canonical binding that claims the host must therefore agree on the publication owner;
+ * otherwise the request is ambiguous and no Spoke's contact configuration is borrowed.
+ */
+export async function efsContextForCurrentRequest(): Promise<SpokeRuntimeContext | null> {
+  const runtimeValue = runtime();
+  if (!runtimeValue) return null;
+  const host = hostName((await requestHeader("host")) ?? (await requestHeader("x-forwarded-host")));
+  if (!host) return null;
+
+  const owners = new Map<string, SpokeRuntimeContext>();
+  for (const publication of runtimeValue.manifest.publications) {
+    const claimsHost = publication.bindings.some(
+      (binding) => binding.canonical !== false && binding.host.toLowerCase() === host.toLowerCase(),
+    );
+    if (!claimsHost) continue;
+    const owner = efsPublicationOwnerForRequest(publication, host);
+    if (owner.kind === "refused") return null;
+    const key = `${owner.context.spokeHubId ?? ""}/${owner.context.id}`;
+    owners.set(key, owner.context);
+  }
+  return owners.size === 1 ? [...owners.values()][0] : null;
 }
 
 /** Resolve the current request through EFS, or `null` for a host the EFS manifest does not claim. */
@@ -265,8 +397,19 @@ export async function efsViewForCurrentRequest(
   const page = pageForRoute(site, route.pageRoute);
   if (!page) notFound();
 
+  const representations = loadedRepresentations({
+    capsule,
+    entityId: entity.id,
+    facetId: facet.id,
+    siteId: site.id,
+    page,
+  });
   const representation = resolveRepresentation(
-    { pageId: page.id, fallbackLocaleKey: page.fallbackLocaleKey, representations: page.representations },
+    {
+      pageId: page.id,
+      fallbackLocaleKey: page.fallbackLocaleKey,
+      representations,
+    },
     route.locale,
     { allowFallback: true },
   );
@@ -283,15 +426,11 @@ export async function efsViewForCurrentRequest(
   }
 
   const actual = representation.representation;
-  const source = loadEfsPageSource({
-    root: capsule,
-    entityId: entity.id,
-    facetId: facet.id,
-    siteId: site.id,
-    pageId: page.id,
-    localeKey: localePathKey(actual.locale),
-  });
-  if (source.kind === "rejected") notFound();
+  const loaded = representations.find(
+    (candidate) => localePathKey(candidate.locale) === localePathKey(actual.locale),
+  );
+  if (!loaded) notFound();
+  const source = loaded.source;
 
   const declaration = page.representations.find(
     (candidate) => localePathKey(candidate.locale) === localePathKey(actual.locale),
@@ -304,11 +443,19 @@ export async function efsViewForCurrentRequest(
     { level: "representation", id: actual.locale, properties: declaration?.properties },
   ]);
 
-  const localizedPage = {
-    pageId: page.id,
-    fallbackLocaleKey: page.fallbackLocaleKey,
-    representations: page.representations,
-  };
+  const localeKey = localePathKey(actual.locale);
+  const defaultRepresentation = representations.find(
+    (candidate) => localePathKey(candidate.locale) === localePathKey(matched.canonicalBinding.defaultLocale),
+  );
+  const xDefault =
+    defaultRepresentation?.visibility === "public"
+      ? localizedHref(
+          matched.canonicalBinding,
+          site.id,
+          defaultRepresentation.locale,
+          publicRoute(page),
+        )
+      : undefined;
   return {
     publication,
     binding: matched.canonicalBinding,
@@ -319,14 +466,25 @@ export async function efsViewForCurrentRequest(
     page,
     representation: actual,
     locale: canonicalLocaleTag(actual.locale),
-    localeKey: localePathKey(actual.locale),
-    source: source.value,
+    localeKey,
+    source,
+    visibility: loaded.visibility ?? source.visibility,
     properties,
     canonical: localizedHref(matched.canonicalBinding, site.id, actual.locale, publicRoute(page)),
-    alternates: advertisedHreflang(localizedPage).map((alternate) => ({
+    alternates: advertisedHreflang({ pageId: page.id, representations }).map((alternate) => ({
       hreflang: alternate.hreflang,
       href: localizedHref(matched.canonicalBinding, site.id, alternate.hreflang, publicRoute(page)),
     })),
+    ...(xDefault === undefined ? {} : { xDefault }),
+    navigation: navigationFor({
+      capsule,
+      entityId: entity.id,
+      facetId: facet.id,
+      site,
+      page,
+      binding: matched.canonicalBinding,
+      localeKey,
+    }),
     home: publicRoute(page).length === 0,
   };
 }
@@ -352,6 +510,22 @@ export function efsDescription(view: EfsView): string | undefined {
     return localized.value;
   }
   return contentDescription(view.source);
+}
+
+/** The metadata language map: public `hreflang` values plus a truthful optional `x-default`. */
+export function efsLanguageAlternates(view: EfsView): Record<string, string> | undefined {
+  const languages = Object.fromEntries(
+    view.alternates.map((alternate) => [alternate.hreflang, alternate.href]),
+  );
+  if (view.xDefault !== undefined) languages["x-default"] = view.xDefault;
+  return Object.keys(languages).length === 0 ? undefined : languages;
+}
+
+/** The explicit discoverability directive for an unlisted effective representation. */
+export function efsRobots(
+  view: EfsView,
+): { readonly index: false; readonly follow: false } | undefined {
+  return view.visibility === "unlisted" ? { index: false, follow: false } : undefined;
 }
 
 
@@ -386,12 +560,21 @@ export async function efsSitemapForCurrentRequest(): Promise<
     for (const site of facet.sites) {
       if (!binding.siteIds.includes(site.id)) continue;
       for (const page of site.pages) {
+        const representations = loadedRepresentations({
+          capsule: runtimeValue.capsule,
+          entityId: binding.entityId,
+          facetId: binding.facetId,
+          siteId: site.id,
+          page,
+        }).map((representation) => ({
+          locale: representation.locale,
+          visibility: representation.visibility ?? representation.source.visibility,
+        }));
         pages.push({
           pageId: page.id,
           siteId: site.id,
           route: page.route,
-          visibility: page.visibility ?? "public",
-          representations: page.representations,
+          representations,
         });
       }
     }

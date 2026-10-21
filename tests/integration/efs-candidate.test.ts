@@ -27,6 +27,7 @@ describe("EFS owner-scoped content adapter (E1 CP-0/CP-2)", () => {
       facetId: "acme",
       siteId: "jakarta",
       pageId: "home",
+      routePath: "home",
     });
     expect(json.kind).toBe("ok");
     if (json.kind === "ok") {
@@ -40,6 +41,7 @@ describe("EFS owner-scoped content adapter (E1 CP-0/CP-2)", () => {
       facetId: "acme",
       siteId: "jakarta",
       pageId: "about",
+      routePath: "about",
     });
     expect(markdown.kind).toBe("ok");
     if (markdown.kind === "ok") {
@@ -55,6 +57,7 @@ describe("EFS owner-scoped content adapter (E1 CP-0/CP-2)", () => {
       facetId: "acme",
       siteId: "jakarta",
       pageId: "home",
+      routePath: "home",
     });
     expect(source.kind).toBe("ok");
     if (source.kind === "ok") expect(source.value.format).toBe("json");
@@ -67,6 +70,7 @@ describe("EFS owner-scoped content adapter (E1 CP-0/CP-2)", () => {
       facetId: "acme",
       siteId: "jakarta",
       pageId: "home",
+      routePath: "home",
     });
     expect(otherOwner.kind).toBe("rejected");
     const traversal = loadEfsPageSource({
@@ -75,6 +79,7 @@ describe("EFS owner-scoped content adapter (E1 CP-0/CP-2)", () => {
       facetId: "acme",
       siteId: "jakarta",
       pageId: "..",
+      routePath: "..",
     });
     expect(traversal.kind).toBe("rejected");
   });
@@ -108,6 +113,17 @@ describe("EFS manifest validation (E1 CP-1)", () => {
     const manifest = mutableManifest();
     manifest.entities[0].id = "b_00000000000000000000000000";
     expect(validateEfsManifest(manifest).issues.join(" ")).toContain("retired");
+  });
+
+  it("refuses a Page-level visibility declaration in the EFS manifest", () => {
+    const manifest = mutableManifest();
+    const facets = manifest.entities[0].facets as Array<Record<string, unknown>>;
+    const sites = facets[0].sites as Array<Record<string, unknown>>;
+    const pages = sites[0].pages as Array<Record<string, unknown>>;
+    pages[0].visibility = "unlisted";
+    expect(validateEfsManifest(manifest).issues.join(" ")).toContain(
+      "visibility is not an EFS manifest property",
+    );
   });
 
   it("refuses duplicate Site declarations within a Facet", () => {

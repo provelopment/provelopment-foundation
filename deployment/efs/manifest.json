@@ -64,7 +64,6 @@
                   "route": [
                     "home"
                   ],
-                  "visibility": "public",
                   "properties": {
                     "nav.label": {
                       "value": "Home",
@@ -89,7 +88,6 @@
                   "route": [
                     "about"
                   ],
-                  "visibility": "public",
                   "properties": {
                     "nav.label": {
                       "value": "About",
@@ -179,7 +177,6 @@
                   "route": [
                     "home"
                   ],
-                  "visibility": "public",
                   "properties": {
                     "nav.label": {
                       "value": "Start",
@@ -204,7 +201,6 @@
                   "route": [
                     "about"
                   ],
-                  "visibility": "public",
                   "properties": {
                     "nav.label": {
                       "value": "Über uns",
@@ -229,7 +225,6 @@
                   "route": [
                     "berlin"
                   ],
-                  "visibility": "public",
                   "properties": {
                     "nav.label": {
                       "value": "Berlin",
@@ -254,7 +249,6 @@
                   "route": [
                     "frankfurt"
                   ],
-                  "visibility": "public",
                   "properties": {
                     "nav.label": {
                       "value": "Frankfurt",

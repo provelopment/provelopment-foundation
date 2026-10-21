@@ -1,4 +1,11 @@
 {
+  "schemaVersion": 1,
   "title": "Jakarta Home (JSON)",
-  "description": "Synthetic E1 page owned by Acme Jakarta."
+  "description": "Synthetic E1 page owned by Acme Jakarta.",
+  "sections": [
+    {
+      "type": "prose",
+      "body": "The JSON source is the higher-precedence Page representation."
+    }
+  ]
 }

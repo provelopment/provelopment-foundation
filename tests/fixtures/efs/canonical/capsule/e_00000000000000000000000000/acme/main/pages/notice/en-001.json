@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "title": "Unlisted English notice",
+  "visibility": "unlisted",
+  "sections": [
+    {
+      "type": "prose",
+      "body": "The English notice is reachable at this exact URL but is not advertised."
+    }
+  ]
+}

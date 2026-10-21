@@ -14,16 +14,29 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 
+import {
+  describePageDocumentIssues,
+  pageDocumentSchema,
+  pageVisibilityOf,
+  reservedHomeVisibilityIssue,
+  type PageDocument,
+  type PageVisibility,
+} from "@/core/page-document";
+
 /** The supported synthetic source formats. */
 export type EfsSourceFormat = "json" | "markdown";
 
-/** One loaded source. JSON exposes its parsed object; Markdown exposes its body. */
+/** One loaded source. JSON exposes its validated document; Markdown exposes its body. */
 export interface EfsPageSource {
   readonly format: EfsSourceFormat;
   readonly path: string;
   readonly pageId: string;
   readonly data: Readonly<Record<string, unknown>>;
   readonly body?: string;
+  /** The ONE publication decision for this effective representation. */
+  readonly visibility: PageVisibility;
+  /** Present only for JSON, where the released Page-document contract is authoritative. */
+  readonly document?: PageDocument;
 }
 
 /** A refused read. The reason is safe for diagnostics and contains no filesystem path escape. */
@@ -70,6 +83,8 @@ export function loadEfsPageSource(input: {
   readonly facetId: string;
   readonly siteId: string;
   readonly pageId: string;
+  /** The Page's language-neutral route path, used by the released document contract. */
+  readonly routePath: string;
   /** The actual representation path key. When supplied, only that localized source is eligible. */
   readonly localeKey?: string;
 }): EfsContentResult<EfsPageSource> {
@@ -99,6 +114,15 @@ export function loadEfsPageSource(input: {
     if (selected === markdownPath) {
       const front = frontMatter(raw);
       const heading = /^#\s+(.+)$/m.exec(front.body);
+      if (front.data.visibility !== undefined) {
+        return {
+          kind: "rejected",
+          reason:
+            `Unsupported metadata "visibility" in Markdown Page "${page}/${locale ?? page}.md": ` +
+            "the Markdown authoring mode has no visibility vocabulary. Author this representation " +
+            'as a JSON Page document, where `visibility: "public" | "unlisted"` is defined.',
+        };
+      }
       return {
         kind: "ok",
         value: {
@@ -110,13 +134,41 @@ export function loadEfsPageSource(input: {
             ...front.data,
           },
           body: front.body,
+          visibility: "public",
         },
       };
     }
 
-    const parsed: unknown = JSON.parse(raw);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      return {
+        kind: "rejected",
+        reason:
+          `Invalid JSON in Page "${page}/${locale ?? page}.json": ` +
+          `${error instanceof Error ? error.message : String(error)}.`,
+      };
+    }
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
       return { kind: "rejected", reason: "A JSON Page source must be an object." };
+    }
+    const document = pageDocumentSchema.safeParse(parsed);
+    if (!document.success) {
+      return {
+        kind: "rejected",
+        reason:
+          `Invalid Page document "${page}/${locale ?? page}.json":\n` +
+          `${describePageDocumentIssues(document.error)}\n` +
+          "Every property must be one the vocabulary declares, and nothing is silently ignored.",
+      };
+    }
+    const reservedIssue = reservedHomeVisibilityIssue(document.data, input.routePath);
+    if (reservedIssue !== null) {
+      return {
+        kind: "rejected",
+        reason: `Invalid Page document "${page}/${locale ?? page}.json": ${reservedIssue}`,
+      };
     }
     return {
       kind: "ok",
@@ -125,6 +177,8 @@ export function loadEfsPageSource(input: {
         path: canonical,
         pageId: page,
         data: parsed as Readonly<Record<string, unknown>>,
+        visibility: pageVisibilityOf(document.data),
+        document: document.data,
       },
     };
   } catch (error) {

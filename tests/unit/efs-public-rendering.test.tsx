@@ -77,6 +77,20 @@ function viewWith(logo: string, pageLabelPublic: boolean): EfsView {
     properties,
     canonical: "https://www.acme.example/acme/en-001/about",
     alternates: [{ hreflang: "en-001", href: "https://www.acme.example/acme/en-001/about" }],
+    navigation: [
+      {
+        pageId: "about",
+        label: "about",
+        href: "https://www.acme.example/acme/en-001/about",
+        current: true,
+      },
+      {
+        pageId: "contact",
+        label: "Contact",
+        href: "https://www.acme.example/acme/en-001/contact",
+        current: false,
+      },
+    ],
     home: false,
   } as unknown as EfsView;
 }

@@ -2,6 +2,7 @@
 
 import { createContactInquirySender } from "@/adapters/contact-inquiry";
 import { handleContactSubmission, type ContactSubmissionState } from "@/application/contact-inquiry-service";
+import { efsContextForCurrentRequest, efsRuntimeDeclared } from "@/app/[[...segments]]/efs-request";
 import { runtimeContextForCurrentRequest } from "@/config/spoke-request";
 import type { ContactInquiryEnv } from "@/core/contact-inquiry";
 
@@ -41,11 +42,14 @@ export async function submitContactInquiry(
     website: formData.get("website"),
   };
 
-  // M17 — the CONTACT destination belongs to the Spoke that answers this request: the action asks the app's
-  // ONE selection seam for that context (the boundary's exact hostname claim, carried on a private upstream
-  // header), and a request no Spoke answers has NO destination — a loud failure rather than another Spoke's
-  // contact configuration.
-  const context = await runtimeContextForCurrentRequest();
+  // M17 + EFS — the CONTACT destination belongs to the Spoke that answers this request. An EFS
+  // host is resolved by the publication's explicit owner, including a host the older Spoke-host
+  // table does not know. The legacy selector is consulted ONLY when this deployment declares no
+  // EFS runtime at all; once EFS is declared, an unclaimed host has no destination.
+  const efsContext = await efsContextForCurrentRequest();
+  const context =
+    efsContext ??
+    (efsRuntimeDeclared() ? null : await runtimeContextForCurrentRequest());
   if (context === null) {
     throw new Error(
       "FOUNDATION-MULTISITE-M16: no Spoke answers this request's host, so there is no contact " +

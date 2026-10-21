@@ -40,7 +40,6 @@
                   "route": [
                     "frankfurt"
                   ],
-                  "visibility": "public",
                   "representations": [
                     {
                       "locale": "de"

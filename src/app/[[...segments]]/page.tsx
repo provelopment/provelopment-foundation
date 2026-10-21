@@ -1,7 +1,13 @@
 import type { Metadata } from "next";
 
 import { EfsPageView } from "@/components/efs/efs-page";
-import { efsDescription, efsTitle, efsViewForCurrentRequest } from "./efs-request";
+import {
+  efsDescription,
+  efsLanguageAlternates,
+  efsRobots,
+  efsTitle,
+  efsViewForCurrentRequest,
+} from "./efs-request";
 import { legacyTestRuntimeEnabled, missingEfsInstallation } from "./legacy-test-runtime";
 import { pageForContext, pageMetadataForContext, spokeServerComposition } from "./server-composition";
 import { requestPublicDestination } from "./request-context";
@@ -45,12 +51,14 @@ export async function generateMetadata({ params }: PageRouteProps): Promise<Meta
   const segments = (await params).segments ?? [];
   const efs = await efsViewForCurrentRequest(segments);
   if (efs) {
+    const robots = efsRobots(efs);
     return {
       title: efsTitle(efs),
       description: efsDescription(efs),
+      ...(robots === undefined ? {} : { robots }),
       alternates: {
         canonical: efs.canonical,
-        languages: Object.fromEntries(efs.alternates.map((alternate) => [alternate.hreflang, alternate.href])),
+        languages: efsLanguageAlternates(efs),
       },
       openGraph: {
         title: efsTitle(efs),

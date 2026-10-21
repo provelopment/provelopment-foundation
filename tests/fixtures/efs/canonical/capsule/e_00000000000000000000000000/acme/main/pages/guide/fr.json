@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "title": "Guide français non répertorié",
+  "visibility": "unlisted",
+  "sections": [
+    {
+      "type": "prose",
+      "body": "Cette représentation est accessible directement mais jamais annoncée."
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "title": "Product detail",
+  "visibility": "unlisted",
+  "sections": [
+    {
+      "type": "prose",
+      "body": "Nested Page route evidence inside the same Site."
+    }
+  ]
+}

@@ -28,6 +28,7 @@ import { resolveProperties, type EffectiveProperties } from "@/core/efs/properti
 import { sitemapEntries, type DiscoveryPage } from "@/core/efs/discovery";
 import type { PageVisibility } from "@/core/page-document";
 import type { ContactInquiryOrigin } from "@/core/contact-inquiry";
+import type { ContactOwnerIdentity } from "@/config/contact-receiver";
 import { deploymentPaths } from "@/config/deployment-root";
 import { EFS_REQUEST_PATH_HEADER } from "@/config/efs/request-path";
 import {
@@ -318,6 +319,8 @@ export function efsRuntimeDeclared(): boolean {
 export interface EfsContactContext {
   readonly context: SpokeRuntimeContext;
   readonly origin: ContactInquiryOrigin;
+  /** Every published owner in this manifest, so receiver-key ambiguity can be detected. */
+  readonly owners: readonly ContactOwnerIdentity[];
 }
 
 export async function efsContactContextForCurrentRequest(): Promise<EfsContactContext | null> {
@@ -350,6 +353,10 @@ export async function efsContactContextForCurrentRequest(): Promise<EfsContactCo
       host: host.toLowerCase(),
       path: pathname,
     },
+    owners: runtimeValue.manifest.publications.map((candidate) => ({
+      id: candidate.spokeId,
+      ...(candidate.spokeHubId === undefined ? {} : { spokeHubId: candidate.spokeHubId }),
+    })),
   };
 }
 

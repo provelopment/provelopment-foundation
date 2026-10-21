@@ -24,11 +24,14 @@ import { materializeEfsInstallation, selectEfsInstallation } from "../support/ef
 
 const installation = materializeEfsInstallation({
   mode: "flat",
-  spokes: ["acme-spoke", "beta-spoke"],
+  spokes: ["acme-spoke", "beta-spoke", "client-a", "client_a"],
 });
 
 const acmeConfigPath = join(installation.root, "spokes", "acme-spoke", "site.config.json");
 const betaConfigPath = join(installation.root, "spokes", "beta-spoke", "site.config.json");
+const collisionConfigPaths = ["client-a", "client_a"].map((spoke) =>
+  join(installation.root, "spokes", spoke, "site.config.json"),
+);
 
 interface ConfigShape {
   features: { contact: Record<string, unknown> };
@@ -41,6 +44,12 @@ writeFileSync(acmeConfigPath, `${JSON.stringify(acmeConfig, null, 2)}\n`, "utf8"
 const betaConfig = JSON.parse(readFileSync(betaConfigPath, "utf8")) as ConfigShape;
 betaConfig.features.contact = { provider: "webhook" };
 writeFileSync(betaConfigPath, `${JSON.stringify(betaConfig, null, 2)}\n`, "utf8");
+
+for (const configPath of collisionConfigPaths) {
+  const config = JSON.parse(readFileSync(configPath, "utf8")) as ConfigShape;
+  config.features.contact = { provider: "webhook" };
+  writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+}
 
 const capsuleRoot = mkdtempSync(join(tmpdir(), "efs-contact-capsule-"));
 cpSync(join(process.cwd(), "tests", "fixtures", "efs", "canonical", "capsule"), capsuleRoot, {
@@ -108,6 +117,25 @@ const secondEntityPublication = {
 };
 manifest.publications.push(secondEntityPublication);
 
+for (const [spokeId, host, publicationId] of [
+  ["client-a", "client-a.example", "client-a-managed"],
+  ["client_a", "client-underscore.example", "client-underscore-managed"],
+] as const) {
+  manifest.publications.push({
+    ...structuredClone(acmePublication),
+    id: publicationId,
+    spokeId,
+    bindings: [
+      {
+        ...structuredClone(acmePublication.bindings[0]),
+        id: `${publicationId}-web`,
+        host,
+        prefix: ["client"],
+      },
+    ],
+  });
+}
+
 writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
 selectEfsInstallation(installation.root);
@@ -129,8 +157,12 @@ afterAll(() => {
   delete process.env.CONTACT_WEBHOOK_TOKEN;
   delete process.env.CONTACT_WEBHOOK_URL__ACME_SPOKE;
   delete process.env.CONTACT_WEBHOOK_URL__BETA_SPOKE;
+  delete process.env.CONTACT_WEBHOOK_URL__CLIENT_A;
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  delete process.env.CONTACT_WEBHOOK_URL__CLIENT_A;
+});
 
 function setRequest(host: string, pathname: string): void {
   state.headers.set("host", host);
@@ -275,5 +307,25 @@ describe("EFS contact publication ownership (FOUNDATION-COMPLETE-A1-R1)", () => 
     await expect(
       submitContactInquiry(initialContactSubmissionState, submission()),
     ).rejects.toThrow(/no Spoke answers this request's host/);
+  });
+
+  it("fails explicitly when flat identities collide on one legacy receiver key", async () => {
+    process.env.CONTACT_WEBHOOK_URL__CLIENT_A = "https://legacy.example.test/inquiries";
+    setRequest("client-a.example", "/client/en-001/about");
+
+    const result = await submitContactInquiry(initialContactSubmissionState, submission());
+    expect(result.status).toBe("configError");
+  });
+
+  it("does not let a visitor field choose the encoded receiver key", async () => {
+    setRequest("client-underscore.example", "/client/en-001/about");
+    const { captured } = webhookFetch();
+
+    const result = await submitContactInquiry(
+      initialContactSubmissionState,
+      submission({ receiverKey: "CLIENT_A", spokeKey: "CLIENT_A" }),
+    );
+    expect(result.status).toBe("success");
+    expect(captured()).toBe("https://receiver.example.test/inquiries");
   });
 });

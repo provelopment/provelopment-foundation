@@ -4,31 +4,73 @@ import { createContactInquirySender } from "@/adapters/contact-inquiry";
 import { handleContactSubmission, type ContactSubmissionState } from "@/application/contact-inquiry-service";
 import { efsContactContextForCurrentRequest, efsRuntimeDeclared } from "@/app/[[...segments]]/efs-request";
 import { runtimeContextForCurrentRequest } from "@/config/spoke-request";
-import type { SpokeRuntimeContext } from "@/config/installation-runtime";
-import type { ContactInquiryEnv } from "@/core/contact-inquiry";
+import {
+  contactOwnerLabel,
+  contactReceiverKey,
+  contactReceiverLegacyGroups,
+  contactReceiverLegacyKey,
+  type ContactOwnerIdentity,
+} from "@/config/contact-receiver";
+import { ContactInquiryMisconfigurationError, type ContactInquiryEnv } from "@/core/contact-inquiry";
 
 export type { ContactSubmissionState } from "@/application/contact-inquiry-service";
+
+const URL_PREFIX = "CONTACT_WEBHOOK_URL__";
+const TOKEN_PREFIX = "CONTACT_WEBHOOK_TOKEN__";
+
+function configured(prefix: string, key: string): string | undefined {
+  return process.env[`${prefix}${key}`];
+}
 
 /**
  * The receiver environment for ONE verified owner.
  *
- * `CONTACT_WEBHOOK_URL` / `CONTACT_WEBHOOK_TOKEN` remain the installation-wide defaults. An
- * installation that hosts several Spokes with distinct receivers may set the additive
- * `CONTACT_WEBHOOK_URL__<SPOKE_KEY>` / `CONTACT_WEBHOOK_TOKEN__<SPOKE_KEY>` override, where
- * `<SPOKE_KEY>` is the composite owner identity upper-cased with every non-alphanumeric run
- * replaced by `_` (for example `hub-one/acme-spoke` → `HUB_ONE_ACME_SPOKE`).
+ * `CONTACT_WEBHOOK_URL` / `CONTACT_WEBHOOK_TOKEN` remain the installation-wide defaults. Per-Spoke
+ * overrides use the collision-free keys from `@/config/contact-receiver`. The only environment reads
+ * are here, at call time, exactly as the architecture boundary requires.
  *
- * The owner is resolved before this function is called; no form value or client header chooses it.
+ * The owner is resolved before this function is called; no form value, URL component or client header
+ * chooses it.
  */
-function contactEnvForOwner(owner: SpokeRuntimeContext): ContactInquiryEnv {
-  const key = (owner.spokeHubId ? `${owner.spokeHubId}__${owner.id}` : owner.id)
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "_");
+function contactReceiverEnv(
+  owner: ContactOwnerIdentity,
+  allOwners: readonly ContactOwnerIdentity[],
+): ContactInquiryEnv {
+  const owners = allOwners.length > 0 ? allOwners : [owner];
+  const key = contactReceiverKey(owner);
+  const legacyKey = contactReceiverLegacyKey(owner);
+  const url = configured(URL_PREFIX, key);
+  const token = configured(TOKEN_PREFIX, key);
+
+  const collision = contactReceiverLegacyGroups(owners).find(
+    (group) =>
+      configured(URL_PREFIX, group.key) !== undefined ||
+      configured(TOKEN_PREFIX, group.key) !== undefined,
+  );
+  if (collision) {
+    throw new ContactInquiryMisconfigurationError(
+      `contact receiver key "${collision.key}" is ambiguous for ` +
+        `${collision.owners.map(contactOwnerLabel).join(", ")}; use the collision-free keys ` +
+        `${collision.owners.map(contactReceiverKey).join(", ")}.`,
+    );
+  }
+
+  if (key !== legacyKey && configured(URL_PREFIX, legacyKey) !== undefined) {
+    throw new ContactInquiryMisconfigurationError(
+      `contact receiver key "${legacyKey}" cannot identify this Spoke unambiguously; ` +
+        `use "${key}" for ${contactOwnerLabel(owner)}.`,
+    );
+  }
+  if (key !== legacyKey && configured(TOKEN_PREFIX, legacyKey) !== undefined) {
+    throw new ContactInquiryMisconfigurationError(
+      `contact receiver token key "${legacyKey}" cannot identify this Spoke unambiguously; ` +
+        `use "${key}" for ${contactOwnerLabel(owner)}.`,
+    );
+  }
+
   return {
-    webhookUrl:
-      process.env[`CONTACT_WEBHOOK_URL__${key}`] ?? process.env.CONTACT_WEBHOOK_URL,
-    webhookToken:
-      process.env[`CONTACT_WEBHOOK_TOKEN__${key}`] ?? process.env.CONTACT_WEBHOOK_TOKEN,
+    webhookUrl: url ?? process.env.CONTACT_WEBHOOK_URL,
+    webhookToken: token ?? process.env.CONTACT_WEBHOOK_TOKEN,
   };
 }
 
@@ -76,12 +118,18 @@ export async function submitContactInquiry(
         "destination to submit to.",
     );
   }
-  const env = contactEnvForOwner(context);
+  const owners: readonly ContactOwnerIdentity[] =
+    efsContact?.owners ??
+    [{ id: context.id, ...(context.spokeHubId === undefined ? {} : { spokeHubId: context.spokeHubId }) }];
 
   return handleContactSubmission({
     values,
     origin: efsContact?.origin,
-    createSender: () => createContactInquirySender(context.siteConfig.contactFeature, env),
+    createSender: () =>
+      createContactInquirySender(
+        context.siteConfig.contactFeature,
+        contactReceiverEnv(context, owners),
+      ),
     log: (message) => console.error(message),
   });
 }

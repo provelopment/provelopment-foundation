@@ -102,10 +102,13 @@ share that Spoke's receiver.
 
 `CONTACT_WEBHOOK_URL` and `CONTACT_WEBHOOK_TOKEN` are installation-wide defaults. For distinct
 Spoke receivers, set the additive `CONTACT_WEBHOOK_URL__<SPOKE_KEY>` and
-`CONTACT_WEBHOOK_TOKEN__<SPOKE_KEY>` overrides. `<SPOKE_KEY>` is the resolved owner identity
-upper-cased with non-alphanumeric runs replaced by `_` (for example `acme-spoke` →
-`ACME_SPOKE`). The receiver owns downstream routing/retention; Foundation sends no Entity/Spoke
-administrative IDs and is not a CRM.
+`CONTACT_WEBHOOK_TOKEN__<SPOKE_KEY>` overrides. A conventional lowercase flat id keeps the published
+key (`acme-spoke` → `ACME_SPOKE`); an identified Hub uses a reserved composite key
+(`hub-one`/`client-a` → `__COMPOSITE__HUB_ONE__CLIENT_A`); any identity outside that safe form is
+UTF-8-hex encoded (`__ENC_FLAT_<HEX>` or `__ENC_HUB_<HUB_HEX>__<SPOKE_HEX>`). The old lossy key is
+rejected when it is ambiguous, so two ids such as `client-a`/`client_a` cannot silently share a
+receiver. The receiver owns downstream routing/retention; Foundation sends no Spoke administrative IDs;
+the documented `origin` identifies the publication/Entity/Facet for attribution, and Foundation is not a CRM.
 
 The webhook payload includes an optional server-derived `origin`
 (`publicationId`, `bindingId`, `entityId`, `facetId`, optional `siteId`/`locale`, `host`, `path`) so a

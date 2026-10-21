@@ -56,7 +56,9 @@ pnpm test:browser:deployment
      `features.contact.provider` is `webhook`;
    - `CONTACT_WEBHOOK_TOKEN` — optional bearer token;
    - optional per-Spoke overrides `CONTACT_WEBHOOK_URL__<SPOKE_KEY>` and
-     `CONTACT_WEBHOOK_TOKEN__<SPOKE_KEY>` for distinct receivers.
+     `CONTACT_WEBHOOK_TOKEN__<SPOKE_KEY>` for distinct receivers. Conventional flat ids retain their
+     old key; identified Hubs and non-safe ids use the collision-free `__COMPOSITE__…`/`__ENC_…` keys
+     documented in `CUSTOMIZING.md`. An ambiguous legacy key is refused.
    They are read at request time and are not required at build time.
 4. Attach the authorized custom domains through the provider and DNS owner.
 5. Verify the publication manifest's binding hosts match the domains being attached. Canonical
@@ -92,7 +94,9 @@ Run these checks against the actual public host:
 No variables are required for a default build. `CONTACT_WEBHOOK_URL` and
 `CONTACT_WEBHOOK_TOKEN` configure the optional webhook sender; the additive
 `CONTACT_WEBHOOK_URL__<SPOKE_KEY>` / `CONTACT_WEBHOOK_TOKEN__<SPOKE_KEY>` overrides may configure
-distinct Spoke receivers. The receiver is Spoke-owned; two Entities in one Spoke intentionally share
+distinct Spoke receivers; conventional flat ids retain their old key, while identified Hubs and
+non-safe ids use the collision-free `__COMPOSITE__…`/`__ENC_…` keys documented in `CUSTOMIZING.md`.
+An ambiguous legacy key is refused. The receiver is Spoke-owned; two Entities in one Spoke intentionally share
 it, and the receiver owns downstream routing/retention. The webhook payload adds an optional
 server-derived `origin` (`publicationId`, `bindingId`, `entityId`, `facetId`, optional
 `siteId`/`locale`, `host`, `path`) so even a shared receiver can attribute the inquiry to the published

@@ -305,6 +305,10 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
     "throwaway tree, removed by exact ownership (B4B)",
   "tests/integration/efs-app-request.test.ts":
     "OS temp only — one deliberately invalid manifest written to prove EFS fails with a controlled diagnostic rather than falling back (S3-E3-R02)",
+  "tests/integration/efs-contact-action.test.ts":
+    "OS temp only: one disposable explicit Installation, its publication manifest and its own modified configuration used to prove EFS-only contact-owner resolution; removed by exact ownership (FOUNDATION-COMPLETE-A1)",
+  "tests/integration/efs-contact-hub-receiver.test.ts":
+    "OS temp only: two disposable identified-Hub Spokes, their publication manifest and their own modified configuration used to prove injective receiver-key routing and attribution; removed by exact ownership (FOUNDATION-COMPLETE-A1-R2F-C1)",
   "tests/integration/foundation-installation-bootstrap.test.ts":
     "OS temp target roots and one deliberately half-written materialisation, plus the installation's own " +
     "generated asset mirror when the established tree is proved self-contained (B4B)",

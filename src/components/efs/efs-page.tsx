@@ -1,9 +1,7 @@
 import { PageDocumentContent } from "@/components/site/page-document-content";
 import { SafeMarkdownContent } from "@/components/site/safe-markdown-content";
 import { Heading } from "@/components/ui/heading";
-import { localePathKey } from "@/core/efs/locales";
-import { assetUrl, contentSegments } from "@/core/efs/publication";
-import { pageDocumentSchema } from "@/core/page-document";
+import { assetUrl } from "@/core/efs/publication";
 
 import type { EfsView } from "@/app/[[...segments]]/efs-request";
 
@@ -33,38 +31,9 @@ export function EfsPageView({
     view.source.format === "markdown"
       ? (view.source.body ?? "").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "")
       : undefined;
-  const document = view.source.format === "json" ? pageDocumentSchema.safeParse(view.source.data) : null;
-  const fallbackBody =
-    view.source.format === "json"
-      ? typeof view.source.data.body === "string"
-        ? view.source.data.body
-        : typeof view.source.data.content === "string"
-          ? view.source.data.content
-          : undefined
-      : undefined;
+  const document = view.source.document;
 
-  const navItems = view.site.pages
-    .filter((page) => (page.visibility ?? "public") === "public")
-    .map((page) => {
-      const representation =
-        page.representations.find((candidate) => localePathKey(candidate.locale) === view.localeKey) ??
-        page.representations.find((candidate) => candidate.locale === page.fallbackLocaleKey);
-      if (!representation) return null;
-      const label = page.properties?.["nav.label"];
-      const route = page.route.length === 1 && page.route[0] === "home" ? [] : page.route;
-      return {
-        pageId: page.id,
-        label: label?.public === true && typeof label.value === "string" ? label.value : page.id,
-        href: `/${contentSegments(view.binding, {
-          siteId: view.site.id,
-          locale: representation.locale,
-          localeKey: localePathKey(representation.locale),
-          pageRoute: route,
-        }).join("/")}`,
-        current: page.id === view.page.id,
-      };
-    })
-    .filter((item): item is NonNullable<typeof item> => item !== null);
+  const navItems = view.navigation ?? [];
 
   return (
     <>
@@ -72,12 +41,7 @@ export function EfsPageView({
         <header className="border-b border-neutral-200">
           <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-4 px-6 py-5">
             <a
-              href={`/${contentSegments(view.binding, {
-                siteId: view.site.id,
-                locale: view.locale,
-                localeKey: view.localeKey,
-                pageRoute: [],
-              }).join("/")}`}
+              href={navItems.find((item) => item.pageId === "home")?.href ?? view.canonical}
               className="flex items-center gap-3 font-semibold"
             >
               {logoPath ? (
@@ -103,15 +67,14 @@ export function EfsPageView({
       )}
       <main className="mx-auto max-w-3xl px-6 py-16">
         <article>
-          {document?.success ? (
-            <PageDocumentContent document={document.data} locale={view.locale} />
+          {document !== undefined ? (
+            <PageDocumentContent document={document} locale={view.locale} />
           ) : (
             <>
               <Heading level={1} tone="title">
                 {typeof view.source.data.title === "string" ? view.source.data.title : view.page.id}
               </Heading>
               {rawMarkdown ? <SafeMarkdownContent markdown={rawMarkdown} className="mt-8" /> : null}
-              {fallbackBody ? <SafeMarkdownContent markdown={fallbackBody} className="mt-8" /> : null}
             </>
           )}
           <dl className="mt-10 grid gap-3 text-sm">

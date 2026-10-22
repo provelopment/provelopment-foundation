@@ -1,9 +1,9 @@
 # Site Customization — configuration-first operation
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-10-04.2`
-> **Content model described:** the **Foundation installation model** — one immutable Foundation release (`provelopment-foundation-vYYYYMMDD.HHMM`; the grandfathered first release is `v2026.09.30-foundation-release-initial`) established into one autonomous **Foundation installation** that owns its own authored capsule, its own adoption record (`deployment/foundation-baseline.json`) and its own generated operational state, and serves its own **spokes**, each with **Site** contexts — together with the delivered authoring model those installations serve: two page modes (safe Markdown and declarative JSON), the page title as a page's only level-1 heading, and pages addressed per site and language. It also states the lifecycle contract: **Update** = authored pages and/or assets change while the Foundation release does not; **Upgrade** = a different immutable Foundation release is adopted, Installation-wide; one Installation therefore runs one Foundation release
-> **Procedure validation:** the procedures were last exercised end to end on 2026-09-30 against the public Foundation product at `3698c318779d9695f98edc803854a5af6bb01b5f`: the repository gate, a deterministic release construction (`provelopment-foundation-v20990101.0000`, 368 files, digest `sha256:c29845a3…`), a disposable establishment from the real `deployment/` capsule, and the installation-owned gate. At the 2026-09-30 procedure-validation run, the only immutable Foundation release then published was `v2026.09.30-foundation-release-initial`; later immutable Foundation releases have been published since, and this set does not enumerate them because that inventory changes with every release. **No procedure-validation run was performed for revision `2026-10-04.2`**: it corrects the procedure-validation statement so it is historically scoped rather than a present-tense release inventory, and executes no procedure. No release tag is claimed.
+> **Manual revision:** `2026-10-22.1`
+> **Content model described:** the **current EFS installation model** — one immutable Foundation release established into one autonomous Installation that owns its authored capsule and serves explicitly declared Entities, Facets, Sites, Pages and localized representations through publication bindings owned by declared Spokes. Pages are language-neutral; each localized representation is a JSON or Markdown source; JSON visibility is per representation; `unlisted` means reachable but not advertised, never private. Update changes authored material; Upgrade adopts a different immutable release. Legacy country-coded Sites, regional pages, Location routing and computed timezone/DST behavior are historical only.
+> **Procedure validation:** the release and establishment procedures retain their 2026-09-30 end-to-end baseline. Revision `2026-10-22.1` reconciles the distributed model to the merged EFS runtime and the A1-R2F receiver-key isolation, reference and hygiene correction, and the A1-R2F-C1 injective identified-Hub receiver-key correction, and is verified by the Foundation unit, integration, architecture, deployment and browser gates recorded in `FOUNDATION-COMPLETE-A1-R2F` (including its C1 correction record); no release tag is claimed by this revision.
 > **Adopter baseline:** the installation's own adoption record — `deployment/foundation-baseline.json` inside the installation's capsule. An adopter's own governance record is the adopter's; it is never the Foundation's adoption record.
 > **Master authority:** maintained in the Provelopment governance repository (private; not part of this product)
 >
@@ -97,6 +97,54 @@ Current platform behaviour — treat as the contract:
   menu/overlay, so it cannot be duplicated, collapsed away, or obscured.
 - Disabled, or missing a label/destination, renders **nothing** — the platform
   never invents a destination or an accessible name.
+
+## CURRENT EFS OPERATING MODEL
+
+This section is authoritative for the production runtime. The country/Site/Location guidance
+below belongs to the retained legacy test runtime and historical releases.
+
+- **Content ownership:** `Entity → Facet → Site → Page → localized representation`.
+- **Operational ownership:** `Foundation Installation → Spoke Hub → Spoke`.
+- A **Site** is a content context such as `main`, not a country, host, locale or prefix.
+- A **publication** explicitly names its owning `spokeId` (and `spokeHubId` when applicable), the
+  Entity, the Facet and its bindings.
+- `deployment/efs/manifest.json` is the publication authority; `deployment/spokes.json` is the
+  Spoke-hierarchy authority. Neither name nor hostname establishes ownership.
+- Page sources live in `deployment/efs/capsule/<entityId>/<facetId>/<siteId>/pages/...`; both the
+  manifest declaration and a validated source are required.
+- Canonical URLs, `hreflang`, Open Graph URLs, assets and the sitemap come from the effective
+  binding. `site.url` is optional and informational.
+- A publication may select `presentationSiteCode` from its owning Spoke for the shared shell. That
+  selection does not change identity or content ownership.
+- **Contact ownership:** the Server Action matches the exact host/prefix binding and resolves the
+  owning Spoke. Different Spokes may share one host with disjoint prefixes. An unclaimed host/prefix
+  has no destination; forged fields/headers/EntityIDs cannot choose one. Two Entities in one Spoke
+  intentionally share its receiver. `CONTACT_WEBHOOK_URL`/`TOKEN` are installation-wide defaults;
+  `CONTACT_WEBHOOK_URL__<SPOKE_KEY>`/`TOKEN__<SPOKE_KEY>` are additive per-Spoke overrides. Conventional
+  flat ids retain `ACME_SPOKE`; other flat ids use `__ENC_FLAT_…`, and identified Hub/Spoke pairs always
+  use the injective `__ENC_HUB_<HUB_HEX>__<SPOKE_HEX>` form. An ambiguous legacy key is refused. The
+  webhook payload adds a server-derived `origin` (publication/binding/Entity/Facet/Site/host/path) so a
+  shared receiver can attribute the inquiry; existing clients may ignore it.
+- JSON Page visibility is per localized representation; absent means public. `unlisted` is
+  reachable but not advertised, never private. The manifest has no Page-level visibility.
+- EFS does **not** infer geography or language from IDs, names, routes, Spokes or prefixes, and
+  does **not** derive timezone or currency, compute opening status or route by location.
+- `my.provelopment.com` is a public website hosting address, not a portal or Dashboard. A future
+  Dashboard is a separate optional application and never a dependency of public sites.
+
+Configuration validation for an EFS change:
+
+```bash
+pnpm exec tsc --noEmit
+pnpm lint
+pnpm test:deployment
+pnpm build
+pnpm test:browser:deployment
+```
+
+
+> **LEGACY RUNTIME — NOT EFS.** The Site-as-country, Location and regional-selector guidance below
+> is historical. It is not an EFS configuration instruction and creates no geographic capability.
 
 ### Spokes, Sites, and per-Site configuration
 

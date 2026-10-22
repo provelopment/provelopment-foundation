@@ -1,5 +1,10 @@
 # EFS S3-E3-R01 — fixture, use-case and preservation evidence
 
+> **HISTORICAL EVIDENCE.** This checkpoint was superseded by the merged `S3-E3` R01–R07 implementation
+> at Foundation `main` `19d9195`, by the A1 correctness closure and by A1-R1. Statements that a proof
+> remains unproven describe this checkpoint, not current status; current behaviour is the merged
+> source/tests.
+
 **Branch:** `feat/foundation-efs-s3e3-canonical-integration`
 **Status:** implementation evidence only. This file does **not** claim D21 has passed. The reference
 Installation conversion and several use cases remain unproven; see §1 and §3.

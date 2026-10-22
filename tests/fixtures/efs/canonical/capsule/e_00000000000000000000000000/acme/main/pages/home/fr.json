@@ -1,5 +1,11 @@
 {
+  "schemaVersion": 1,
   "title": "Accueil Acme",
   "description": "Page d'accueil gérée Acme.",
-  "body": "Bienvenue depuis l'Entité Acme explicite."
+  "sections": [
+    {
+      "type": "prose",
+      "body": "Bienvenue depuis l'Entité Acme explicite."
+    }
+  ]
 }

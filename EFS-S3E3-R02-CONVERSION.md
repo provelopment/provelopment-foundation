@@ -1,5 +1,9 @@
 # EFS S3-E3-R02 — controlled reference conversion ledger
 
+> **HISTORICAL EVIDENCE.** The conversion described here is merged; current behaviour is the merged
+> source/tests at Foundation `main` `19d9195`. This ledger records the conversion checkpoint, not a
+> current runtime status or authorization.
+
 **Implementation:** `deployment/efs`
 **Converter:** `scripts/efs/convert-reference.mjs` (reads `deployment/spokes/**`; never writes there)
 **Runtime:** EFS resolves the binding, Entity, Facet, Site, Page, representation and capsule source.

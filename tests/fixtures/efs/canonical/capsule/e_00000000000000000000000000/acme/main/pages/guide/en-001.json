@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "title": "Public guide",
+  "sections": [
+    {
+      "type": "prose",
+      "body": "The English guide is public and should be discoverable."
+    }
+  ]
+}

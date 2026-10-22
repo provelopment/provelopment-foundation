@@ -1,9 +1,9 @@
 # Provelopment Foundation Instruction Manuals
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-10-04.2`
-> **Content model described:** the **Foundation installation model** — one immutable Foundation release (`provelopment-foundation-vYYYYMMDD.HHMM`; the grandfathered first release is `v2026.09.30-foundation-release-initial`) established into one autonomous **Foundation installation** that owns its own authored capsule, its own adoption record (`deployment/foundation-baseline.json`) and its own generated operational state, and serves its own **spokes**, each with **Site** contexts — together with the delivered authoring model those installations serve: two page modes (safe Markdown and declarative JSON), the page title as a page's only level-1 heading, and pages addressed per site and language. It also states the lifecycle contract: **Update** = authored pages and/or assets change while the Foundation release does not; **Upgrade** = a different immutable Foundation release is adopted, Installation-wide; one Installation therefore runs one Foundation release
-> **Procedure validation:** the procedures were last exercised end to end on 2026-09-30 against the public Foundation product at `3698c318779d9695f98edc803854a5af6bb01b5f`: the repository gate, a deterministic release construction (`provelopment-foundation-v20990101.0000`, 368 files, digest `sha256:c29845a3…`), a disposable establishment from the real `deployment/` capsule, and the installation-owned gate. At the 2026-09-30 procedure-validation run, the only immutable Foundation release then published was `v2026.09.30-foundation-release-initial`; later immutable Foundation releases have been published since, and this set does not enumerate them because that inventory changes with every release. **No procedure-validation run was performed for revision `2026-10-04.2`**: it corrects the procedure-validation statement so it is historically scoped rather than a present-tense release inventory, aligns the Site/Spoke domain vocabulary across the set so the distributed manuals teach the accepted model, and executes no procedure. No release tag is claimed.
+> **Manual revision:** `2026-10-22.1`
+> **Content model described:** the **current EFS installation model** — one immutable Foundation release established into one autonomous Installation that owns its authored capsule and serves explicitly declared Entities, Facets, Sites, Pages and localized representations through publication bindings owned by declared Spokes. Pages are language-neutral; each localized representation is a JSON or Markdown source; JSON visibility is per representation; `unlisted` means reachable but not advertised, never private. Update changes authored material; Upgrade adopts a different immutable release. Legacy country-coded Sites, regional pages, Location routing and computed timezone/DST behavior are historical only.
+> **Procedure validation:** the release and establishment procedures retain their 2026-09-30 end-to-end baseline. Revision `2026-10-22.1` reconciles the distributed model to the merged EFS runtime and the A1-R2F receiver-key isolation, reference and hygiene correction, and the A1-R2F-C1 injective identified-Hub receiver-key correction, and is verified by the Foundation unit, integration, architecture, deployment and browser gates recorded in `FOUNDATION-COMPLETE-A1-R2F` (including its C1 correction record); no release tag is claimed by this revision.
 > **Adopter baseline:** the installation's own adoption record — `deployment/foundation-baseline.json` inside the installation's capsule. An adopter's own governance record is the adopter's; it is never the Foundation's adoption record.
 > **Master authority:** maintained in the Provelopment governance repository (private; not part of this product)
 >
@@ -11,7 +11,19 @@
 > verified at propagation — and is never edited in place: edit the master upstream and
 > propagate.
 
-## How to read the version header
+## Current EFS model in one paragraph
+
+Production Foundation serves explicit EFS publications only. Content ownership is
+`Entity → Facet → Site → Page → localized representation`; operational ownership is
+`Foundation Installation → Spoke Hub → Spoke`. A publication names its owning Spoke and explicit
+host/path bindings in `deployment/efs/manifest.json`; Spokes are declared in `deployment/spokes.json`.
+Page sources and owner assets live under `deployment/efs/capsule/<entityId>/<facetId>/<siteId>/`.
+Canonical URLs and discovery come from the effective binding, not `site.url`. JSON visibility is per
+localized representation; `unlisted` is reachable but never advertised and is not private. No
+geography, timezone, currency or locale is inferred, and no legacy country/Site/Location model is
+the production runtime.
+
+
 
 Five different Foundation references are easy to confuse, and confusing them is how
 a project ends up claiming a baseline it never acquired. They are defined here and
@@ -157,6 +169,8 @@ project is adopted.
 
 | Manual revision | Procedure validation | Commit | Date |
 | --- | --- | --- | --- |
+| `2026-10-22.1` | **No new procedure was executed for this revision.** It corrects the documented identified-Hub contact receiver key to the injective UTF-8-hex form `__ENC_HUB_<HUB_HEX>__<SPOKE_HEX>` after the previous composite spelling was found to collide on Hub `a--b` + Spoke `c` versus Hub `a` + Spoke `b--c`. Flat legacy and encoded-flat keys are unchanged. The correction is verified by the Foundation-focused regression and complete gates recorded in `FOUNDATION-COMPLETE-A1-R2F` (including its C1 correction record). | — (documentation-only; names no Foundation revision) | 2026-10-22 |
+
 | `2026-10-04.2` | **No procedure-validation run was performed for this revision.** It serves two
 reconciliation purposes and changes no procedure: (1) it corrects the
 procedure-validation statement so it is historically scoped rather than a present-tense release

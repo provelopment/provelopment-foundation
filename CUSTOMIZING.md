@@ -5,6 +5,119 @@ want to turn it into their own website. The core idea:
 
 > **You customize configuration, content, and assets only.**
 > Platform code (`src/core`, `src/application`, `src/adapters`,
+## CURRENT EFS CUSTOMIZATION MODEL
+
+This section is authoritative for the production runtime. Later sections that describe
+country-coded Sites, regional pages, Location selectors or computed timezone behavior document the
+retained legacy test runtime and historical releases; do not use them to author an EFS Installation.
+
+### What you change
+
+| Surface | Where |
+| --- | --- |
+| Entity, Facet, Site, Page and representation declarations | `deployment/efs/manifest.json` |
+| Owner-scoped Page content | `deployment/efs/capsule/<entityId>/<facetId>/<siteId>/pages/...` |
+| Owner-scoped dictionaries/assets | the same owner path's `dictionaries/` and `assets/` |
+| Publication hosts, prefixes and Spoke ownership | `deployment/efs/manifest.json` |
+| Spoke hierarchy | `deployment/spokes.json` |
+| Shared presentation shell | the owning Spoke's `site.config.json`, `config/i18n/` and `content/assets/` |
+
+The manifest and a validated source are both required for a Page to be served. There is no
+folder-derived publication and no implicit Site/locale/page fallback outside the declarations.
+
+### Adding a Page
+
+1. Declare the language-neutral Page in the Site's `pages` array:
+
+```json
+{
+  "id": "services",
+  "route": ["services"],
+  "fallbackLocaleKey": "en",
+  "representations": [{ "locale": "en" }, { "locale": "de" }],
+  "properties": { "nav.label": { "value": "Services", "public": true } }
+}
+```
+
+2. Add one source per declared representation:
+
+```text
+deployment/efs/capsule/<entity>/<facet>/<site>/pages/services/en.md
+deployment/efs/capsule/<entity>/<facet>/<site>/pages/services/de.json
+```
+
+JSON is the higher-precedence format for the same representation. A declared representation with
+no source, an undeclared source, a duplicate Page ID/route or a malformed document is refused.
+
+### Configuration authority
+
+- `publication.host` (the binding) owns canonical URLs, `hreflang`, Open Graph URLs, assets and the
+  sitemap.
+- `site.url` is optional and informational; do not use it to change the public origin.
+- A custom-domain change edits the publication binding. It does not mint a new Entity or transfer
+  content ownership.
+- A Spoke's `site.config.json` governs its approved presentation shell and contact features; it
+  does not decide EFS Page visibility.
+
+### Visibility and unlisted content
+
+Visibility belongs to each localized JSON Page document:
+
+```json
+{
+  "schemaVersion": 1,
+  "title": "Launch note",
+  "visibility": "unlisted",
+  "sections": [{ "type": "prose", "body": "Reachable, not advertised." }]
+}
+```
+
+- absent ⇒ public;
+- `unlisted` ⇒ served at its exact URL, `noindex, nofollow`, absent from sitemap/navigation/
+  `hreflang`/`x-default`;
+- public and unlisted representations of the same Page are independent;
+- fallback never redirects to an unlisted representation;
+- Home may not be unlisted;
+- Markdown has no visibility vocabulary;
+- **unlisted is discoverability control, not privacy or access control.**
+
+The manifest has no Page-level `visibility`; adding one is refused. This is the single publication
+decision per effective representation.
+
+### Geographic and time facts
+
+A Site is not a country. IDs, names, routes, Spokes and publication prefixes never imply geography
+or language. Place/address/contact/opening-hours facts may be authored as optional properties, but
+EFS has **no automatic timezone or currency derivation**, no “open now” computation and no
+location-derived locale. Any such behavior would require a separate accepted contract.
+
+### Capability configuration
+
+Analytics, maps directions, booking links and contact inquiry configuration remain in the owning
+Spoke's `site.config.json`. The contact Server Action matches the exact host/prefix binding, resolves
+the owning Spoke, then reads that Spoke's `features.contact`. Different Spokes may share one host
+with disjoint prefixes; each resolves its own receiver. An unclaimed host/prefix, a missing trusted
+path, or a forged form/header/EntityID has no destination. Two Entities in one Spoke intentionally
+share that Spoke's receiver.
+
+`CONTACT_WEBHOOK_URL` and `CONTACT_WEBHOOK_TOKEN` are installation-wide defaults. For distinct
+Spoke receivers, set the additive `CONTACT_WEBHOOK_URL__<SPOKE_KEY>` and
+`CONTACT_WEBHOOK_TOKEN__<SPOKE_KEY>` overrides. A conventional lowercase flat id keeps the published
+key (`acme-spoke` → `ACME_SPOKE`); any other flat identity is UTF-8-hex encoded
+(`__ENC_FLAT_<HEX>`). An identified Hub ALWAYS uses the injective UTF-8-hex pair
+`__ENC_HUB_<HUB_HEX>__<SPOKE_HEX>` (`hub-one`/`client-a` →
+`__ENC_HUB_6875622D6F6E65__636C69656E742D61`); hex contains no `_`, so the separator cannot be
+confused with content such as consecutive hyphens. The old lossy key is rejected when it is
+ambiguous, so two ids such as `client-a`/`client_a` — or Hub `a--b` + Spoke `c` and Hub `a` + Spoke
+`b--c` — cannot silently share a receiver. The receiver owns downstream routing/retention; Foundation sends no Spoke administrative IDs;
+the documented `origin` identifies the publication/Entity/Facet for attribution, and Foundation is not a CRM.
+
+The webhook payload includes an optional server-derived `origin`
+(`publicationId`, `bindingId`, `entityId`, `facetId`, optional `siteId`/`locale`, `host`, `path`) so a
+shared receiver can attribute an inquiry to the published website. It is never populated from a form
+field and contains no filesystem path, credential or visitor telemetry; existing clients may ignore it.
+
+
 > `src/components`) should not need modification for rebranding.
 
 ---
@@ -948,6 +1061,11 @@ The background is a **configuration value, not an identity branch**: it
 behaves identically in every composition and is applied through the established
 token mechanism — no components need to change. Invalid values (a non-hex
 string, wrong length) fail the build with an actionable message.
+> **EFS PATH NOTE.** In the current production capsule, Markdown and JSON sources live under
+> `deployment/efs/capsule/<entityId>/<facetId>/<siteId>/pages/<pageId>/<locale>.{md,json}`. The
+> `content/pages/<site>/<locale>/...` examples in this legacy content section describe the retained
+> legacy runtime, not EFS publication.
+
 ## 2. Content — Markdown Pages
 
 A page is authored in one of **two first-class modes**:
@@ -1940,6 +2058,10 @@ Current feature flags:
 > there is no switch that could hide a page that exists, and no flag whose state could
 > disagree with the content tree.
 
+> **LEGACY RUNTIME — NOT EFS.** The business/location/hours configuration below is retained for
+> historical maintenance and legacy tests. EFS has no automatic timezone, currency, open-now or
+> location-routing behavior. Authored place/contact/opening-hours facts are optional properties.
+
 ### Business profile, locations & hours (`business` in `site.config.json`)
 
 - **Timezone:** values must be valid IANA identifiers (e.g. `Asia/Jakarta`,
@@ -1956,6 +2078,9 @@ Current feature flags:
   "Open now"/"Closed" badge computed in the location's timezone.
 - **Structured data:** the JSON-LD `LocalBusiness`/`Organization` block
   includes an `openingHoursSpecification` built from the configured intervals.
+
+> **LEGACY RUNTIME — NOT EFS.** Regional pages and operating contexts below are not current
+> production instructions and are not an EFS geographic capability.
 
 ### Regionalized pages & operating context (`business.regions` + `business.pages`) — Phase K
 
@@ -2027,6 +2152,9 @@ Key rules:
   without `addressInternational`, invalid holiday dates/names, bad `HH:mm`, or
   `open === close` are all rejected at configuration time.
 - All demonstration region data is **fictional** — replace it before go-live.
+
+> **LEGACY RUNTIME — NOT EFS.** The Location selector and regional URL instructions below are
+> retired from current production. Do not configure them in an EFS Installation.
 
 ### Locale + Location selectors and regional page URLs (`business.pages`) — Phase L
 
@@ -2513,6 +2641,13 @@ output), plus Vercel's own product description where noted:
 
 ### Contact inquiries (`features.contact` + `/contact`)
 
+> **EFS CURRENT NOTE.** The receiver is owned by the Spoke that owns the exact host/prefix binding.
+> `CONTACT_WEBHOOK_URL`/`TOKEN` are installation-wide defaults; `CONTACT_WEBHOOK_URL__<SPOKE_KEY>`/
+> `TOKEN__<SPOKE_KEY>` are additive per-Spoke overrides. Two Entities in one Spoke intentionally
+> share that Spoke's receiver. The legacy folder paths below describe the retained legacy content
+> tree; EFS Page sources remain in the EFS capsule. The form is not a CRM and a receiver is not
+> guaranteed to answer a visitor.
+
 The `/contact` page and contact form are the inquiry capability. It is
 **content-driven** (`content/pages/markdown/<site>/<locale>/contact.md`, or its JSON
 counterpart — the sitemap picks the
@@ -2541,7 +2676,7 @@ route up automatically) and **config-driven**:
     form fails loudly with a "misconfigured" state (it will NOT pretend to be
     the demo).
 - **Payload** (POST, `application/json`):
-  `{ id (UUID), name, email, subject?, message, locale, submittedAt }` — a
+  `{ id (UUID), name, email, subject?, message, locale, submittedAt, origin? }` — a
   minimal, stable contract. No visitor IP/user-agent/cookies are included.
 - **Success wording is precise:** "Your inquiry was submitted successfully"
   means your receiver accepted it — not that a human read it.
@@ -2581,7 +2716,7 @@ Unifying rules:
   `site.config.json`, `config/`, or `content/`; webhook secrets are read
   lazily from `process.env` by the contact server action.
 - **Privacy by default.** Contact webhook payloads are minimal
-  (`id`, `name`, `email`, `subject?`, `message`, `locale`, `submittedAt`) —
+  (`id`, `name`, `email`, `subject?`, `message`, `locale`, `submittedAt`, `origin?`) —
   no IP, user-agent, cookies, or referrer. Every outbound anchor renders with
   `rel="noreferrer" target="_blank"`.
 - **Loud failure.** A configured-but-invalid provider is rejected by the
@@ -2671,6 +2806,10 @@ pnpm exec tsc --noEmit && pnpm lint && pnpm test && pnpm build
 
 
 ---
+
+> **LEGACY MODEL NOTE.** The country/Site/Location guidance below belongs to the retained legacy
+> runtime. For EFS, Sites are content contexts and publication prefixes are explicit bindings; see
+> *CURRENT EFS CUSTOMIZATION MODEL* at the top of this guide.
 
 ## Serving more than one country (Spokes and Sites)
 

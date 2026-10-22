@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SPOKE_SELECTION_HEADER } from "@/config/spoke-selection";
+import { EFS_REQUEST_PATH_HEADER } from "@/config/efs/request-path";
 import { normalizeHostname } from "@/core/spoke";
 
 /**
@@ -57,6 +58,10 @@ const request = (pathname: string, host: string, headers: Record<string, string>
 const selectedFor = (response: NextResponse): string | null =>
   response.headers.get(`x-middleware-request-${SPOKE_SELECTION_HEADER}`);
 
+/** The trusted request pathname the edge boundary stamps upstream for the Server Action. */
+const stampedPathFor = (response: NextResponse): string | null =>
+  response.headers.get(`x-middleware-request-${EFS_REQUEST_PATH_HEADER}`);
+
 /** The pathname the boundary rewrote the request to — which must now ALWAYS be `null`. */
 const rewrittenTo = (response: NextResponse): string | null => {
   const target = response.headers.get("x-middleware-rewrite");
@@ -81,6 +86,7 @@ describe("a claimed hostname selects exactly one Spoke", () => {
 
     const alpha = proxy(request("/ww/en/about", "alpha.localhost"));
     expect(selectedFor(alpha)).toBe("alpha");
+    expect(stampedPathFor(alpha)).toBe("/ww/en/about");
     expect(rewrittenTo(alpha)).toBeNull();
 
     const beta = proxy(request("/ww/en/about", "beta.example.com"));
@@ -142,11 +148,15 @@ describe("a client can never select its own Spoke", () => {
   it("OVERWRITES a spoofed selection header with the host's own answer", async () => {
     const { proxy } = await withTable(TABLE);
 
-    // Alpha's host, but the request claims Beta.
+    // Alpha's host, but the request claims Beta and forges the EFS path.
     const spoofedOnClaimedHost = proxy(
-      request("/ww/en/about", "alpha.localhost", { [SPOKE_SELECTION_HEADER]: "beta" }),
+      request("/ww/en/about", "alpha.localhost", {
+        [SPOKE_SELECTION_HEADER]: "beta",
+        [EFS_REQUEST_PATH_HEADER]: "/beta/forged",
+      }),
     );
     expect(selectedFor(spoofedOnClaimedHost)).toBe("alpha");
+    expect(stampedPathFor(spoofedOnClaimedHost)).toBe("/ww/en/about");
 
     // An UNCLAIMED host stays refused NO MATTER what it claims: the header cannot create a claim.
     const spoofedOnUnknownHost = proxy(
@@ -154,12 +164,14 @@ describe("a client can never select its own Spoke", () => {
     );
     expect(spoofedOnUnknownHost.status).toBe(200);
     expect(selectedFor(spoofedOnUnknownHost)).toBeNull();
+    expect(stampedPathFor(spoofedOnUnknownHost)).toBe("/ww/en/about");
   });
 
-  it("does not send the selection to the client", async () => {
+  it("does not send the selection or trusted path to the client", async () => {
     const { proxy } = await withTable(TABLE);
     const response = proxy(request("/ww/en", "alpha.localhost"));
     expect(response.headers.get(SPOKE_SELECTION_HEADER)).toBeNull();
+    expect(response.headers.get(EFS_REQUEST_PATH_HEADER)).toBeNull();
   });
 });
 

@@ -38,7 +38,16 @@ const previous = { manifest: process.env.FOUNDATION_EFS_MANIFEST, capsule: proce
 function page(root: string, entityId: string, facet: string, site: string, title: string, body: string) {
   const directory = join(root, "capsule", entityId, facet, site, "pages", "home");
   mkdirSync(directory, { recursive: true });
-  writeFileSync(join(directory, "en.json"), JSON.stringify({ title, description: body, body }), "utf8");
+  writeFileSync(
+    join(directory, "en.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      title,
+      description: body,
+      sections: [{ type: "prose", body }],
+    }),
+    "utf8",
+  );
 }
 
 function install(manifest: EfsManifest, pages: readonly [string, string, string, string, string][]): string {

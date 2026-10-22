@@ -15,8 +15,14 @@ export interface DiscoveryPage {
   readonly pageId: string;
   readonly siteId: string;
   readonly route: readonly string[];
-  readonly visibility: "public" | "unlisted";
-  readonly representations: readonly { readonly locale: string }[];
+  /**
+   * Each representation carries the visibility of the SOURCE that answers it. A Page has no
+   * visibility of its own: English may publish while French is unlisted, or the reverse.
+   */
+  readonly representations: readonly {
+    readonly locale: string;
+    readonly visibility: "public" | "unlisted";
+  }[];
 }
 
 /** One discoverable localized URL. */
@@ -34,9 +40,9 @@ export function sitemapEntries(
 ): readonly DiscoveryEntry[] {
   const entries: DiscoveryEntry[] = [];
   for (const page of pages) {
-    if (page.visibility !== "public") continue;
     if (!binding.siteIds.includes(page.siteId)) continue;
     for (const representation of page.representations) {
+      if (representation.visibility !== "public") continue;
       const locale = canonicalLocaleTag(representation.locale);
       entries.push({
         pageId: page.pageId,

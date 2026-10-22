@@ -31,11 +31,17 @@ export interface EfsRepresentationDeclaration {
   readonly properties?: PropertyBag;
 }
 
-/** One Page, language-neutral and identified independently of its route. */
+/**
+ * One Page, language-neutral and identified independently of its route.
+ *
+ * Publication visibility is NOT declared here. It belongs to the localized source document that
+ * answers each representation, exactly as the released Page-document contract defines. Keeping a
+ * second Page-level answer here would let the manifest advertise a representation the document
+ * marks unlisted (or hide one it marks public).
+ */
 export interface EfsPageDeclaration {
   readonly id: string;
   readonly route: readonly string[];
-  readonly visibility?: "public" | "unlisted";
   readonly fallbackLocaleKey?: string;
   readonly properties?: PropertyBag;
   readonly representations: readonly EfsRepresentationDeclaration[];
@@ -207,11 +213,12 @@ export function validateEfsManifest(input: unknown): EfsManifestResult {
           if (pageIds.has(pageId)) issues.push(`${pageAt}.id duplicates Page "${pageId}" in its Site.`);
           pageIds.add(pageId);
           const route = routeSegments(rawPage.route, `${pageAt}.route`, issues);
-          const visibilityRaw = rawPage.visibility;
-          if (visibilityRaw !== undefined && visibilityRaw !== "public" && visibilityRaw !== "unlisted") {
-            issues.push(`${pageAt}.visibility must be "public" or "unlisted".`);
+          if (rawPage.visibility !== undefined) {
+            issues.push(
+              `${pageAt}.visibility is not an EFS manifest property: publication visibility belongs ` +
+                "to the localized JSON Page document that answers each representation.",
+            );
           }
-          const visibility = visibilityRaw === "unlisted" ? "unlisted" : "public";
           const pageProperties = propertyBag(rawPage.properties, pageAt, issues);
 
           const representations: EfsRepresentationDeclaration[] = [];
@@ -252,7 +259,6 @@ export function validateEfsManifest(input: unknown): EfsManifestResult {
           pages.push({
             id: pageId,
             route,
-            visibility,
             fallbackLocaleKey: fallback as string | undefined,
             properties: pageProperties,
             representations,

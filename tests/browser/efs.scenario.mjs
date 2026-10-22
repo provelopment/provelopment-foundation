@@ -169,13 +169,77 @@ export async function run(chrome, harness) {
     const sitemap = await request(`${origin}/sitemap.xml`);
     harness.check(
       rows,
-      "sitemap advertises canonical Home and public Pages but no unlisted/nested Home duplicate",
+      "sitemap advertises only public representations and no unlisted/nested Home duplicate",
       sitemap.status === 200 &&
         sitemap.body.includes("https://localhost/acme-co/en-001</loc>") &&
+        sitemap.body.includes("/acme-co/en-001/guide</loc>") &&
+        sitemap.body.includes("/acme-co/fr/notice</loc>") &&
         !sitemap.body.includes("/en-001/home") &&
+        !sitemap.body.includes("/acme-co/fr/guide</loc>") &&
+        !sitemap.body.includes("/acme-co/en-001/notice</loc>") &&
+        !sitemap.body.includes("/secret</loc>") &&
         !sitemap.body.includes("/products/detail"),
       `status=${sitemap.status}`,
     );
+
+    const guideEnglish = await request(`${origin}/acme-co/en-001/guide`);
+    const guideFrench = await request(`${origin}/acme-co/fr/guide`);
+    harness.check(
+      rows,
+      "an unlisted French representation remains directly reachable without being advertised",
+      guideEnglish.status === 200 &&
+        guideFrench.status === 200 &&
+        guideFrench.body.includes("Guide français non répertorié") &&
+        guideFrench.body.includes("https://localhost/acme-co/fr/guide") &&
+        !/hreflang=["']fr["']/i.test(guideEnglish.body) &&
+        !/hreflang=["']fr["']/i.test(guideFrench.body),
+      `en=${guideEnglish.status} fr=${guideFrench.status}`,
+    );
+    harness.check(
+      rows,
+      "an unlisted response carries noindex, nofollow",
+      /<meta[^>]+name=["']robots["'][^>]*content=["']noindex,\s*nofollow["']/i.test(
+        guideFrench.body,
+      ),
+      guideFrench.body.match(/<meta[^>]+name=["']robots["'][^>]*>/i)?.[0] ?? "no robots meta",
+    );
+
+    const noticeEnglish = await request(`${origin}/acme-co/en-001/notice`);
+    const noticeFrench = await request(`${origin}/acme-co/fr/notice`);
+    harness.check(
+      rows,
+      "a public French representation survives an unlisted English sibling, with no x-default",
+      noticeEnglish.status === 200 &&
+        noticeFrench.status === 200 &&
+        /hreflang=["']fr["']/i.test(noticeEnglish.body) &&
+        !/hreflang=["']en-001["']/i.test(noticeEnglish.body) &&
+        !/hreflang=["']x-default["']/i.test(noticeEnglish.body) &&
+        !/hreflang=["']x-default["']/i.test(noticeFrench.body),
+      `en=${noticeEnglish.status} fr=${noticeFrench.status}`,
+    );
+
+    const secretEnglish = await request(`${origin}/acme-co/en-001/secret`);
+    harness.check(
+      rows,
+      "an all-unlisted Page is served with no alternate at all",
+      secretEnglish.status === 200 &&
+        !/rel=["']alternate["']/i.test(secretEnglish.body) &&
+        /<meta[^>]+name=["']robots["'][^>]*content=["']noindex,\s*nofollow["']/i.test(
+          secretEnglish.body,
+        ),
+      `status=${secretEnglish.status}`,
+    );
+
+    harness.check(
+      rows,
+      "generated navigation advertises public destinations only",
+      about.body.includes("/acme-co/en-001/guide") &&
+        !about.body.includes("/acme-co/en-001/notice") &&
+        !about.body.includes("/acme-co/en-001/secret") &&
+        !about.body.includes("/products/detail"),
+      "guide public; notice/secret/detail absent",
+    );
+
     const robots = await request(`${origin}/robots.txt`);
     harness.check(
       rows,

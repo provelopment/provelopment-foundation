@@ -44,7 +44,6 @@
                   "route": [
                     "home"
                   ],
-                  "visibility": "public",
                   "fallbackLocaleKey": "en-001",
                   "representations": [
                     {
@@ -66,7 +65,6 @@
                   "route": [
                     "about"
                   ],
-                  "visibility": "public",
                   "fallbackLocaleKey": "en-001",
                   "representations": [
                     {
@@ -84,12 +82,73 @@
                   }
                 },
                 {
+                  "id": "guide",
+                  "route": [
+                    "guide"
+                  ],
+                  "fallbackLocaleKey": "en-001",
+                  "representations": [
+                    {
+                      "locale": "en-001"
+                    },
+                    {
+                      "locale": "fr"
+                    }
+                  ],
+                  "properties": {
+                    "nav.label": {
+                      "value": "Guide",
+                      "public": true
+                    }
+                  }
+                },
+                {
+                  "id": "notice",
+                  "route": [
+                    "notice"
+                  ],
+                  "fallbackLocaleKey": "en-001",
+                  "representations": [
+                    {
+                      "locale": "en-001"
+                    },
+                    {
+                      "locale": "fr"
+                    }
+                  ],
+                  "properties": {
+                    "nav.label": {
+                      "value": "Notice",
+                      "public": true
+                    }
+                  }
+                },
+                {
+                  "id": "secret",
+                  "route": [
+                    "secret"
+                  ],
+                  "representations": [
+                    {
+                      "locale": "en-001"
+                    },
+                    {
+                      "locale": "fr"
+                    }
+                  ],
+                  "properties": {
+                    "nav.label": {
+                      "value": "Secret",
+                      "public": true
+                    }
+                  }
+                },
+                {
                   "id": "detail",
                   "route": [
                     "products",
                     "detail"
                   ],
-                  "visibility": "unlisted",
                   "representations": [
                     {
                       "locale": "en-001"
@@ -119,7 +178,6 @@
                   "route": [
                     "home"
                   ],
-                  "visibility": "public",
                   "representations": [
                     {
                       "locale": "fr"

@@ -21,6 +21,12 @@ const LOCALE_PATTERN = /^[a-z]{2,3}(?:-[a-z]{4})?(?:-(?:[a-z]{2}|\d{3}))?(?:-(?:
 /** One localized Page representation. */
 export interface PageRepresentation {
   readonly locale: string;
+  /**
+   * The visible publication fact of the SOURCE that answers this representation. Absent means
+   * `public`, exactly as the declarative Page-document contract defines. There is deliberately no
+   * Page-level default: two representations of one Page may publish independently.
+   */
+  readonly visibility?: "public" | "unlisted";
   /** The explicitly authored fallback for this Page, as a path key. */
   readonly fallbackLocaleKey?: string;
 }
@@ -204,15 +210,29 @@ export function resolveRepresentation(
   if (!fallback) {
     return { kind: "not-found", reason: "The declared same-Page fallback does not exist." };
   }
+  if (fallback.visibility === "unlisted") {
+    return {
+      kind: "not-found",
+      reason: "The declared same-Page fallback is unlisted and cannot be promoted by a redirect.",
+    };
+  }
   return { kind: "redirect", representation: fallback };
 }
 
-/** `hreflang` alternates for representations that actually exist on this Page. */
+/**
+ * `hreflang` alternates for PUBLIC representations that actually exist on this Page.
+ *
+ * An alternate is an advertisement. An unlisted representation is directly reachable but is never
+ * promoted by another representation or by itself, so it is filtered here — the one place every
+ * EFS alternate is built.
+ */
 export function advertisedHreflang(
   page: LocalizedPage,
 ): readonly { readonly hreflang: string; readonly localeKey: string }[] {
-  return page.representations.map((representation) => ({
-    hreflang: canonicalLocaleTag(representation.locale),
-    localeKey: localePathKey(representation.locale),
-  }));
+  return page.representations
+    .filter((representation) => representation.visibility !== "unlisted")
+    .map((representation) => ({
+      hreflang: canonicalLocaleTag(representation.locale),
+      localeKey: localePathKey(representation.locale),
+    }));
 }

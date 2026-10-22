@@ -93,14 +93,33 @@ describe("EFS localization target (D31 / O-2)", () => {
     expect(resolveRepresentation(page, "fr", { allowFallback: false }).kind).toBe("not-found");
   });
 
-  it("advertises hreflang only for representations that exist", () => {
+  it("advertises hreflang only for public representations that exist", () => {
     const links = advertisedHreflang({
       pageId: "home",
-      representations: [{ locale: "en-001" }, { locale: "fr-ca" }],
+      representations: [
+        { locale: "en-001", visibility: "public" },
+        { locale: "fr-ca", visibility: "unlisted" },
+      ],
     });
-    expect(links).toEqual([
-      { hreflang: "en-001", localeKey: "en-001" },
-      { hreflang: "fr-CA", localeKey: "fr-ca" },
-    ]);
+    expect(links).toEqual([{ hreflang: "en-001", localeKey: "en-001" }]);
+  });
+
+  it("never promotes an unlisted representation through a missing-translation fallback", () => {
+    const page = {
+      pageId: "notice",
+      fallbackLocaleKey: "en-001",
+      representations: [
+        { locale: "en-001", visibility: "unlisted" as const },
+        { locale: "fr", visibility: "public" as const },
+      ],
+    };
+    expect(resolveRepresentation(page, "fr-CA", { allowFallback: true })).toEqual({
+      kind: "not-found",
+      reason: "The declared same-Page fallback is unlisted and cannot be promoted by a redirect.",
+    });
+    expect(resolveRepresentation(page, "en-001", { allowFallback: true })).toEqual({
+      kind: "render",
+      representation: { locale: "en-001", visibility: "unlisted" },
+    });
   });
 });

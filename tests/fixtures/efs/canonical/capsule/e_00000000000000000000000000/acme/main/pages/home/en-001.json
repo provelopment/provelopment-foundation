@@ -1,5 +1,11 @@
 {
+  "schemaVersion": 1,
   "title": "Acme Home",
   "description": "Acme managed home page.",
-  "body": "Welcome from the explicit Acme Entity."
+  "sections": [
+    {
+      "type": "prose",
+      "body": "Welcome from the explicit Acme Entity."
+    }
+  ]
 }

@@ -88,7 +88,6 @@ export function establishWebsite(input: EstablishWebsiteInput, entropy: Uint8Arr
                   {
                     id: "home",
                     route: ["home"],
-                    visibility: "public",
                     representations: input.locales.map((locale) => ({ locale })),
                   },
                 ],

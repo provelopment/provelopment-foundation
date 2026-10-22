@@ -39,7 +39,6 @@
                   "route": [
                     "home"
                   ],
-                  "visibility": "public",
                   "fallbackLocaleKey": "en-001",
                   "representations": [
                     {
@@ -55,7 +54,6 @@
                   "route": [
                     "about"
                   ],
-                  "visibility": "public",
                   "representations": [
                     {
                       "locale": "en-001"
@@ -71,7 +69,6 @@
                     "products",
                     "detail"
                   ],
-                  "visibility": "unlisted",
                   "representations": [
                     {
                       "locale": "en-001"
@@ -117,7 +114,6 @@
                   "route": [
                     "home"
                   ],
-                  "visibility": "public",
                   "representations": [
                     {
                       "locale": "en-001"

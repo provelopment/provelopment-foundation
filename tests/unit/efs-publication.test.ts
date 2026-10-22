@@ -119,15 +119,16 @@ describe("EFS publication and routing (D31 / O-4, O-5)", () => {
         pageId: "home",
         siteId: "jakarta",
         route: ["home"],
-        visibility: "public",
-        representations: [{ locale: "en-001" }, { locale: "fr" }],
+        representations: [
+          { locale: "en-001", visibility: "public" },
+          { locale: "fr", visibility: "public" },
+        ],
       },
       {
         pageId: "detail",
         siteId: "jakarta",
         route: ["products", "detail"],
-        visibility: "unlisted",
-        representations: [{ locale: "en-001" }],
+        representations: [{ locale: "en-001", visibility: "unlisted" }],
       },
     ]);
     expect(entries.map((entry) => entry.loc)).toEqual([

@@ -368,8 +368,8 @@ describe("pages-authoring contract — the safe Markdown boundary", () => {
       .map(relative)
       .sort();
     expect(schemaOwners).toEqual([
+      "adapters/content/efs-content.ts",
       "adapters/content/json-page.ts",
-      "components/efs/efs-page.tsx",
       "core/page-document.ts",
     ]);
 

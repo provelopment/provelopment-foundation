@@ -7,7 +7,14 @@ import {
   layoutMetadataForContext,
   spokeServerComposition,
 } from "./server-composition";
-import { efsDescription, efsPublicSegments, efsTitle, efsViewForCurrentRequest } from "./efs-request";
+import {
+  efsDescription,
+  efsLanguageAlternates,
+  efsPublicSegments,
+  efsRobots,
+  efsTitle,
+  efsViewForCurrentRequest,
+} from "./efs-request";
 import { legacyTestRuntimeEnabled, missingEfsInstallation } from "./legacy-test-runtime";
 import { requestPublicDestination } from "./request-context";
 import { assetUrl } from "@/core/efs/publication";
@@ -76,15 +83,17 @@ export async function generateMetadata({ params }: LocaleLayoutProps): Promise<M
   const efs = await efsViewForCurrentRequest(segments);
   if (efs) {
     const favicon = efs.properties.get("brand.favicon");
+    const robots = efsRobots(efs);
     return {
       title: efsTitle(efs),
       description: efsDescription(efs),
+      ...(robots === undefined ? {} : { robots }),
       ...(favicon?.public && typeof favicon.value === "string"
         ? { icons: { icon: assetUrl(efs.binding, favicon.value) } }
         : {}),
       alternates: {
         canonical: efs.canonical,
-        languages: Object.fromEntries(efs.alternates.map((alternate) => [alternate.hreflang, alternate.href])),
+        languages: efsLanguageAlternates(efs),
       },
     };
   }

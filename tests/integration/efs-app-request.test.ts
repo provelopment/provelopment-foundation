@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -92,10 +92,153 @@ describe("EFS actual App Router request branch (S3-E3)", () => {
   it("supports nested routes and Site-open selectors", async () => {
     const nested = await request("my.provelopment.com", "/acme-co/en-001/products/detail");
     expect(nested?.page.id).toBe("detail");
+    expect(nested?.visibility).toBe("unlisted");
     const open = await request("my.provelopment.com", "/acme-open/outlet/fr/");
     expect(open?.site.id).toBe("outlet");
     expect(open?.page.id).toBe("home");
     expect(open?.canonical).toBe("https://my.provelopment.com/acme-open/outlet/fr");
+  });
+
+  it("publishes a public English representation while its French representation is unlisted", async () => {
+    const english = await request("my.provelopment.com", "/acme-co/en-001/guide");
+    expect(english?.visibility).toBe("public");
+    expect(english?.alternates.map((alternate) => alternate.hreflang)).toEqual(["en-001"]);
+    expect(english?.xDefault).toBe("https://my.provelopment.com/acme-co/en-001/guide");
+    expect(english?.navigation.some((item) => item.pageId === "guide")).toBe(true);
+
+    const french = await request("my.provelopment.com", "/acme-co/fr/guide");
+    expect(french?.visibility).toBe("unlisted");
+    expect(french?.alternates.map((alternate) => alternate.hreflang)).toEqual(["en-001"]);
+    expect(french?.navigation.some((item) => item.pageId === "guide")).toBe(false);
+    expect(french?.canonical).toBe("https://my.provelopment.com/acme-co/fr/guide");
+  });
+
+  it("publishes a public French representation while its English representation is unlisted", async () => {
+    const english = await request("my.provelopment.com", "/acme-co/en-001/notice");
+    expect(english?.visibility).toBe("unlisted");
+    expect(english?.alternates.map((alternate) => alternate.hreflang)).toEqual(["fr"]);
+    expect(english?.xDefault).toBeUndefined();
+    expect(english?.navigation.some((item) => item.pageId === "notice")).toBe(false);
+
+    const french = await request("my.provelopment.com", "/acme-co/fr/notice");
+    expect(french?.visibility).toBe("public");
+    expect(french?.alternates.map((alternate) => alternate.hreflang)).toEqual(["fr"]);
+    expect(french?.xDefault).toBeUndefined();
+    expect(french?.navigation.some((item) => item.pageId === "notice")).toBe(true);
+  });
+
+  it("keeps an all-unlisted Page reachable without advertising either representation", async () => {
+    for (const locale of ["en-001", "fr"]) {
+      const view = await request("my.provelopment.com", `/acme-co/${locale}/secret`);
+      expect(view?.visibility, locale).toBe("unlisted");
+      expect(view?.alternates, locale).toEqual([]);
+      expect(view?.xDefault, locale).toBeUndefined();
+      expect(view?.navigation.some((item) => item.pageId === "secret"), locale).toBe(false);
+    }
+  });
+
+  it("never redirects a missing translation to an unlisted fallback", async () => {
+    await expect(request("my.provelopment.com", "/acme-co/fr-CA/notice")).rejects.toThrow(
+      "NOT_FOUND",
+    );
+    await expect(request("my.provelopment.com", "/acme-co/fr-CA/guide")).rejects.toThrow(
+      "REDIRECT:/acme-co/en-001/guide/",
+    );
+  });
+
+  it("treats an absent visibility declaration as public", async () => {
+    const about = await request("my.provelopment.com", "/acme-co/en-001/about");
+    expect(about?.source.format).toBe("markdown");
+    expect(about?.visibility).toBe("public");
+  });
+
+  it("refuses an invalid EFS JSON Page instead of rendering generic fallback content", async () => {
+    const root = mkdtempSync(join(tmpdir(), "efs-invalid-page-"));
+    const capsule = join(root, "capsule");
+    cpSync(
+      join(process.cwd(), "tests", "fixtures", "efs", "canonical", "capsule"),
+      capsule,
+      { recursive: true },
+    );
+    writeFileSync(
+      join(
+        capsule,
+        "e_00000000000000000000000000",
+        "acme",
+        "main",
+        "pages",
+        "guide",
+        "en-001.json",
+      ),
+      JSON.stringify({ schemaVersion: 1, title: 123, sections: [] }),
+      "utf8",
+    );
+    process.env.FOUNDATION_EFS_CAPSULE = capsule;
+    await expect(request("my.provelopment.com", "/acme-co/en-001/guide")).rejects.toThrow(
+      /Invalid Page document[\s\S]*title/,
+    );
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("refuses an unlisted representation of the reserved Home document", async () => {
+    const root = mkdtempSync(join(tmpdir(), "efs-unlisted-home-"));
+    const capsule = join(root, "capsule");
+    cpSync(
+      join(process.cwd(), "tests", "fixtures", "efs", "canonical", "capsule"),
+      capsule,
+      { recursive: true },
+    );
+    writeFileSync(
+      join(
+        capsule,
+        "e_00000000000000000000000000",
+        "acme",
+        "main",
+        "pages",
+        "home",
+        "en-001.json",
+      ),
+      JSON.stringify({
+        schemaVersion: 1,
+        title: "Unlisted home",
+        visibility: "unlisted",
+        sections: [],
+      }),
+      "utf8",
+    );
+    process.env.FOUNDATION_EFS_CAPSULE = capsule;
+    await expect(request("my.provelopment.com", "/acme-co/en-001/")).rejects.toThrow(
+      /visibility.*refused on the reserved "home" document/,
+    );
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("refuses a Markdown visibility declaration rather than treating it as public", async () => {
+    const root = mkdtempSync(join(tmpdir(), "efs-markdown-visibility-"));
+    const capsule = join(root, "capsule");
+    cpSync(
+      join(process.cwd(), "tests", "fixtures", "efs", "canonical", "capsule"),
+      capsule,
+      { recursive: true },
+    );
+    writeFileSync(
+      join(
+        capsule,
+        "e_00000000000000000000000000",
+        "acme",
+        "main",
+        "pages",
+        "about",
+        "fr-ca.md",
+      ),
+      "---\ntitle: About\nvisibility: unlisted\n---\n\nBody.\n",
+      "utf8",
+    );
+    process.env.FOUNDATION_EFS_CAPSULE = capsule;
+    await expect(request("my.provelopment.com", "/acme-co/fr-CA/about")).rejects.toThrow(
+      /Markdown authoring mode has no visibility vocabulary/,
+    );
+    rmSync(root, { recursive: true, force: true });
   });
 
   it("suppresses an inherited address at the descendant Site", async () => {

@@ -209,4 +209,3 @@ describe("identified-Hub contact receiver identity (FOUNDATION-COMPLETE-A1-R2F-C
     expect(result.status).toBe("configError");
   });
 });
-

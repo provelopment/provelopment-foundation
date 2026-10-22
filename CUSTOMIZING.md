@@ -103,11 +103,13 @@ share that Spoke's receiver.
 `CONTACT_WEBHOOK_URL` and `CONTACT_WEBHOOK_TOKEN` are installation-wide defaults. For distinct
 Spoke receivers, set the additive `CONTACT_WEBHOOK_URL__<SPOKE_KEY>` and
 `CONTACT_WEBHOOK_TOKEN__<SPOKE_KEY>` overrides. A conventional lowercase flat id keeps the published
-key (`acme-spoke` → `ACME_SPOKE`); an identified Hub uses a reserved composite key
-(`hub-one`/`client-a` → `__COMPOSITE__HUB_ONE__CLIENT_A`); any identity outside that safe form is
-UTF-8-hex encoded (`__ENC_FLAT_<HEX>` or `__ENC_HUB_<HUB_HEX>__<SPOKE_HEX>`). The old lossy key is
-rejected when it is ambiguous, so two ids such as `client-a`/`client_a` cannot silently share a
-receiver. The receiver owns downstream routing/retention; Foundation sends no Spoke administrative IDs;
+key (`acme-spoke` → `ACME_SPOKE`); any other flat identity is UTF-8-hex encoded
+(`__ENC_FLAT_<HEX>`). An identified Hub ALWAYS uses the injective UTF-8-hex pair
+`__ENC_HUB_<HUB_HEX>__<SPOKE_HEX>` (`hub-one`/`client-a` →
+`__ENC_HUB_6875622D6F6E65__636C69656E742D61`); hex contains no `_`, so the separator cannot be
+confused with content such as consecutive hyphens. The old lossy key is rejected when it is
+ambiguous, so two ids such as `client-a`/`client_a` — or Hub `a--b` + Spoke `c` and Hub `a` + Spoke
+`b--c` — cannot silently share a receiver. The receiver owns downstream routing/retention; Foundation sends no Spoke administrative IDs;
 the documented `origin` identifies the publication/Entity/Facet for attribution, and Foundation is not a CRM.
 
 The webhook payload includes an optional server-derived `origin`

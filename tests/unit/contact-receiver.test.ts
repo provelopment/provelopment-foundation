@@ -29,7 +29,7 @@ describe("contact receiver keys", () => {
     const flatDoubleHyphen = contactReceiverKey(flat("a--b"));
     const composite = contactReceiverKey(hub("a", "b"));
     expect(flatDoubleHyphen).toBe("A__B");
-    expect(composite).toBe("__COMPOSITE__A__B");
+    expect(composite).toBe("__ENC_HUB_61__62");
     expect(flatDoubleHyphen).not.toBe(composite);
   });
 
@@ -43,8 +43,41 @@ describe("contact receiver keys", () => {
     const keys = identities.map(contactReceiverKey);
     expect(new Set(keys).size).toBe(identities.length);
     expect(contactReceiverKey(hub("hub-one", "client-a"))).toBe(
-      "__COMPOSITE__HUB_ONE__CLIENT_A",
+      "__ENC_HUB_6875622D6F6E65__636C69656E742D61",
     );
+  });
+
+  it("encodes the exact a--b/c versus a/b--c counterexample injectively", () => {
+    const first = contactReceiverKey(hub("a--b", "c"));
+    const second = contactReceiverKey(hub("a", "b--c"));
+
+    expect(first).toBe("__ENC_HUB_612D2D62__63");
+    expect(second).toBe("__ENC_HUB_61__622D2D63");
+    expect(first).not.toBe(second);
+  });
+
+  it("keeps different Hubs and the same local Spoke distinct", () => {
+    const first = contactReceiverKey(hub("hub-one", "shared"));
+    const second = contactReceiverKey(hub("hub-two", "shared"));
+    expect(first).toBe("__ENC_HUB_6875622D6F6E65__736861726564");
+    expect(second).toBe("__ENC_HUB_6875622D74776F__736861726564");
+    expect(first).not.toBe(second);
+  });
+
+  it("is injective across a deterministic collection of boundary-case identities", () => {
+    const segments = ["a", "A", "0", "a-", "a--b", "a__b", "a_b", "a.b", "z9", "client-a"];
+    const identities: ContactOwnerIdentity[] = [
+      ...segments.map(flat),
+      ...segments.flatMap((spokeHubId) =>
+        segments.map((id) => hub(spokeHubId, id)),
+      ),
+    ];
+
+    const keys = identities.map(contactReceiverKey);
+    expect(new Set(keys).size).toBe(identities.length);
+    for (const key of keys) {
+      expect(key).toMatch(/^(?:[A-Z0-9][A-Z0-9_]*|__ENC_FLAT_[0-9A-F]+|__ENC_HUB_[0-9A-F]+__[0-9A-F]+)$/);
+    }
   });
 
   it("detects the flat legacy-key group that must fail if configured", () => {

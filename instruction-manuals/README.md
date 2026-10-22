@@ -1,9 +1,9 @@
 # Provelopment Foundation Instruction Manuals
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-10-21.4`
+> **Manual revision:** `2026-10-22.1`
 > **Content model described:** the **current EFS installation model** — one immutable Foundation release established into one autonomous Installation that owns its authored capsule and serves explicitly declared Entities, Facets, Sites, Pages and localized representations through publication bindings owned by declared Spokes. Pages are language-neutral; each localized representation is a JSON or Markdown source; JSON visibility is per representation; `unlisted` means reachable but not advertised, never private. Update changes authored material; Upgrade adopts a different immutable release. Legacy country-coded Sites, regional pages, Location routing and computed timezone/DST behavior are historical only.
-> **Procedure validation:** the release and establishment procedures retain their 2026-09-30 end-to-end baseline. Revision `2026-10-21.4` reconciles the distributed model to the merged EFS runtime and the A1-R2F receiver-key isolation, reference and hygiene correction, and is verified by the Foundation unit, integration, architecture, deployment and browser gates recorded in `FOUNDATION-COMPLETE-A1-R2F`; no release tag is claimed by this revision.
+> **Procedure validation:** the release and establishment procedures retain their 2026-09-30 end-to-end baseline. Revision `2026-10-22.1` reconciles the distributed model to the merged EFS runtime and the A1-R2F receiver-key isolation, reference and hygiene correction, and the A1-R2F-C1 injective identified-Hub receiver-key correction, and is verified by the Foundation unit, integration, architecture, deployment and browser gates recorded in `FOUNDATION-COMPLETE-A1-R2F` (including its C1 correction record); no release tag is claimed by this revision.
 > **Adopter baseline:** the installation's own adoption record — `deployment/foundation-baseline.json` inside the installation's capsule. An adopter's own governance record is the adopter's; it is never the Foundation's adoption record.
 > **Master authority:** maintained in the Provelopment governance repository (private; not part of this product)
 >
@@ -169,6 +169,8 @@ project is adopted.
 
 | Manual revision | Procedure validation | Commit | Date |
 | --- | --- | --- | --- |
+| `2026-10-22.1` | **No new procedure was executed for this revision.** It corrects the documented identified-Hub contact receiver key to the injective UTF-8-hex form `__ENC_HUB_<HUB_HEX>__<SPOKE_HEX>` after the previous composite spelling was found to collide on Hub `a--b` + Spoke `c` versus Hub `a` + Spoke `b--c`. Flat legacy and encoded-flat keys are unchanged. The correction is verified by the Foundation-focused regression and complete gates recorded in `FOUNDATION-COMPLETE-A1-R2F` (including its C1 correction record). | — (documentation-only; names no Foundation revision) | 2026-10-22 |
+
 | `2026-10-04.2` | **No procedure-validation run was performed for this revision.** It serves two
 reconciliation purposes and changes no procedure: (1) it corrects the
 procedure-validation statement so it is historically scoped rather than a present-tense release

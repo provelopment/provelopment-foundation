@@ -114,8 +114,9 @@ that publication's declared Spoke owner, and only then reads the owner's `featur
 - `CONTACT_WEBHOOK_URL` / `CONTACT_WEBHOOK_TOKEN` are installation-wide defaults. An Installation
   with distinct receivers may use the additive `CONTACT_WEBHOOK_URL__<SPOKE_KEY>` /
   `CONTACT_WEBHOOK_TOKEN__<SPOKE_KEY>` override; the key is the resolved owner identity, never
-  visitor input. Conventional flat ids retain `ACME_SPOKE`; identified Hubs and non-safe ids use the
-  collision-free `__COMPOSITE__…`/`__ENC_…` keys documented in `CUSTOMIZING.md`. The receiver owns its
+  visitor input. Conventional flat ids retain `ACME_SPOKE`; other flat ids are UTF-8-hex encoded
+  (`__ENC_FLAT_…`) and identified Hubs always use the injective
+  `__ENC_HUB_<HUB_HEX>__<SPOKE_HEX>` form documented in `CUSTOMIZING.md`. The receiver owns its
   downstream routing and retention; the documented `origin` is the only Entity/Facet provenance sent,
   and Foundation is not a CRM.
 - The webhook payload adds an optional server-derived `origin` object

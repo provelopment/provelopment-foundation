@@ -36,17 +36,25 @@ function encodedSegment(segment: string): string {
 /**
  * The environment suffix for ONE owner.
  *
- * Flat legacy-safe ids keep the published `ACME_SPOKE` spelling. Identified-Hub identities get a
- * reserved `__COMPOSITE__` namespace, so a flat id containing double hyphens can never collide with a
- * Hub/Spoke pair. Anything that cannot be represented safely by the legacy rule is hex-encoded under
- * a reserved `__ENC_` namespace. The namespaces are disjoint, so every valid identity has one key and
- * distinct identities cannot share it.
+ * Flat legacy-safe ids keep the published `ACME_SPOKE` spelling. Anything that cannot be represented
+ * safely by the legacy rule is hex-encoded under a reserved namespace.
+ *
+ * Identified-Hub identities are ALWAYS hex-encoded:
+ *
+ *     __ENC_HUB_<HUB_UTF8_HEX>__<SPOKE_UTF8_HEX>
+ *
+ * Both components are uppercase hex and hex contains no underscore, so the `__` separator cannot
+ * occur inside either component. Decoding is therefore unambiguous and the representation is
+ * injective for arbitrary valid Hub/Spoke pairs. A lossy join (for example joining uppercased,
+ * hyphen-folded segments with `__`) is NOT sufficient: Hub `a--b` + Spoke `c` and Hub `a` + Spoke
+ * `b--c` would otherwise share a key.
+ *
+ * The flat legacy, encoded-flat and encoded-Hub namespaces are disjoint, so every valid identity has
+ * one key and distinct identities cannot share it.
  */
 export function contactReceiverKey(owner: ContactOwnerIdentity): string {
   if (owner.spokeHubId !== undefined) {
-    return isLegacySafe(owner.spokeHubId) && isLegacySafe(owner.id)
-      ? `__COMPOSITE__${legacySegment(owner.spokeHubId)}__${legacySegment(owner.id)}`
-      : `__ENC_HUB_${encodedSegment(owner.spokeHubId)}__${encodedSegment(owner.id)}`;
+    return `__ENC_HUB_${encodedSegment(owner.spokeHubId)}__${encodedSegment(owner.id)}`;
   }
   return isLegacySafe(owner.id) ? legacySegment(owner.id) : `__ENC_FLAT_${encodedSegment(owner.id)}`;
 }

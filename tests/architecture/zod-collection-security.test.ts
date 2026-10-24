@@ -48,29 +48,53 @@ describe("FOUNDATION-SEC-ZOD-A1 — patched Zod and bounded collection paths", (
     expect(workspace).toContain('"minimatch@10.2.6>brace-expansion": "5.0.12"');
   });
 
-  it("rejects an oversized bounded array before accumulating one issue per element", () => {
+  it("rejects an oversized bounded array before parsing invalid elements", () => {
     const result = z
-      .array(z.string().min(1))
+      .array(z.string())
       .max(2)
-      .safeParse(Array.from({ length: 5000 }, () => "value"));
+      .safeParse([1, 2, 3, 4]);
 
     expect(result.success).toBe(false);
     if (result.success) return;
     expect(result.error.issues).toHaveLength(1);
     expect(result.error.issues[0]?.code).toBe("too_big");
+    expect(result.error.issues.some((issue) => issue.code === "invalid_type")).toBe(false);
   });
 
-  it("preserves the page-document collection cap without issue amplification", () => {
+  it("does not invoke element checks when the size gate rejects", () => {
+    let elementChecks = 0;
+    const element = z.custom<number>((value) => {
+      elementChecks += 1;
+      return typeof value === "number";
+    });
+
+    const result = z
+      .array(element)
+      .max(2)
+      .safeParse(["not-a-number", "not-a-number", "not-a-number", "not-a-number"]);
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues).toHaveLength(1);
+    expect(result.error.issues[0]?.code).toBe("too_big");
+    expect(elementChecks).toBe(0);
+  });
+
+  it("applies the page-document cap before parsing invalid sections", () => {
     const result = pageDocumentSchema.safeParse({
       schemaVersion: PAGE_DOCUMENT_SCHEMA_VERSION,
       title: "Bounded page",
-      sections: Array.from({ length: PAGE_MAX_SECTIONS + 1000 }, () => ({ type: "divider" })),
+      sections: Array.from({ length: PAGE_MAX_SECTIONS + 2 }, () => ({
+        type: "not-a-section",
+      })),
     });
 
     expect(result.success).toBe(false);
     if (result.success) return;
-    expect(result.error.issues.length).toBeLessThanOrEqual(2);
-    expect(result.error.issues.some((issue) => issue.path[0] === "sections")).toBe(true);
+    expect(result.error.issues).toHaveLength(1);
+    expect(result.error.issues[0]?.code).toBe("too_big");
+    expect(result.error.issues[0]?.path).toEqual(["sections"]);
+    expect(result.error.issues.some((issue) => issue.code === "invalid_union")).toBe(false);
   });
 
   it("keeps the request-driven contact schema scalar-only and length-bounded", () => {

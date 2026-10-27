@@ -762,3 +762,91 @@ earlier process happened to leave behind.
 The committed browser/HTTP acceptance scenario, the neutral fixture rename (`group-one/{alpha,beta,gamma}`,
 `group-two/{delta,epsilon}`) and the scratch-root relocation away from OS temp are **not done**. The adapter
 landed first because it is the release blocker; these three remain the immediate next work.
+
+---
+
+## 25. R08 — the corrections, and one honest conflict
+
+**Reviewed baseline:** `a40166cad5648f1d4c0cd5d2aca07c43996d0d36` / tree
+`eb00f37a31b7df52efbd1c180462fd7ef5cfba32`. **This revision:** `093fad69fa00bdb50afbe9d545f2276fb42dceec` /
+tree `42cc8c6e7f0ee41a9d934b7dcf627c42ed12af8f`.
+
+### 25.1 R08-A — deduplication is not collision (CORRECTED)
+
+The producer keyed permissions by `host + Spoke` and REFUSED repeats. That invented a collision rule the EFS
+contract does not have. It now merges equal host/Spoke permissions and emits them **sorted by host, Hub,
+Spoke**, so the projection is independent of declaration order; whether two *bindings* conflict remains
+`bindingIssues`' question, asked by the validator and by nobody else.
+
+Proved (`tests/integration/efs-publication-projection.test.ts`): one Spoke publishing two Entities at two
+prefixes on one host validates and yields **one** grant; a canonical + alias pair yields **one** grant; a
+wrong composite owner is still refused; a duplicate host+prefix binding is never partially granted.
+
+### 25.2 R08-B — an explicit selection is a contract (CORRECTED)
+
+`efsManifestSelection()` now distinguishes genuine absence from an explicit selection, and the four states
+are kept apart: genuine non-EFS → `null` (legacy rule); valid/invalid manifest → `[...]`/`[]`; **explicitly
+selected but missing → refused by the producer and `[]` at the boundary**. The precise bug is proved by the
+test that asserted the defect first: a missing explicit manifest used to produce `null`, i.e. legacy
+`site.url` authorization.
+
+Proved: explicit-missing refused; boundary grants `[]` (never `null`); genuine non-EFS still `null`;
+malformed refused with no authorization left behind; a valid manifest declaring no publication is
+`[]` (EFS-controlled), not `null`.
+
+### 25.3 R08-C — the cache trust contract (HARDENED)
+
+A projection is trusted only while it describes THIS Installation, THIS manifest selection, THIS manifest
+content and THIS Spoke hierarchy. The projection now records `installationDigest`, resolved through the ONE
+authority (`installationSpokes().manifestFile`) rather than by composing a path — the architecture guard
+rejected the first attempt, correctly. Claim shapes are validated individually and any malformed claim fails
+the WHOLE projection closed. An unresolvable hierarchy yields a sentinel no recorded digest can equal, so it
+is indistinguishable from staleness and grants nothing.
+
+Proved: manifest bytes change → `[]`; hierarchy renamed in place (a VALID but different declaration) → `[]`;
+projection naming another manifest → `[]`; untrusted claim shape → `[]`; a second Installation never inherits
+the first's permission.
+
+### 25.4 R08 §4 — development and build lifecycle (CORRECTED)
+
+`pnpm dev` now runs `sync-runtime-assets && validate-publications && next dev`, so a fresh EFS session cannot
+serve without the authority its assets require. There is no dependence on a cache left by a build or test:
+the projection is produced from the selected Installation on every start. **Policy for mid-session authored
+changes: restart.** A manifest or `spokes.json` edit invalidates the projection by digest, which fails
+CLOSED for the running server — it denies rather than serving stale rights — and a restart reprojects. That
+is deliberate: silently re-authorizing from a changed file mid-session would be a policy nobody can state.
+
+### 25.5 R08 §7 — generic fixture (DONE)
+
+`group-one/{alpha,beta,gamma}`, `group-two/{delta,epsilon}` on `shared.example.test`, five independently
+owned Entities, deliberately overlapping coordinates, one Hub carrying three publishing Spokes. No adopter
+hostname, business identity, tenant model or root-entry feature is present.
+
+### 25.6 R08 §8 — scratch root: MECHANISM DONE, ONE DECISION NEEDED
+
+`tests/browser/scratch.mjs` now resolves `scratchRoot()`: `FOUNDATION_TEST_SCRATCH_ROOT`, else the platform
+temporary directory. Verified, not assumed: with `TEMP`, `TMP` and `TMPDIR` set to a chosen directory,
+`os.tmpdir()` reported it and `mkdtempSync` created `…/probe-XXXX` inside it.
+
+**The conflict, stated plainly.** Pointing that root INSIDE the approved repository directory makes
+`tests/architecture/deployment-root-guard.test.ts` fail, because Foundation requires synthetic test state to
+live OUTSIDE the repository (`expect(paths.root.startsWith(ROOT + sep)).toBe(false)`). So the two constraints
+as written cannot both hold when the approved writable directory IS the repository. I did not weaken the
+guard to make a workflow pass. Gates were therefore run with the default platform temp directory, and this
+needs either an architect decision about synthetic state inside the repository, or an approved writable
+location outside it.
+
+### 25.7 R08 §6 — the shared-host production acceptance suite is NOT done
+
+It is the one requirement I did not deliver. The reason is capacity, not doubt about the design: a real
+served-installation scenario needs a dev server, Chrome and asset synchronisation per run, and shipping it
+unverified would either break `pnpm test:browser` or claim evidence I do not have. The harness contract is
+established (`export const id` / `run(chrome, harness)`; `harness.startDevServer` / `stopServer` / `check`;
+`tests/support/shared-host-installation.mjs` for the Installation), and `multihost.scenario.mjs` is the
+pattern to follow — the work is a scenario file plus its registration, nothing architectural.
+
+### 25.8 Gates actually run this revision
+
+`pnpm assets:check` OK · `pnpm country-codes:check` OK · `pnpm exec tsc --noEmit` clean · `pnpm lint` clean ·
+`pnpm test` **212 files passed** · `pnpm test:deployment` **16 files passed** · `pnpm build` OK, prebuild
+reports **3 verified claims** · `pnpm release:classify` OK. `pnpm test:browser` was NOT run.

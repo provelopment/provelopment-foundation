@@ -133,6 +133,8 @@ const SANCTIONED_DOMAIN_WRITERS: Record<string, string> = {
  * report directory. The runtime manifest is what proves none of them reaches shipped state.
  */
 const TEST_SCRATCH_WRITERS: Record<string, string> = {
+  "tests/integration/efs-publication-projection.test.ts":
+    "OS temp (the disposable synthetic Installations it materialises, through `tests/support/shared-host-installation.mjs`) and the repository's IGNORED projection cache `<repo>/node_modules/.cache/foundation/efs-publications/**`, which it writes only by invoking the production producer; it mutates its own fixtures' manifests to prove staleness, never a committed deployment (R08)",
   "tests/browser/scratch.mjs": "the guard: OS temp + `tests/browser/.report/` + the generated Spoke namespaces, refusing every other target",
   "tests/browser/matrix.mjs": "the synthetic deployment copy, `.report/`, OS temp and the generated Spoke namespaces a multi-Spoke scenario materialises — all via scratch.mjs",
   "tests/browser/cdp.mjs": "the headless-Chrome profile directory it created, under OS temp",

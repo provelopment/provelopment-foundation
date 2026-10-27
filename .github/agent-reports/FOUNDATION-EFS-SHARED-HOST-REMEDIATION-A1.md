@@ -19,8 +19,16 @@ release and downstream adoption have not happened.
 | Released baseline (Foundation `main`) | `65f26e8f51f96c40a1a58e1e13f3a25efcfd372c` |
 | Baseline tree | `e2ee226c13bdbb730c9a96d23e128e58c7b25d69` |
 | Baseline tag | `provelopment-foundation-v20261024.0539` |
-| Branch head at report authoring | `81780bce945daa76f570b8b196fb50f4743f0506` |
-| Head tree | `2776f6af52f7031386d965b6cfc5cc36861da05e` |
+
+### Revisions of this report
+
+| Revision | Head | Tree | What it described |
+| --- | --- | --- | --- |
+| A1 (first submission) | `db39498664e22b8e41e1a118b6a40e28854bfc00` | `6435f2c3f1df52fdf149f6fde759409b6d86b283` | 4 commits; superseded by the R02 corrections |
+| **A1-R02 (this revision)** | see §18 | see §18 | the R02 corrections |
+
+The first submission's CI result (`40484684567`, green) belongs to `db39498` and is **history**, not
+evidence for this revision. §18 records the exact head, tree and CI run this revision describes.
 
 The branch is parented directly on the released baseline: the correction is a single,
 reviewable change set rather than a long-lived divergence.
@@ -315,7 +323,7 @@ withdrawn; the numbers in this section are the ones measured on the final tree.
 CI is the authoritative gate for the exact head and runs the `full` route for this change
 (shared runtime code plus `.github/**`).
 
-### 12.1 Result for head `87d3cfaba9325cbecdfb8015d6f6280afc464346`
+### 12.1 Result for the PREVIOUS head `87d3cfaba9325cbecdfb8015d6f6280afc464346` (history)
 
 Run: https://github.com/provelopment/provelopment-foundation/actions/runs/40483093547
 
@@ -326,16 +334,9 @@ Run: https://github.com/provelopment/provelopment-foundation/actions/runs/404830
 | `documentation` / `content` / `deployment` / `foundation` | skipped (by ownership) |
 | **`validate`** (the one required status context on `main`) | **success** |
 
-The classifier independently confirmed the `full` route: `src/**` is Foundation-owned, but
-`.github/**` is a shared surface, and a mixed change broadens validation rather than narrowing it.
-The `validate` job ran the `.temp` tracking guard and evaluated the routed result — it passed.
-
-CI and the local gate agree. Where the two could diverge (browser execution, platform differences),
-this report records the CI outcome as authoritative.
-
-This section describes head `87d3cfa` only. Any later commit on this branch — including a
-documentation-only one — has its own result, and quoting the result above for a different tree
-would be exactly the error this section exists to prevent.
+This is retained as **history**. It proves the CI mechanism routes this change to `full` and that the
+mechanism itself works; it does **not** apply to the R02 tree. The exact-head result for this revision is
+in §18.
 
 ---
 
@@ -416,4 +417,137 @@ are deliberately not reproduced in this public repository:
 
 ---
 
-**End of report. Status: PARTIAL. Nothing here is an accepted decision.**
+## 17. Response to R02, finding by finding
+
+### 17.1 §2 — `site.url` authority defect — **CORRECTED**
+
+**Reproduced first, then corrected.** Restoring the committed pre-fix `owner.ts` makes the new suites fail
+(**2 test files failed**); with the correction they pass (**3 files passed**). The reproduction is the
+order's own scenario: exactly one other Spoke's informational hostname matching the binding's host.
+
+**The rule.** `efsPublicationOwnerForRequest` no longer consults host claimants at all. A publication is
+authorized by its own declaration, composed against this Installation. The refusal reason
+`host-is-claimed-by-another-spoke` is **deleted**, so it cannot be reintroduced by accident; the architecture
+guard now asserts its absence (`tests/architecture/efs-semantic-boundary.test.ts`).
+
+**Every case the order names is proved** in `tests/integration/efs-informational-host-authority.test.ts`,
+on ONE Installation whose four hosts cover all four cardinalities:
+
+| Case | Host | Result |
+| --- | --- | --- |
+| no Spoke's hostname matches | `introduced.example.test` | owned by its binding |
+| exactly ONE matches (the R02 scenario) | `authority.example.test` | `hub-one/beta` served; `hub-one/alpha` alone names the host |
+| exactly ONE matches, other owner | `other.example.test` | `hub-one/alpha` served; `hub-one/beta` alone names the host |
+| SEVERAL match | `several.example.test` | `hub-one/beta` served; two Spokes name the host |
+| Entity published by several Spokes | `authority/alpha` + `authority/delta` | same Entity, two owners |
+| Spoke publishes several Entities | `authority/delta` + `authority/epsilon` | one Spoke, two Entities |
+| identical local Spoke ids across Hubs | `authority/gamma` | `hub-two/alpha`, never `hub-one/alpha` |
+
+The superseded expectation *"refuses a host that the routing table claims for a different Spoke"* in
+`tests/integration/efs-ownership-runtime.test.ts` was **converted** — it now asserts that the binding is
+served, on Page, sitemap and robots — rather than deleted.
+
+**Collision checks are not weakened.** A new test mutates the fixture manifest so two publications claim the
+same host and prefix and asserts `validateEfsManifest` still refuses (`ok === false`). **Legacy host-only
+behaviour is untouched**: routing, `hostnameClaims` and the inspection path are unchanged; only the EFS
+ownership rule changed.
+
+**Inspection overlap.** EFS resolution runs *before* any inspection selection in `layout.tsx`/`page.tsx`, so
+an inspection host that also carries an EFS binding resolves through the binding. Because the ownership rule
+no longer consults host claimants, an inspection hostname can no longer veto a publication either. A
+dedicated test for an inspection host that is *also* a publication host was **not** added — recorded in §18.
+
+### 17.2 §3 — shared-host asset authorization — **NOT COMPLETED**
+
+`spokeAsset()` is unchanged. Its shared-host branch still admits any **declared** runtime segment, which the
+review correctly identifies as insufficient: a declared-but-unpublished Spoke can still claim a public asset
+URL, and `declared` is not `published`.
+
+This was not shipped because the correct fix is not local to the proxy. The boundary is the edge; it cannot
+read `efs/manifest.json`, which is why it consumes a build-inlined projection (`FOUNDATION_DEPLOYMENT_HOST_ROUTING`)
+rather than the manifest. Authorization consistent with the publication model therefore needs a **projection
+of the same manifest** inlined the same way — a new build artefact, not a rule the proxy can invent. The
+groundwork is confirmed: `SpokeHostRoutingEntry` already carries `id`, `spokeHubId` and `runtimeSegment`, so a
+projection `{spokeId, spokeHubId, host}` → runtime segment is a clean mapping, and `deployment-build.mjs`
+already owns exactly this kind of projection.
+
+I did not publish a half-verified proxy change: the previous submission was rejected partly for claiming
+completeness it had not earned, and repeating that would be worse than reporting the gap.
+
+### 17.3 §4 — real integration evidence — **NOT COMPLETED**
+
+The synthetic publications still carry no `presentationSiteCode`, so none renders the Spoke presentation
+shell, and there is no production-build HTTP or browser acceptance for the five prefixes. Existing coverage
+remains mocked-header integration tests and the Foundation/Germany reference suites, which were re-run green
+(§18) but do not exercise a shared host end to end.
+
+### 17.4 §5 — root entry — **DECISION REQUEST, NO CODE** (see §18.2)
+
+### 17.5 §7 — report — **RECONCILED** (this revision)
+
+### 17.6 §8 — acceptance — **PARTIALLY MET** (see §18)
+
+---
+
+## 18. This revision: identities, gates, and the bounded decision requests
+
+### 18.1 Identity and verification
+
+| | |
+| --- | --- |
+| Branch | `fix/efs-shared-host-publication-ownership-a1` |
+| Head / tree | the commit that CONTAINS this file, identified in the PR and its CI run |
+
+Local gates on the R02 tree (the repository's own scripts):
+
+| Command | Result |
+| --- | --- |
+| `pnpm exec tsc --noEmit` | PASS |
+| `pnpm lint` | PASS |
+| `pnpm assets:check` | PASS |
+| `pnpm test` (all projects) | **210 files, 2763 passed, 1 skipped** |
+| `pnpm build` | PASS |
+| `pnpm release:classify` | PASS |
+
+`pnpm test:browser` (12 550 checks, both scopes) was green on the preceding revision and is **re-run for
+this revision** — its result belongs to the exact head and is reported with CI in §18.3, not assumed.
+
+### 18.2 Bounded decision request — the root-entry contract (R02 §5)
+
+Not implemented, as ordered. **Proposed contract, for owner acceptance:**
+
+- an optional `rootEntry` marker on exactly ONE **canonical** binding of a host whose bindings are all
+  prefix-scoped;
+- it selects a destination the binding ALREADY declares — its own default Site, a locale from its own
+  `locales`/`defaultLocale` policy, and a declared Page — so no second identity authority is created;
+- validation is fail-closed: at most one root-entry selection per host; the marked binding must be
+  canonical; the destination must resolve; **no** first-binding, shortest-prefix or authored-order fallback;
+- a `prefix: []` binding may not be mixed with prefix-scoped bindings, so a dedicated-root catch-all is
+  still refused;
+- **root-only**: it answers `GET /` with the existing entry redirect and changes nothing else — every
+  unrelated unknown path still 404s, aliases and canonical metadata follow the binding as they do today;
+- when no root entry is authored, behaviour is exactly today's: `GET /` refuses.
+
+Validation/test implications: schema coverage for the marker and every refusal; `GET /` redirect and its
+canonical/hreflang metadata; unknown paths still 404; the no-root-entry case unchanged; a shared-host
+production probe for `/` alongside the five prefixes.
+
+### 18.3 Remaining decisions and risks
+
+1. **R02 §3 (asset authority)** — design above (§17.2); needs the build projection plus six proofs. This is
+   the largest outstanding item.
+2. **R02 §4 (real integration evidence)** — `presentationSiteCode`, production-build HTTP/browser for the
+   five prefixes, host-level sitemap/robots, and a synthetic contact-adapter ownership test.
+3. **R02 §5 (root entry)** — decision request in §18.2.
+4. **Inspection-overlap test** — the behaviour is correct by construction (EFS resolves first) but is not
+   pinned by a dedicated test.
+5. Residual risk: until §3 lands, `declared` remains an over-broad condition for public Spoke artwork on a
+   shared host. It is not a cross-tenant content leak — the namespace holds that Spoke's own presentation
+   artwork, which is public on its own host — but it does expose an unpublished Spoke's artwork by name.
+
+**Status: PARTIAL.** §2 is complete and reproduced-then-corrected; §3 and §4 are not done; §5 is a decision
+request with no code. Nothing here is an accepted decision.
+
+---
+
+**End of report. Status: PARTIAL.**

@@ -850,3 +850,38 @@ pattern to follow — the work is a scenario file plus its registration, nothing
 `pnpm assets:check` OK · `pnpm country-codes:check` OK · `pnpm exec tsc --noEmit` clean · `pnpm lint` clean ·
 `pnpm test` **212 files passed** · `pnpm test:deployment` **16 files passed** · `pnpm build` OK, prebuild
 reports **3 verified claims** · `pnpm release:classify` OK. `pnpm test:browser` was NOT run.
+
+### 25.9 Corrections after the first CI runs — and what the browser gate caught
+
+**Final revision:** `4ad68449b91c71670538ee817b93aaae2c14b8e1` / tree `70f4168942e5640e108bbd87c48c5654857caa0b`.
+Exact-head CI: run `40522536176` — **classify success · full success · validate success**.
+
+Three corrections followed, and two of them were found BY the gates rather than by me:
+
+1. **The projection suite had to be classified as a writer.** Writer discovery reads the repository index,
+   so the file was invisible locally while untracked and visible in CI once committed. It is now in
+   `TEST_SCRATCH_WRITERS` with its exact domain (OS temp installations + the ignored projection cache).
+2. **The Spoke-hierarchy digest gate is WITHDRAWN.** It broke `pnpm test:browser`: the EFS scenarios use
+   installations whose declaration does not resolve through `installationSpokes()`, so my sentinel made every
+   permission stale. I withdrew it rather than weaken it into a check that grants on an unreadable hierarchy,
+   and removed the function and its test case instead of leaving a disabled check behind. **Hierarchy freshness
+   is therefore OPEN** — see §25.10.
+3. **The browser gate exposed a REAL defect in the scenarios themselves.** `pnpm test:browser` still failed
+   after (2), and the cause was not my projection at all: `tests/browser/efs.scenario.mjs` and
+   `efs-semantic.scenario.mjs` restored the selection with `process.env.FOUNDATION_EFS_MANIFEST =
+   previous.manifest`. With no previous value that assigns the STRING `"undefined"`, so every later scenario in
+   the same run inherited an EXPLICITLY SELECTED, NON-EXISTENT manifest — and, under the old rule, silently
+   fell back to legacy hostname authorization. That is exactly the failure mode R08-B exists to close. Both
+   scenarios now `delete` the variable when there was nothing to restore. No assertion was weakened.
+
+That last one is worth stating plainly: the fail-closed correction did not merely pass its own tests, it
+found a live cross-scenario authorization fallback that had been invisible while "missing manifest" and
+"no manifest" were the same thing.
+
+### 25.10 Remaining, precisely
+
+- **§6 shared-host production acceptance suite** — not delivered; design and harness contract established.
+- **§5 hierarchy freshness** — withdrawn (above); a correct version needs the failing installation
+  characterised first, which means identifying which EFS scenario's declaration does not resolve.
+- **§8 write boundary** — the mechanism exists and is verified, but pointing scratch inside the repository
+  contradicts the guard's rule that synthetic state lives outside it. One architect decision needed.

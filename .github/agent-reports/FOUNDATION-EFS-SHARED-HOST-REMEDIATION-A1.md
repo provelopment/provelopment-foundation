@@ -1,4 +1,46 @@
-# CURRENT STATE — R10 (read this first)
+# CURRENT STATE - R11 (read this first; supersedes every block below)
+
+`HEAD a7ca362df40e85606a38d26482047cec1920e049` / tree `74c04db93a81976dfaca88553076b6a81f1d9cca`
+`branch fix/efs-shared-host-publication-ownership-a1 - PR 266 (draft, not merged, not released)`
+
+The R10 block below names an earlier commit and is HISTORY. So are 25 (R08) and 26 (R09). Where they
+disagree with this block, this block is right.
+
+## Delivered and proved on this tree
+
+- Publications are authorized by EFS publication bindings, never by `site.url`; the host-claim veto is gone.
+- The projection is produced through the accepted TypeScript authority and stamped with BOTH the manifest
+  digest and the Spoke-hierarchy digest; a changed hierarchy grants nothing.
+- **R11 5 - a producer and a reader may not AGREE on a sentinel.** The unresolvable-hierarchy sentinel is
+  now ONE exported constant named by both sides. The producer computes the hierarchy digest BEFORE any
+  claim, REFUSES when it is unresolvable, and removes the stale projection, so an earlier successful build
+  cannot remain usable. The digest it verifies against is the digest it records (one read, not two).
+- **R11 5 - the projection is keyed on the CANONICAL root.** Producer and reader must name the SAME file
+  for the same Installation; two spellings of one directory previously let a refusal delete one file while
+  the boundary kept reading another.
+- **Proof**: `tests/integration/efs-publication-projection.test.ts` projects a valid hierarchy (5
+  permissions), deletes that Installation''s own `spokes.json`, and asserts the producer now refuses
+  instead of projecting a sentinel. Whole suite: 212/212 files, `tsc` and `lint` clean.
+- The shared-host browser scenario remains green at 25/25 within a 1152/1152 Foundation browser scope, and
+  the exact-head CI for the previous code revision was fully green (classify, full, validate).
+
+## NOT delivered - do not read this revision as complete
+
+1. **2 presentation/metadata acceptance**: `presentationSiteCode` selection, per-Spoke dictionary VALUES,
+   canonical + Open Graph for two owners, alias/canonical relationships, cross-owner leak assertions.
+2. **3 trusted contact provenance**: two owners, forged selector, unpublished refusal, synthetic adapter
+   that sends nothing. `handleContactSubmission` and its server-derived `origin` exist; the proof does not.
+3. **4 production build**: the shared-host scenario is `next dev` only. No `next build` + `next start` run
+   against the synthetic Installation, and `production-continuity.mjs` was not extended.
+4. **6 lifecycle restructure**: the scenario''s `try/finally` still begins AFTER materialisation and
+   presentation configuration, so an early failure is not yet covered.
+5. **7 clean-room**: no independent `pnpm install --frozen-lockfile` + `pnpm build` proof this round;
+   `release:classify` not re-run.
+
+## On the root homepage
+
+No adopter homepage is an unresolved requirement of this remediation. The optional generic root-entry
+mechanism is a SEPARATE future architectural proposal and is NOT implemented under this work order.# CURRENT STATE — R10 (read this first)
 
 **HEAD `918ebb429d57e899c8034e923778b3760c129474` · tree `d10f2ef8b0bb0d86d9540228b151a1b52a7abf04`**
 **PR 266 · branch `fix/efs-shared-host-publication-ownership-a1`**

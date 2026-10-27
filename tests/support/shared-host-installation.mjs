@@ -52,6 +52,12 @@ export const SHARED_HOST = "shared.example.test";
  * @property {string} prefix the explicit whole-segment public prefix this publication claims
  * @property {string} entityId the Entity the publication publishes
  * @property {string} marker a member-specific marker, so isolation is observable everywhere
+ * @property {string} [siteUrlHost] the INFORMATIONAL `site.url` host this Spoke authors (`D31`). Defaults to
+ *   the shared host; it is never the publication authority, and two Spokes may name the same one.
+ * @property {string} [publicationHost] the host this member's single publication binds (default: shared host)
+ * @property {string} [presentationSiteCode] the Site of THIS Spoke a publication selects for its shell
+ * @property {readonly { prefix: string, entityId: string, host?: string }[]} [publications] SEVERAL
+ *   publications from ONE Spoke, so a many-to-many topology can be expressed
  */
 
 /** @type {readonly SharedHostMember[]} */
@@ -83,19 +89,28 @@ function writeSpoke(root, member) {
   cpSync(path.join(SYNTHETIC, "content"), path.join(target, "content"), { recursive: true });
   /** @type {{ site: { url: string } }} */
   const config = JSON.parse(readFileSync(path.join(SYNTHETIC, "site.config.json"), "utf8"));
-  config.site.url = `https://${SHARED_HOST}`;
+  // `site.url` is INFORMATIONAL (`D31`): it says which public origin this Spoke is served from. It is never
+  // the publication authority, so two Spokes may name the same origin and a Spoke may name one it does not
+  // publish on.
+  config.site.url = `https://${member.siteUrlHost ?? SHARED_HOST}`;
   writeFileSync(path.join(target, "site.config.json"), `${JSON.stringify(config, null, 2)}\n`, "utf8");
 }
 
-/** The `spokes.json` document: two identified Spoke Hubs and their members, in authored order. */
-function spokesDocument() {
+/** The `spokes.json` document: identified Spoke Hubs and their members, in authored order. */
+function spokesDocument(members) {
+  const hubs = [];
+  for (const member of members) {
+    if (!hubs.includes(member.spokeHubId)) hubs.push(member.spokeHubId);
+  }
   return {
-    spokeHubs: SHARED_HOST_HUBS.map((id) => ({
+    spokeHubs: hubs.map((id) => ({
       id,
-      spokes: SHARED_HOST_MEMBERS.filter((member) => member.spokeHubId === id).map((member) => ({
-        id: member.spokeId,
-        root: locatorOf(member),
-      })),
+      spokes: members
+        .filter((member) => member.spokeHubId === id)
+        .map((member) => ({
+          id: member.spokeId,
+          root: locatorOf(member),
+        })),
     })),
   };
 }
@@ -106,8 +121,8 @@ function spokesDocument() {
  * The authored facts are all member-specific so a cross-owner leak is visible rather than plausible: the
  * page heading, the page body, the Home document's title and the owner artwork.
  */
-function writeCapsuleEntity(capsule, member) {
-  const facet = path.join(capsule, member.entityId, "acme");
+function writeCapsuleEntity(capsule, entityId, marker) {
+  const facet = path.join(capsule, entityId, "acme");
   const pages = path.join(facet, "main", "pages");
   mkdirSync(path.join(pages, "home"), { recursive: true });
   mkdirSync(path.join(pages, "about"), { recursive: true });
@@ -118,9 +133,9 @@ function writeCapsuleEntity(capsule, member) {
     `${JSON.stringify(
       {
         schemaVersion: 1,
-        title: `${member.marker} Home`,
-        description: `Home page published by ${member.marker}.`,
-        sections: [{ type: "prose", body: `Welcome from ${member.marker}.` }],
+        title: `${marker} Home`,
+        description: `Home page published by ${marker}.`,
+        sections: [{ type: "prose", body: `Welcome from ${marker}.` }],
       },
       null,
       2,
@@ -129,20 +144,20 @@ function writeCapsuleEntity(capsule, member) {
   );
   writeFileSync(
     path.join(pages, "about", "en-001.md"),
-    `# About ${member.marker}\n\nThis representation belongs to ${member.marker}.\n`,
+    `# About ${marker}\n\nThis representation belongs to ${marker}.\n`,
     "utf8",
   );
   writeFileSync(
     path.join(facet, "assets", "brand", "logo.svg"),
-    `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><title>${member.marker}</title></svg>\n`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><title>${marker}</title></svg>\n`,
     "utf8",
   );
 }
 
 /** ONE Entity declaration: one Facet `acme`, one Site `main`, the Pages `home` and `about`. */
-function entityDeclaration(member) {
+function entityDeclaration(entityId) {
   return {
-    id: member.entityId,
+    id: entityId,
     facets: [
       {
         id: "acme",
@@ -160,20 +175,32 @@ function entityDeclaration(member) {
   };
 }
 
-/** ONE explicit Spoke↔Entity publication with ONE prefix-scoped canonical binding on the shared host. */
-function publicationDeclaration(member) {
-  return {
-    id: `${member.spokeHubId}-${member.spokeId}`,
+/**
+ * The publications ONE member declares.
+ *
+ * A member normally publishes ONE Entity at ONE prefix. `member.publications` lets a single Spoke publish
+ * SEVERAL Entities (a many-to-many publication topology), which is a shape the ownership rule must answer
+ * without borrowing another Spoke's identity.
+ */
+function publicationDeclarations(member) {
+  const entries =
+    member.publications ??
+    [{ prefix: member.prefix, entityId: member.entityId, host: member.publicationHost }];
+  return entries.map((entry, index) => ({
+    id: `${member.spokeHubId}-${member.spokeId}-${entry.prefix}`,
     spokeId: member.spokeId,
     spokeHubId: member.spokeHubId,
-    entityId: member.entityId,
+    entityId: entry.entityId,
     facetId: "acme",
+    ...(member.presentationSiteCode === undefined
+      ? {}
+      : { presentationSiteCode: member.presentationSiteCode }),
     bindings: [
       {
-        id: `${member.prefix}-on-shared-host`,
-        host: SHARED_HOST,
-        prefix: [member.prefix],
-        entityId: member.entityId,
+        id: `${entry.prefix}-binding-${index}`,
+        host: entry.host ?? SHARED_HOST,
+        prefix: [entry.prefix],
+        entityId: entry.entityId,
         facetId: "acme",
         siteIds: ["main"],
         siteMode: "closed",
@@ -183,7 +210,7 @@ function publicationDeclaration(member) {
         canonical: true,
       },
     ],
-  };
+  }));
 }
 
 /**
@@ -193,20 +220,44 @@ function publicationDeclaration(member) {
  * so the modules that cache deployment state describe THIS Installation. A caller that must keep its
  * artefacts inside its own workspace passes `root`; otherwise a fresh OS-temp directory is created.
  *
- * @param {{ root?: string }} [options]
+ * @param {{ root?: string, members?: readonly SharedHostMember[] }} [options]
  * @returns {{
  *   root: string, manifestFile: string, efsManifestFile: string, capsule: string,
  *   cleanup: () => void,
  * }}
  */
-export function materializeSharedHostInstallation({ root: suppliedRoot } = {}) {
+export function materializeSharedHostInstallation({
+  root: suppliedRoot,
+  members = SHARED_HOST_MEMBERS,
+} = {}) {
   const root = suppliedRoot ?? mkdtempSync(path.join(tmpdir(), "foundation-shared-host-"));
 
-  for (const member of SHARED_HOST_MEMBERS) writeSpoke(root, member);
-  writeFileSync(path.join(root, "spokes.json"), `${JSON.stringify(spokesDocument(), null, 2)}\n`, "utf8");
+  for (const member of members) writeSpoke(root, member);
+  writeFileSync(
+    path.join(root, "spokes.json"),
+    `${JSON.stringify(spokesDocument(members), null, 2)}\n`,
+    "utf8",
+  );
 
   const capsule = path.join(root, "capsule");
-  for (const member of SHARED_HOST_MEMBERS) writeCapsuleEntity(capsule, member);
+  /** @type {string[]} */ const publications = [];
+  /** @type {Map<string, string>} */ const entityMarkers = new Map();
+  for (const member of members) {
+    publications.push(...publicationDeclarations(member));
+    const entries = member.publications ?? [{ prefix: member.prefix, entityId: member.entityId }];
+    for (const entry of entries) {
+      if (entityMarkers.has(entry.entityId)) continue;
+      // ONE capsule Entity per published Entity. A member publishing several Entities needs a distinct,
+      // member-specific marker per Entity, so a cross-owner leak stays visible.
+      entityMarkers.set(
+        entry.entityId,
+        entries.length === 1 && member.marker !== undefined
+          ? member.marker
+          : `${member.marker ?? member.spokeId} ${entry.prefix}`,
+      );
+    }
+  }
+  for (const [entityId, marker] of entityMarkers) writeCapsuleEntity(capsule, entityId, marker);
 
   const efsDirectory = path.join(root, "efs");
   mkdirSync(efsDirectory, { recursive: true });
@@ -215,8 +266,8 @@ export function materializeSharedHostInstallation({ root: suppliedRoot } = {}) {
     efsManifestFile,
     `${JSON.stringify(
       {
-        entities: SHARED_HOST_MEMBERS.map(entityDeclaration),
-        publications: SHARED_HOST_MEMBERS.map(publicationDeclaration),
+        entities: [...entityMarkers.keys()].map(entityDeclaration),
+        publications,
       },
       null,
       2,

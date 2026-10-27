@@ -76,7 +76,10 @@ describe("EFS semantic boundary (R03)", () => {
     const owner = source("config/efs/owner.ts");
     expect(owner).toContain("publicationOwnedBy(publication, runtimeIdentity(spoke))");
     expect(owner).toContain("installationRuntimeIndexForBuild()");
-    expect(owner).toContain("host-is-claimed-by-another-spoke");
+    // R02 — ownership is decided by DECLARATIONS ONLY. `site.url` is informational, so a hostname may not
+    // veto an explicitly owned publication; the superseded host-veto must not come back.
+    expect(owner).not.toContain("host-is-claimed-by-another-spoke");
+    expect(owner).not.toContain("hostClaimantsInInstallation(index, host)");
   });
 
   it("allows the retired resolver only through the non-production test utility", () => {

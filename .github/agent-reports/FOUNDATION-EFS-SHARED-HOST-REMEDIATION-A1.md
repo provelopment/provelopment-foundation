@@ -1,4 +1,60 @@
-# FOUNDATION-EFS-SHARED-HOST-REMEDIATION-A1 — implementation report
+# CURRENT STATE — R10 (read this first)
+
+**HEAD `918ebb429d57e899c8034e923778b3760c129474` · tree `d10f2ef8b0bb0d86d9540228b151a1b52a7abf04`**
+**PR 266 · branch `fix/efs-shared-host-publication-ownership-a1`**
+
+Everything below this block is HISTORY, newest last (§25 = R08, §26 = R09). This block is the current
+state and supersedes it where they disagree.
+
+## The shared-host acceptance scenario PASSES
+
+`tests/browser/shared-host.scenario.mjs` — **25/25 checks**, with the whole Foundation browser scope at
+**1152/1152** and `pnpm test` at **212/212 files** on this tree.
+
+The R09 failure was ONE check, and its premise was wrong, not the engine: the scenario looked for
+`logo-header` in an `<img src>`, but the engine renders the identity mark INLINE, so a rendered document
+contains no `/spokes/` URL at all. What the scenario now proves over real HTTP through
+proxy → route → runtime → asset pipeline:
+
+- the presentation namespace SEGMENT is the composite `hub+<hub>+<spoke>` identity, READ from the
+  canonical plan (`buildPlan`), never re-derived in the test;
+- each Spoke configuration NAMES its own namespace, so the artwork served is the Spoke's own;
+- `favicon.svg` and `logo-header.svg` answer **200 with owner-specific, byte-distinct** content
+  (Alpha vs Beta);
+- a DECLARED but UNPUBLISHED Spoke namespace is **refused**;
+- a FOREIGN namespace is **refused**;
+- no document references ANOTHER owner's namespace;
+- plus, unchanged from R09: five prefix-scoped publications each serving their own Entity, one Spoke
+  publishing two Entities, an alias binding, unknown host / near-miss prefix / forged selector refusal,
+  no invented homepage, sitemap and robots.
+
+## Teardown is now part of the test (R10 §4)
+
+The three environment variables are captured BEFORE any write and restored EXACTLY (deleted only where
+absent), the server is stopped, only this scenario's Installation and projection are removed, generated
+assets are restored by re-running the canonical synchroniser, and **every restoration error is reported as
+a failing check** instead of being swallowed.
+
+## Two diagnostic traps worth recording
+
+A run may fail for reasons that are NOT the code under test. Both happened here and both were proved, not
+assumed: 23 leftover `node` dev servers made an unrelated built-in scenario fail with
+`dev server exited`, and generated assets left behind by an ad-hoc probe made `header-rows` fail 10 checks
+(190/190 once `sync-runtime-assets` restored the real deployment).
+
+## Still NOT delivered (do not read this revision as complete)
+
+1. **§3 presentation/metadata/contact proofs** — `presentationSiteCode` selection, per-Spoke dictionary
+   VALUES, canonical + Open Graph for two owners, a trusted contact-provenance check with a synthetic
+   adapter. The rendered-metadata rows are absent.
+2. **§3 production-build leg** — the scenario uses `next dev` only. `next build` + `next start` against
+   the synthetic Installation is NOT run by this scenario, and the established
+   `tests/browser/production-continuity.mjs` proof was not extended to it.
+3. **§5 producer refusal on an unresolvable hierarchy** — the reader still fails closed via the
+   `unresolvable-installation` sentinel, but the PRODUCER does not yet refuse to emit a projection whose
+   digest is that sentinel. Equal sentinels on both sides would otherwise compare equal.
+4. **§7 clean-room dependency check** of the Vite validator, and `release:classify`, were not re-run.
+5. The PR description is updated only to this HEAD; the R09 §26 sub-sections remain historical.# FOUNDATION-EFS-SHARED-HOST-REMEDIATION-A1 — implementation report
 
 **Work order:** `FOUNDATION-EFS-SHARED-HOST-REMEDIATION-A1`
 **Repository:** `provelopment/provelopment-foundation`
@@ -959,3 +1015,4 @@ that scenario is finished.
 
 Everything else in this revision is green: `pnpm test` (2787 passed, 1 skipped), `tsc`, `lint`,
 `pnpm build`, and the eight scenario browser run.
+

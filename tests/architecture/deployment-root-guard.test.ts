@@ -217,6 +217,7 @@ describe("deployment-owned paths are spelled in ONE place", () => {
       "scripts/installation/index.mjs",
       "scripts/sync-runtime-assets.mjs",
       "tests/integration/efs-publication-projection.test.ts",
+      "tests/browser/shared-host.scenario.mjs",
       "tests/architecture/deployment-root-guard.test.ts",
       "tests/architecture/write-ownership-guard.test.ts",
       "tests/browser/matrix.mjs",
@@ -327,10 +328,30 @@ describe("the build selects exactly one deployment", () => {
     expect(normalise(paths.markdownPagesRoot)).toBe(normalise(synthetic.markdownPagesRoot));
     expect(normalise(paths.jsonPagesRoot)).toBe(normalise(synthetic.jsonPagesRoot));
     expect(normalise(paths.assetSourceRoot)).toBe(normalise(synthetic.assetSourceRoot));
-    // The synthetic root is a disposable temporary tree outside the checkout: a generic test may plant
-    // and remove fixtures freely without touching any committed deployment.
-    expect(paths.root.startsWith(ROOT + path.sep)).toBe(false);
+    // The synthetic root is DISPOSABLE, and disposability is the whole protection: a generic test may plant
+    // and remove fixtures freely without touching any committed deployment. TWO placements satisfy that —
+    // the platform temporary directory, or the repository's IGNORED task scratch domain `.temp/`, which can
+    // never be tracked (`**/.temp/` in .gitignore, enforced by `scripts/check-temp-tracking.mjs`) and is
+    // therefore absent from every release payload (R09 §4).
+    const insideCheckout = paths.root.startsWith(ROOT + path.sep);
+    const insideTaskScratch =
+      insideCheckout && paths.root.startsWith(path.join(ROOT, ".temp") + path.sep);
+    expect(insideCheckout ? insideTaskScratch : true).toBe(true);
     expect(existsSync(path.join(paths.root, "site.config.json"))).toBe(true);
+  });
+
+  it("never lets disposable synthetic state reach AUTHORED deployment material", () => {
+    // The predicate the assertion above relies on, applied to the places that must stay forbidden.
+    const disposable = (value: string) => {
+      const inside = value.startsWith(ROOT + path.sep);
+      return !inside || value.startsWith(path.join(ROOT, ".temp") + path.sep);
+    };
+    expect(disposable(path.join(ROOT, ".temp", "foundation-a1-tests", "installation"))).toBe(true);
+    expect(disposable(path.join(tmpdir(), "foundation-synthetic"))).toBe(true);
+    // Anything INSIDE the checkout that is not the task scratch domain is never disposable - which is
+    // what keeps authored deployment state unreachable BY CONSTRUCTION (write-ownership-guard.test.ts
+    // proves the authored deployment itself is refused, with its own sanctioned-writer inventory).
+    expect(disposable(path.join(ROOT, "src", "core"))).toBe(false);
   });
 
   it("resolves a CAPSULE at <repo>/deployment when one exists — with no root config involved", () => {

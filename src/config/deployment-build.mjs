@@ -321,6 +321,31 @@ export function efsProjectionPath(root, repositoryRoot = process.cwd()) {
 }
 
 /**
+ * Digest of the Installation's OWN Spoke hierarchy declaration (R09 §2)
+ * ================================================================
+ *
+ * A projection states which composite Spoke owners it verified. That statement is only true for the
+ * hierarchy it was verified AGAINST, so the projection records this digest and a reader refuses a projection
+ * whose digest no longer matches. Re-adding one Spoke, renaming one, or moving it between Hubs therefore
+ * invalidates every permission derived from the old hierarchy instead of silently preserving it.
+ *
+ * The declaration is located through the ONE authority (`installationSpokes`), never by composing a path to
+ * it. A declaration the authority cannot resolve yields a sentinel no recorded digest can equal: an
+ * unreadable hierarchy is INDISTINGUISHABLE FROM A STALE PROJECTION, and grants nothing.
+ */
+export function efsInstallationDigest(root) {
+  let manifestFile;
+  try {
+    manifestFile = installationSpokes(root).manifestFile;
+  } catch {
+    return "unresolvable-installation";
+  }
+  return typeof manifestFile === "string" && existsSync(manifestFile)
+    ? createHash("sha256").update(readFileSync(manifestFile)).digest("hex")
+    : "no-installation-declaration";
+}
+
+/**
  * Project the VALIDATED publication facts the request boundary may assert.
  *
  * FOUR states of the world, and the caller must NOT collapse them:
@@ -361,13 +386,14 @@ function efsPublicationClaims(root, environment) {
   }
   if (projection === null || typeof projection !== "object" || Array.isArray(projection)) return [];
 
-  const { manifestPath: recorded, manifestDigest, claims } =
+  const { manifestPath: recorded, manifestDigest, installationDigest, claims } =
     /** @type {Record<string, unknown>} */ (projection);
 
-  // The projection must describe THIS Installation and THIS manifest selection with THIS content. Any
-  // disagreement makes the whole projection unusable rather than partly usable.
+  // The projection must describe THIS Installation and THIS manifest selection with THIS content, verified
+  // against THIS Spoke hierarchy. Any disagreement makes the whole projection unusable, not partly usable.
   if (recorded !== selection.path) return [];
   if (manifestDigest !== efsManifestDigest(selection.path)) return [];
+  if (installationDigest !== efsInstallationDigest(root)) return [];
   if (!Array.isArray(claims)) return [];
 
   /** @type {{ host: string, spokeId: string, spokeHubId?: string }[]} */

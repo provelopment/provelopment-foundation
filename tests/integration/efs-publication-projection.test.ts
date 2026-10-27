@@ -13,11 +13,14 @@
  *   C. When is a cached projection still trustworthy? Only while it describes THIS Installation, THIS
  *      manifest selection, THIS manifest content and THIS Spoke hierarchy.
  */
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 import { afterAll, describe, expect, it } from "vitest";
+
+import { loadEfsManifest } from "@/config/efs/manifest";
 
 import {
   DEPLOYMENT_EFS_PUBLICATIONS_ENV,
@@ -207,32 +210,51 @@ describe("one Spoke publishing several Entities on one host (R08-A)", () => {
     expect(projectedClaims(installation.root, file)).toEqual([]);
   });
 
-  it("leaves the validator's own binding rules in charge, and never grants partially", async () => {
+  it("refuses a duplicate host+prefix binding - validator, projection and build alike", async () => {
     const installation = materialize();
     const document = manifestDocument();
-    // The SAME host and prefix claimed twice inside one publication: the validator's question, not ours.
+    // The SAME host and prefix claimed twice inside one publication. Duplicate PERMISSIONS are legal
+    // (a Spoke may publish several Entities); duplicate BINDING CLAIMS are not.
     const binding = document.publications[0].bindings[0];
     document.publications[0].bindings = [
       { ...binding, id: "first" },
       { ...binding, id: "second" },
     ];
-    const file = writeManifest(path.join(scratch("foundation-r08-duplicate-"), "efs"), document);
+    const file = writeManifest(path.join(scratch("foundation-r09-duplicate-"), "efs"), document);
 
+    // 1. the authoritative validator refuses the document itself.
+    const validated = await loadEfsManifest(file);
+    expect(validated.ok, JSON.stringify(validated.ok ? [] : validated.issues)).toBe(false);
+
+    // 2. the projection refuses it, and no partial host/Spoke authorization survives.
     const outcome = await producePublicationProjection({
       root: installation.root,
       manifestPath: file,
       spokeIdentities: SPOKES,
       repositoryRoot: process.cwd(),
     });
+    expect(outcome.status).toBe("refused");
+    expect(projectedClaims(installation.root, file)).toEqual([]);
 
-    // Whatever the validator decides, the outcome may never be a partial nor an unexplained grant.
-    if (outcome.status === "projected") {
-      expect(outcome.claims).toHaveLength(1);
-    } else {
-      expect(outcome.status).toBe("refused");
-      expect(projectedClaims(installation.root, file)).toEqual([]);
-    }
-  });
+    // 3. a PRODUCTION BUILD cannot accept it: validate-publications.mjs IS the step pnpm build runs
+    //    before next build, and it must exit non-zero rather than let the build proceed.
+    const cli = spawnSync(
+      process.execPath,
+      [path.join(process.cwd(), "scripts", "efs", "validate-publications.mjs")],
+      {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          FOUNDATION_DEPLOYMENT_ROOT: installation.root,
+          FOUNDATION_EFS_MANIFEST: file,
+        },
+        encoding: "utf8",
+      },
+    );
+    expect(cli.status).not.toBe(0);
+    expect(`${cli.stdout}${cli.stderr}`).toContain("refus");
+    // The CLI runs the REAL validator through Vite, so this evidence is slow by nature - not by accident.
+  }, 180000);
 });
 
 describe("an explicitly selected EFS manifest is a contract (R08-B)", () => {
@@ -330,6 +352,58 @@ describe("a cached projection is trusted only while it is current (R08-C)", () =
     writeFileSync(installation.efsManifestFile, `${JSON.stringify(current, null, 2)}\n`, "utf8");
 
     expect(projectedClaims(installation.root, installation.efsManifestFile)).toEqual([]);
+  });
+
+  it("grants nothing once the Spoke hierarchy changes", async () => {
+    const installation = await projected();
+    const declarations = JSON.parse(readFileSync(installation.manifestFile, "utf8"));
+    // A VALID but DIFFERENT hierarchy: one Spoke is renamed in place, so every declaration still resolves
+    // while the projection's ownership claim no longer describes this Installation.
+    const members = Array.isArray(declarations.spokes)
+      ? declarations.spokes
+      : declarations.spokeHubs[0].spokes;
+    members.find((member: { id: string }) => member.id === "gamma").id = "gamma-renamed";
+    writeFileSync(installation.manifestFile, `${JSON.stringify(declarations, null, 2)}\n`, "utf8");
+
+    expect(projectedClaims(installation.root, installation.efsManifestFile)).toEqual([]);
+  });
+
+  it("refuses a hierarchy that no longer owns a publication, then accepts a restored one", async () => {
+    const installation = await projected();
+    const original = readFileSync(installation.manifestFile, "utf8");
+    const declarations = JSON.parse(original);
+    // Removing the owning Spoke makes the publication ownerless: a FRESH validation must refuse it rather
+    // than keep the permission the old hierarchy justified.
+    const members = Array.isArray(declarations.spokes)
+      ? declarations.spokes
+      : declarations.spokeHubs[0].spokes;
+    const index = members.findIndex((member: { id: string }) => member.id === "alpha");
+    const removed = members.splice(index, 1)[0];
+    writeFileSync(installation.manifestFile, `${JSON.stringify(declarations, null, 2)}\n`, "utf8");
+
+    // 1. the stale authorization is gone.
+    expect(projectedClaims(installation.root, installation.efsManifestFile)).toEqual([]);
+    // 2. a fresh validation REFUSES the now-invalid ownership.
+    const refused = await producePublicationProjection({
+      root: installation.root,
+      manifestPath: installation.efsManifestFile,
+      spokeIdentities: SPOKES.filter((spoke) => spoke.id !== "alpha"),
+      repositoryRoot: process.cwd(),
+    });
+    expect(refused.status).toBe("refused");
+    expect(projectedClaims(installation.root, installation.efsManifestFile)).toEqual([]);
+
+    // 3. restoring the hierarchy allows a NEWLY validated projection.
+    writeFileSync(installation.manifestFile, original, "utf8");
+    const restored = await producePublicationProjection({
+      root: installation.root,
+      manifestPath: installation.efsManifestFile,
+      spokeIdentities: SPOKES,
+      repositoryRoot: process.cwd(),
+    });
+    expect(restored.status, JSON.stringify(restored)).toBe("projected");
+    expect(projectedClaims(installation.root, installation.efsManifestFile)).toHaveLength(5);
+    expect(removed.id).toBe("alpha");
   });
 
   it("grants nothing when the projection describes another manifest", async () => {

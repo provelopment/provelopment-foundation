@@ -21,6 +21,7 @@ import path from "node:path";
 import { createServer, createServerModuleRunner } from "vite";
 
 import {
+  efsInstallationDigest,
   efsManifestDigest,
   efsProjectionPath,
 } from "../../src/config/deployment-build.mjs";
@@ -146,6 +147,8 @@ export async function producePublicationProjection(input) {
         {
           manifestPath: input.manifestPath,
           manifestDigest: efsManifestDigest(input.manifestPath),
+          // The hierarchy this projection's ownership claim was verified AGAINST (R09 §2).
+          installationDigest: efsInstallationDigest(input.root),
           claims,
         },
         null,

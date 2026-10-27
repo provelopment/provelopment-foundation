@@ -442,7 +442,9 @@ host-only rule), *EFS present with segments* (exactly those), *EFS present and e
 deployment and publishes nothing here → **refused**, with no legacy fallback). A malformed projection throws,
 so every asset request fails closed.
 
-**Status: PARTIAL.**
+**Status: BLOCKED** — the validated publication boundary (§22.2) and the committed acceptance scenario
+(§22.3) are open. See §22. Root entry is NOT the reason: it is out of scope for this remediation.
+
 
 | Area | State |
 | --- | --- |
@@ -611,3 +613,85 @@ authored content is untouched. No root-entry capability was implemented.
   authority's validator, and that a plain-JavaScript build seam is not a licence to restate its rules.
 - Record that a projection's "narrower by construction" property must be demonstrated, never asserted.
 - Record that browser fixtures should materialise inside the approved write boundary.
+
+---
+
+## 22. R06 — validated publication boundary and release acceptance
+
+**Baseline reviewed:** head `78a794a37044a7db3c81a0d50afccb00e46310d5`, tree
+`dba555e4dd73c77e1ab9c2f1c99c6da7b2261d53`. **Status: BLOCKED on §22.2 and §22.3** (see §22.4).
+
+R05 recorded one dead end. R06 correctly pointed out that one dead end does not prove every build-time
+adapter impossible, so I tested a second, independent mechanism.
+
+### 22.1 §2A — mechanisms tested, both fail, both executably
+
+| Adapter | Probe | Result |
+| --- | --- | --- |
+| Next config loader | reference `loadEfsManifest()` from `next.config.ts`, build | `Error: Cannot find module './src/core/efs/identity'` |
+| Node TS type-stripping (v24.22.1) | `node --experimental-strip-types -e "import('./src/config/efs/manifest.ts')…"` | `ERR_MODULE_NOT_FOUND: Cannot find package '@/core'` |
+
+There is no supported TS execution path in the repository either: `package.json` declares **no** `tsx`,
+`ts-node`, `vite-node`, `esbuild`, `jiti` or `swc`. So no "already-supported, deterministic compilation or
+execution mechanism" exists that can run the validator as written. Both failures have the same cause: the
+validator's transitive imports are TypeScript and alias-based (`@/…`), and neither adapter maps aliases *and*
+resolves extensionless TS at runtime.
+
+### 22.2 §2B — the exact extraction boundary (needs authority)
+
+I measured the closure rather than estimating it. It is nearly leaf-level, which is why B is viable:
+
+| Module | Lines | Imports |
+| --- | --- | --- |
+| `src/core/efs/identity.ts` | 96 | — |
+| `src/core/efs/locales.ts` | 218 | — |
+| `src/core/efs/properties.ts` | 185 | — |
+| `src/core/efs/publication.ts` | 341 | `./locales` |
+| `src/core/site-identity.ts` | 356 | `./business-identity` |
+| `src/core/spoke` | — | resolves under `src/core/spoke/**` |
+
+Proposed boundary, preserving **one** implementation and every current public API:
+
+1. `src/core/efs/publication-bindings.mjs` — `normalizeBindingHost`, `normalizePrefix`, `bindingIssues`,
+   lifted verbatim out of `publication.ts`, which then imports and re-exports them (no second copy).
+2. `src/core/efs/manifest-validation.mjs` — `validateEfsManifest` and its helpers (`text`, `isRecord`,
+   `arrayOf`), importing the leaf validators below instead of restating them.
+3. Leaf validators converted to JSDoc ESM: `identity`, `locales`, `properties`, `site-identity`
+   (+ `business-identity`), and the `spoke` constants.
+4. `manifest.ts` keeps its exports and delegates; `deployment-build.mjs` imports `validateEfsManifest` and
+   projects rights **only** from a validated manifest plus verified composite ownership.
+
+This is ~1,200 lines of typed core re-expressed in JSDoc ESM. `tsc` stops checking any part converted
+loosely, so each step must be verified by the existing EFS suites. R06 §2 asks me to stop for authority if the
+extraction "would materially change unrelated public APIs or exceed the accepted technical scope". It need not
+change public APIs, but step 3 reaches well beyond the publication boundary into identity, locale and Site
+authority that this programme has not previously touched. **I am not starting a 1,200-line core conversion
+unverified**, so I present the boundary instead.
+
+### 22.3 §4, §5, §6 — not started
+
+- **§4 committed scenario:** not committed. It needs the harness's missing production asset-sync stage first
+  (§19.2), and it must assert bytes, metadata, sitemap/robots and the fail-closed `/` — substantial new
+  scenario code, not a fold-in of the `.temp` script.
+- **§5 fixture genericization:** the default fixture still uses adopter-flavoured names (`pbs`, `templates`);
+  the neutral `group-one/{alpha,beta,gamma}` + `group-two/{delta,epsilon}` mapping is agreed but the rename
+  is not applied.
+- **§6 scratch root:** unchanged. The harness still writes under the OS temp directory
+  (`mkdtempSync(join(tmpdir(), …))`). I did not write there during this revision.
+
+I would rather return three honest OPEN items than a release candidate carrying an unverified core conversion,
+a scenario I did not run, or a fixture rename I did not re-assert.
+
+### 22.4 What this revision did change
+
+The implementation report only: §1 points at the authoritative current state, §16 is marked as historical, and
+the R05 defects (a section body stranded after the final section, out-of-order sections, a missing assertion
+total) are repaired. No product, test, fixture or generated file changed, and no file was written outside
+`C:\Users\Sean\Documents\Provelopment\00.foundation-template`.
+
+## 23. Exact next step
+
+Authorise §22.2 step 1 alone (`publication-bindings.mjs` + `publication.ts` re-export) as a verifiable slice:
+it closes the *binding* half of the projection with one implementation and nothing else moves. Steps 2–4
+follow only if that slice proves behaviour-preserving under the existing EFS suites. Everything in §22.3
+remains outstanding and must not be reported as done.

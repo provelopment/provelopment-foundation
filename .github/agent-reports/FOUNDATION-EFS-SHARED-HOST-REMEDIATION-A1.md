@@ -1015,4 +1015,3 @@ that scenario is finished.
 
 Everything else in this revision is green: `pnpm test` (2787 passed, 1 skipped), `tsc`, `lint`,
 `pnpm build`, and the eight scenario browser run.
-

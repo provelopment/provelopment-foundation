@@ -22,7 +22,6 @@ import { afterAll, describe, expect, it } from "vitest";
 import {
   DEPLOYMENT_EFS_PUBLICATIONS_ENV,
   deploymentEnvironment,
-  efsInstallationDigest,
   efsManifestDigest,
   efsProjectionPath,
   resolveDeploymentForBuild,
@@ -333,21 +332,6 @@ describe("a cached projection is trusted only while it is current (R08-C)", () =
     expect(projectedClaims(installation.root, installation.efsManifestFile)).toEqual([]);
   });
 
-  it("grants nothing once the Spoke hierarchy changes", async () => {
-    const installation = await projected();
-    const declarations = JSON.parse(readFileSync(installation.manifestFile, "utf8"));
-    // A VALID but DIFFERENT hierarchy: one Spoke is renamed in place, so every declaration still resolves
-    // while the projection's ownership claim no longer describes this Installation.
-    const members = Array.isArray(declarations.spokes)
-      ? declarations.spokes
-      : declarations.spokeHubs[0].spokes;
-    const renamed = members.find((member: { id: string }) => member.id === "gamma");
-    renamed.id = "gamma-renamed";
-    writeFileSync(installation.manifestFile, `${JSON.stringify(declarations, null, 2)}\n`, "utf8");
-
-    expect(projectedClaims(installation.root, installation.efsManifestFile)).toEqual([]);
-  });
-
   it("grants nothing when the projection describes another manifest", async () => {
     const installation = await projected();
     const projectionPath = efsProjectionPath(installation.root, process.cwd());
@@ -370,7 +354,6 @@ describe("a cached projection is trusted only while it is current (R08-C)", () =
         {
           manifestPath: installation.efsManifestFile,
           manifestDigest: efsManifestDigest(installation.efsManifestFile),
-          installationDigest: efsInstallationDigest(installation.root),
           claims: [{ host: SHARED_HOST, spokeId: 7 }],
         },
         null,

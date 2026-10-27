@@ -21,7 +21,6 @@ import path from "node:path";
 import { createServer, createServerModuleRunner } from "vite";
 
 import {
-  efsInstallationDigest,
   efsManifestDigest,
   efsProjectionPath,
 } from "../../src/config/deployment-build.mjs";
@@ -147,7 +146,6 @@ export async function producePublicationProjection(input) {
         {
           manifestPath: input.manifestPath,
           manifestDigest: efsManifestDigest(input.manifestPath),
-          installationDigest: efsInstallationDigest(input.root),
           claims,
         },
         null,

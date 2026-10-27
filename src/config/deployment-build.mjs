@@ -314,30 +314,6 @@ export function efsManifestDigest(manifestPath) {
   return createHash("sha256").update(readFileSync(manifestPath)).digest("hex");
 }
 
-/**
- * Digest of the Installation's OWN Spoke hierarchy declaration.
- *
- * A projection records which Spokes it verified. If `spokes.json` changes, that verification is stale even
- * when the manifest bytes did not change — a Spoke may have been added, renamed or moved between Hubs, and
- * the projected owner would no longer be the Installation's owner. This is the smallest fact that makes the
- * projection's ownership claim falsifiable.
- *
- * The declaration is located through the ONE authority (`installationSpokes`), never by composing a path to
- * it. A declaration that cannot be resolved yields a sentinel that no recorded digest can equal, so an
- * unreadable hierarchy is INDISTINGUISHABLE FROM A STALE PROJECTION and therefore grants nothing.
- */
-export function efsInstallationDigest(root) {
-  let manifestFile;
-  try {
-    manifestFile = installationSpokes(root).manifestFile;
-  } catch {
-    return "unresolvable-installation";
-  }
-  return existsSync(manifestFile)
-    ? createHash("sha256").update(readFileSync(manifestFile)).digest("hex")
-    : "no-installation-declaration";
-}
-
 /** The projection file for one Installation root. */
 export function efsProjectionPath(root, repositoryRoot = process.cwd()) {
   const key = createHash("sha256").update(path.resolve(root)).digest("hex").slice(0, 32);
@@ -385,14 +361,13 @@ function efsPublicationClaims(root, environment) {
   }
   if (projection === null || typeof projection !== "object" || Array.isArray(projection)) return [];
 
-  const { manifestPath: recorded, manifestDigest, installationDigest, claims } =
+  const { manifestPath: recorded, manifestDigest, claims } =
     /** @type {Record<string, unknown>} */ (projection);
 
-  // The projection must describe THIS Installation, THIS manifest selection, THIS manifest content and THIS
-  // Spoke hierarchy. Any disagreement makes the whole projection unusable rather than partly usable.
+  // The projection must describe THIS Installation and THIS manifest selection with THIS content. Any
+  // disagreement makes the whole projection unusable rather than partly usable.
   if (recorded !== selection.path) return [];
   if (manifestDigest !== efsManifestDigest(selection.path)) return [];
-  if (installationDigest !== efsInstallationDigest(root)) return [];
   if (!Array.isArray(claims)) return [];
 
   /** @type {{ host: string, spokeId: string, spokeHubId?: string }[]} */

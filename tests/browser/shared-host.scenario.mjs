@@ -188,7 +188,7 @@ async function start(harness, installation) {
       return { server, port, projected };
     } catch (error) {
       last = error;
-      await harness.stopServer(server);
+      if (server !== null) await harness.stopServer(server);
     }
   }
   throw last ?? new Error("no shared-host port answered");
@@ -201,14 +201,20 @@ export async function run(chrome, harness) {
   for (const name of ["FOUNDATION_DEPLOYMENT_ROOT", "FOUNDATION_EFS_MANIFEST", "FOUNDATION_EFS_CAPSULE"]) {
     previousEnv[name] = process.env[name];
   }
-  const installation = materializeSharedHostInstallation({
-    root: mkdtempSync(path.join(scratchRoot(), "foundation-shared-host-")),
-    members: MEMBERS,
-  });
-  const segments = nameOwnNamespaces(installation, MEMBERS);
+  // PREPARATION IS INSIDE THE PROTECTED REGION (R11 C). An exception while materialising the Installation
+  // or while rewiring its presentation namespaces is exactly the failure that used to leave a test-owned
+  // Installation and mutated configuration behind, because the `finally` only began afterwards. Everything
+  // that MUTATES state now runs under the guard, and teardown tolerates a run that stopped half-prepared.
+  let installation = null;
+  let segments = null;
   let server = null;
-
+  const problems = [];
   try {
+    installation = materializeSharedHostInstallation({
+      root: mkdtempSync(path.join(scratchRoot(), "foundation-shared-host-")),
+      members: MEMBERS,
+    });
+    segments = nameOwnNamespaces(installation, MEMBERS);
     const started = await start(harness, installation);
     server = started.server;
     const port = started.port;
@@ -342,9 +348,8 @@ export async function run(chrome, harness) {
     // RESTORATION IS PART OF THE TEST (R10 s4): every step reports a failure instead of swallowing one, and
     // the process environment returns to EXACTLY its previous values - deleted only where it was absent -
     // so a later scenario can never inherit this Installation.
-    const problems = [];
     try {
-      await harness.stopServer(server);
+      if (server !== null) await harness.stopServer(server);
     } catch (error) {
       problems.push("stopServer: " + String(error));
     }
@@ -353,8 +358,10 @@ export async function run(chrome, harness) {
       else process.env[name] = value;
     }
     try {
-      rmSync(efsProjectionPath(installation.root, process.cwd()), { force: true });
-      installation.cleanup();
+      if (installation !== null) {
+        rmSync(efsProjectionPath(installation.root, process.cwd()), { force: true });
+        installation.cleanup();
+      }
     } catch (error) {
       problems.push("cleanup: " + String(error));
     }

@@ -288,17 +288,54 @@ export const EFS_PROJECTION_DIRECTORY = path.join(
   "efs-publications",
 );
 
-/** The manifest this deployment reads: the runtime override, else `<root>/efs/manifest.json`. */
-export function efsManifestPath(root, environment = process.env) {
+/**
+ * The manifest this deployment reads, AND whether the selection was EXPLICIT.
+ *
+ * `explicit` matters because an explicitly selected manifest that does not exist is a CONFIGURATION ERROR,
+ * not an EFS-absent Installation: treating it as absent would silently reactivate the legacy host-only rule
+ * and grant presentation-asset rights to `site.url`.
+ */
+export function efsManifestSelection(root, environment = process.env) {
   const override = environment[EFS_MANIFEST_ENV]?.trim();
-  return override !== undefined && override !== ""
-    ? override
-    : path.join(root, "efs", "manifest.json");
+  const explicit = override !== undefined && override !== "";
+  return {
+    path: explicit ? override : path.join(root, "efs", "manifest.json"),
+    explicit,
+  };
+}
+
+/** The manifest path alone, for callers that do not need to know how it was selected. */
+export function efsManifestPath(root, environment = process.env) {
+  return efsManifestSelection(root, environment).path;
 }
 
 /** Digest of the manifest's bytes, so a projection can never outlive the document it describes. */
 export function efsManifestDigest(manifestPath) {
   return createHash("sha256").update(readFileSync(manifestPath)).digest("hex");
+}
+
+/**
+ * Digest of the Installation's OWN Spoke hierarchy declaration.
+ *
+ * A projection records which Spokes it verified. If `spokes.json` changes, that verification is stale even
+ * when the manifest bytes did not change — a Spoke may have been added, renamed or moved between Hubs, and
+ * the projected owner would no longer be the Installation's owner. This is the smallest fact that makes the
+ * projection's ownership claim falsifiable.
+ *
+ * The declaration is located through the ONE authority (`installationSpokes`), never by composing a path to
+ * it. A declaration that cannot be resolved yields a sentinel that no recorded digest can equal, so an
+ * unreadable hierarchy is INDISTINGUISHABLE FROM A STALE PROJECTION and therefore grants nothing.
+ */
+export function efsInstallationDigest(root) {
+  let manifestFile;
+  try {
+    manifestFile = installationSpokes(root).manifestFile;
+  } catch {
+    return "unresolvable-installation";
+  }
+  return existsSync(manifestFile)
+    ? createHash("sha256").update(readFileSync(manifestFile)).digest("hex")
+    : "no-installation-declaration";
 }
 
 /** The projection file for one Installation root. */
@@ -310,26 +347,31 @@ export function efsProjectionPath(root, repositoryRoot = process.cwd()) {
 /**
  * Project the VALIDATED publication facts the request boundary may assert.
  *
- * Three outcomes, and the caller must NOT collapse them:
+ * FOUR states of the world, and the caller must NOT collapse them:
  *
- *   `null`      this Installation has NO EFS manifest — an EFS-absent deployment, which keeps the released
- *               host-only asset rule;
- *   `[]`        EFS CONTROLS the deployment and nothing is authorized — either the manifest declares no
- *               publication, or no usable projection exists for it;
- *   `[...]`     the verified claims of a validated manifest.
+ *   1. genuine NON-EFS Installation (no authored, no explicitly selected manifest) -> `null`
+ *      the released host-only rule still applies;
+ *   2/3. EFS CONTROLS the deployment — a valid or an invalid manifest -> rights come ONLY from a current,
+ *      verified projection, so `[...]` or `[]`;
+ *   4. an EXPLICITLY SELECTED but MISSING manifest -> `[]`
+ *      a configuration error grants nothing. It must never be mistaken for state 1.
  *
- * FAIL CLOSED: a manifest that exists but has no current projection yields `[]`, never `null`. A refused or
- * missing projection must never reactivate legacy hostname authorization.
+ * FAIL CLOSED: any projection that is absent, unreadable, malformed, or that describes another Installation,
+ * another manifest, or a superseded Spoke hierarchy yields `[]`, never `null`.
  *
- * @param {string} root the installation root whose `efs/manifest.json` is projected
+ * @param {string} root the installation root whose manifest is projected
  * @param {Record<string, string | undefined>} environment the build environment (manifest override)
  * @returns {{ host: string, spokeId: string, spokeHubId?: string }[] | null}
  */
 function efsPublicationClaims(root, environment) {
-  const manifestPath = efsManifestPath(root, environment);
-  // EFS-ABSENT: the released host-only rule still applies. Nothing is deleted here — a READ must not
-  // mutate; the projection producer removes stale state, and a stale file is ignored by digest anyway.
-  if (!existsSync(manifestPath)) return null;
+  const selection = efsManifestSelection(root, environment);
+
+  // 1. GENUINE NON-EFS INSTALLATION: nothing authors, nothing selects. The legacy rule stands.
+  //    (A read must not mutate, so nothing is deleted here; a stale projection is ignored by digest.)
+  if (!existsSync(selection.path) && !selection.explicit) return null;
+
+  // 4. EXPLICITLY SELECTED BUT MISSING: a configuration error. EFS controls, and it authorizes nothing.
+  if (!existsSync(selection.path)) return [];
 
   const projectionPath = efsProjectionPath(root);
   if (!existsSync(projectionPath)) return [];
@@ -343,12 +385,27 @@ function efsPublicationClaims(root, environment) {
   }
   if (projection === null || typeof projection !== "object" || Array.isArray(projection)) return [];
 
-  const { manifestPath: recorded, manifestDigest, claims } =
+  const { manifestPath: recorded, manifestDigest, installationDigest, claims } =
     /** @type {Record<string, unknown>} */ (projection);
-  if (recorded !== manifestPath) return [];
-  if (manifestDigest !== efsManifestDigest(manifestPath)) return [];
+
+  // The projection must describe THIS Installation, THIS manifest selection, THIS manifest content and THIS
+  // Spoke hierarchy. Any disagreement makes the whole projection unusable rather than partly usable.
+  if (recorded !== selection.path) return [];
+  if (manifestDigest !== efsManifestDigest(selection.path)) return [];
+  if (installationDigest !== efsInstallationDigest(root)) return [];
   if (!Array.isArray(claims)) return [];
-  return /** @type {{ host: string, spokeId: string, spokeHubId?: string }[]} */ (claims);
+
+  /** @type {{ host: string, spokeId: string, spokeHubId?: string }[]} */
+  const verified = [];
+  for (const claim of claims) {
+    if (claim === null || typeof claim !== "object" || Array.isArray(claim)) return [];
+    const { host, spokeId, spokeHubId } = /** @type {Record<string, unknown>} */ (claim);
+    if (typeof host !== "string" || host === "") return [];
+    if (typeof spokeId !== "string" || spokeId === "") return [];
+    if (spokeHubId !== undefined && (typeof spokeHubId !== "string" || spokeHubId === "")) return [];
+    verified.push(spokeHubId === undefined ? { host, spokeId } : { host, spokeId, spokeHubId });
+  }
+  return verified;
 }
 
 

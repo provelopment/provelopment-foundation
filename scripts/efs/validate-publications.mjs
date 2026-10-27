@@ -12,7 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  efsManifestPath,
+  efsManifestSelection,
   installationSpokes,
   resolveDeploymentForBuild,
 } from "../../src/config/deployment-build.mjs";
@@ -21,7 +21,7 @@ import { producePublicationProjection } from "./publication-projection.mjs";
 const repositoryRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 const resolved = resolveDeploymentForBuild(process.env, repositoryRoot);
-const manifestPath = efsManifestPath(resolved.root, process.env);
+const selection = efsManifestSelection(resolved.root, process.env);
 
 // The Installation's OWN hierarchy is the ownership authority; `resolveDeploymentForBuild()` names only the
 // Spoke whose configuration is inlined, so it cannot answer "which Spokes exist".
@@ -32,7 +32,8 @@ const spokeIdentities = (installationSpokes(resolved.root).spokes ?? []).map((sp
 
 const outcome = await producePublicationProjection({
   root: resolved.root,
-  manifestPath,
+  manifestPath: selection.path,
+  explicit: selection.explicit,
   spokeIdentities,
   repositoryRoot,
 });

@@ -5,11 +5,11 @@
  * ONE disposable Installation in which FIVE Spokes, coordinated by TWO identified Spoke Hubs, publish
  * FIVE DIFFERENT Entities at FIVE DIFFERENT path prefixes of ONE hostname:
  *
- *     shared.example.test/ww          Spoke Hub "main"     / Spoke "main-site"
- *     shared.example.test/pbs         Spoke Hub "main"     / Spoke "pbs"
- *     shared.example.test/templates   Spoke Hub "main"     / Spoke "templates"
- *     shared.example.test/tenant-a    Spoke Hub "tenants"  / Spoke "tenant-a"
- *     shared.example.test/tenant-b    Spoke Hub "tenants"  / Spoke "tenant-b"
+ *     shared.example.test/alpha       Spoke Hub "group-one"  / Spoke "alpha"
+ *     shared.example.test/beta        Spoke Hub "group-one"  / Spoke "beta"
+ *     shared.example.test/gamma       Spoke Hub "group-one"  / Spoke "gamma"
+ *     shared.example.test/delta       Spoke Hub "group-two"  / Spoke "delta"
+ *     shared.example.test/epsilon     Spoke Hub "group-two"  / Spoke "epsilon"
  *
  * EVERY member authors the SAME `site.url` — `https://shared.example.test` — because that IS the public
  * origin the deployment is served from. On a shared host `site.url` is INFORMATIONAL: the public address of
@@ -43,8 +43,8 @@ const SYNTHETIC = path.join(process.cwd(), "tests", "fixtures", "synthetic-deplo
 export const SHARED_HOST = "shared.example.test";
 
 /**
- * THE FIVE MEMBERS. Two Spoke Hubs; `main` carries three publishing Spokes, `tenants` two. Each member's
- * EntityID is test-owned and only has to satisfy the canonical `e_` grammar.
+ * THE FIVE MEMBERS. Two Spoke Hubs; `group-one` carries three publishing Spokes, `group-two` two. Each
+ * member's EntityID is test-owned and only has to satisfy the canonical `e_` grammar.
  *
  * @typedef {object} SharedHostMember
  * @property {string} spokeHubId the owning Spoke Hub
@@ -62,15 +62,15 @@ export const SHARED_HOST = "shared.example.test";
 
 /** @type {readonly SharedHostMember[]} */
 export const SHARED_HOST_MEMBERS = [
-  { spokeHubId: "main", spokeId: "main-site", prefix: "ww", entityId: "e_00000000000000000000000001", marker: "Main Site" },
-  { spokeHubId: "main", spokeId: "pbs", prefix: "pbs", entityId: "e_00000000000000000000000002", marker: "Pbs" },
-  { spokeHubId: "main", spokeId: "templates", prefix: "templates", entityId: "e_00000000000000000000000003", marker: "Templates" },
-  { spokeHubId: "tenants", spokeId: "tenant-a", prefix: "tenant-a", entityId: "e_00000000000000000000000004", marker: "Tenant A" },
-  { spokeHubId: "tenants", spokeId: "tenant-b", prefix: "tenant-b", entityId: "e_00000000000000000000000005", marker: "Tenant B" },
+  { spokeHubId: "group-one", spokeId: "alpha", prefix: "alpha", entityId: "e_00000000000000000000000001", marker: "Alpha" },
+  { spokeHubId: "group-one", spokeId: "beta", prefix: "beta", entityId: "e_00000000000000000000000002", marker: "Beta" },
+  { spokeHubId: "group-one", spokeId: "gamma", prefix: "gamma", entityId: "e_00000000000000000000000003", marker: "Gamma" },
+  { spokeHubId: "group-two", spokeId: "delta", prefix: "delta", entityId: "e_00000000000000000000000004", marker: "Delta" },
+  { spokeHubId: "group-two", spokeId: "epsilon", prefix: "epsilon", entityId: "e_00000000000000000000000005", marker: "Epsilon" },
 ];
 
 /** The Spoke Hub ids this Installation identifies, in authored order. */
-export const SHARED_HOST_HUBS = ["main", "tenants"];
+export const SHARED_HOST_HUBS = ["group-one", "group-two"];
 
 /** The locator of one member's authored Spoke root inside the Installation. */
 function locatorOf(member) {

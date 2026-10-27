@@ -216,6 +216,7 @@ describe("deployment-owned paths are spelled in ONE place", () => {
       "scripts/generate-country-code-reference.mjs",
       "scripts/installation/index.mjs",
       "scripts/sync-runtime-assets.mjs",
+      "tests/integration/efs-publication-projection.test.ts",
       "tests/architecture/deployment-root-guard.test.ts",
       "tests/architecture/write-ownership-guard.test.ts",
       "tests/browser/matrix.mjs",

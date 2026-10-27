@@ -21,6 +21,7 @@ import path from "node:path";
 import { createServer, createServerModuleRunner } from "vite";
 
 import {
+  efsInstallationDigest,
   efsManifestDigest,
   efsProjectionPath,
 } from "../../src/config/deployment-build.mjs";
@@ -28,16 +29,37 @@ import {
 /**
  * Validate one Installation's EFS declarations and project its authorized publication claims.
  *
- * @param {{ root: string, manifestPath: string, spokeIdentities: readonly { id: string, spokeHubId?: string }[], repositoryRoot?: string }} input
+ * DEDUPLICATION IS NOT COLLISION (R08-A). A Spoke may publish SEVERAL Entities at distinct prefixes on one
+ * host — `group-one/alpha` serving `shared.example.test/alpha` and `shared.example.test/beta` from two
+ * Entities is two valid publications that confer ONE presentation-asset permission. Whether two BINDINGS
+ * conflict is the accepted validator's question (`bindingIssues`), never a second rule invented here. This
+ * function therefore merges equal host/Spoke permissions and NEVER refuses an Installation for repeating one.
+ *
+ * @param {{
+ *   root: string,
+ *   manifestPath: string,
+ *   explicit?: boolean,
+ *   spokeIdentities: readonly { id: string, spokeHubId?: string }[],
+ *   repositoryRoot?: string,
+ * }} input
  * @returns {Promise<{ status: "absent" } | { status: "refused", issues: string[] } | { status: "projected", claims: { host: string, spokeId: string, spokeHubId?: string }[] }>}
  */
 export async function producePublicationProjection(input) {
   const repositoryRoot = input.repositoryRoot ?? process.cwd();
   const projectionPath = efsProjectionPath(input.root, repositoryRoot);
 
-  // EFS-ABSENT: keep the released host-only rule, and leave no projection behind to be reused.
   if (!existsSync(input.manifestPath)) {
+    // A stale projection must never outlive the state it described.
     rmSync(projectionPath, { force: true });
+    // EXPLICITLY SELECTED BUT MISSING is a CONFIGURATION ERROR: refusing here is what stops the build, and
+    // the reader independently grants nothing for this state, so the refusal cannot be bypassed.
+    if (input.explicit === true) {
+      return {
+        status: "refused",
+        issues: [`the explicitly selected EFS manifest does not exist: ${input.manifestPath}`],
+      };
+    }
+    // GENUINE NON-EFS INSTALLATION: the released host-only rule stands.
     return { status: "absent" };
   }
 
@@ -63,10 +85,13 @@ export async function producePublicationProjection(input) {
       return { status: "refused", issues: [...result.issues] };
     }
 
-    /** @type {{ host: string, spokeId: string, spokeHubId?: string }[]} */
-    const claims = [];
+    /**
+     * ONE entry per host/Spoke PERMISSION. Two valid publications may confer the same one; that is
+     * deduplication, not a collision, so equal keys merge instead of refusing the Installation.
+     */
+    /** @type {Map<string, { host: string, spokeId: string, spokeHubId?: string }>} */
+    const permissions = new Map();
     const issues = [];
-    const seen = new Set();
 
     for (const publication of result.manifest.publications) {
       const matches = input.spokeIdentities.filter((spoke) =>
@@ -98,15 +123,9 @@ export async function producePublicationProjection(input) {
           publication.spokeHubId === undefined
             ? { host, spokeId: publication.spokeId }
             : { host, spokeId: publication.spokeId, spokeHubId: publication.spokeHubId };
-        const key = JSON.stringify(claim);
-        if (seen.has(key)) {
-          // A duplicate claim cannot authorize: two publications naming one Spoke on one host are
-          // indistinguishable at request time, so neither may be trusted.
-          issues.push(`host "${host}" is claimed more than once for the same Spoke`);
-          continue;
-        }
-        seen.add(key);
-        claims.push(claim);
+        // Sorted components make the key — and therefore the projection — independent of declaration order.
+        const key = [claim.host, claim.spokeHubId ?? "", claim.spokeId].join("\u0000");
+        if (!permissions.has(key)) permissions.set(key, claim);
       }
     }
 
@@ -115,6 +134,12 @@ export async function producePublicationProjection(input) {
       return { status: "refused", issues };
     }
 
+    // DETERMINISTIC: sorted by host, then Hub, then Spoke, so two builds of the same Installation produce
+    // byte-identical permissions regardless of the order the manifest happened to declare them in.
+    const claims = [...permissions.entries()]
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(([, claim]) => claim);
+
     mkdirSync(path.dirname(projectionPath), { recursive: true });
     writeFileSync(
       projectionPath,
@@ -122,6 +147,7 @@ export async function producePublicationProjection(input) {
         {
           manifestPath: input.manifestPath,
           manifestDigest: efsManifestDigest(input.manifestPath),
+          installationDigest: efsInstallationDigest(input.root),
           claims,
         },
         null,

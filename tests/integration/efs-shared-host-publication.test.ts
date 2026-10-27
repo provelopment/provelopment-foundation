@@ -134,10 +134,10 @@ describe("the shared host names NO owner — the binding does (D31)", () => {
     expect(runtimeContextForRequestHost(SHARED_HOST)).toBeNull();
   });
 
-  it("refuses a near-miss prefix — /pbsx is not /pbs", async () => {
+  it("refuses a near-miss prefix — /alphax is not /alpha", async () => {
     at(SHARED_HOST);
-    await expect(efs.efsViewForCurrentRequest(["pbsx", "en-001", "about"])).rejects.toThrow("NOT_FOUND");
-    expect(await serveOwnerAsset(["pbsx"], ["brand", "logo.svg"])).toHaveProperty("status", 404);
+    await expect(efs.efsViewForCurrentRequest(["alphax", "en-001", "about"])).rejects.toThrow("NOT_FOUND");
+    expect(await serveOwnerAsset(["alphax"], ["brand", "logo.svg"])).toHaveProperty("status", 404);
   });
 
   it("refuses an unknown prefix and an unknown host", async () => {
@@ -155,12 +155,12 @@ describe("the shared host names NO owner — the binding does (D31)", () => {
   it("refuses a foreign owner's asset, and any prefix escape from an owner's tree", async () => {
     at(SHARED_HOST);
     // The path names ONE publication; a file that publication does not own is not reachable through it.
-    expect(await serveOwnerAsset(["pbs"], ["brand", "logo.svg"])).toHaveProperty("status", 200);
-    expect(await serveOwnerAsset(["pbs"], ["..", "ww", "brand", "logo.svg"])).toHaveProperty(
+    expect(await serveOwnerAsset(["alpha"], ["brand", "logo.svg"])).toHaveProperty("status", 200);
+    expect(await serveOwnerAsset(["alpha"], ["..", "beta", "brand", "logo.svg"])).toHaveProperty(
       "status",
       404,
     );
-    expect(await serveOwnerAsset(["pbs"], ["brand", "absent.svg"])).toHaveProperty("status", 404);
+    expect(await serveOwnerAsset(["alpha"], ["brand", "absent.svg"])).toHaveProperty("status", 404);
   });
 
   it("does NOT invent a homepage for a host whose publications are all prefix-scoped", async () => {

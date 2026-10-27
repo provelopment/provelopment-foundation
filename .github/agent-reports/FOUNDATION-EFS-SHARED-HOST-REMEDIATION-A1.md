@@ -313,12 +313,29 @@ withdrawn; the numbers in this section are the ones measured on the final tree.
 ## 12. CI
 
 CI is the authoritative gate for the exact head and runs the `full` route for this change
-(shared runtime code plus `.github/**`). Its result for the final head is recorded in the PR's
-**`validate`** check and summarised in the PR description.
+(shared runtime code plus `.github/**`).
 
-At the moment this revision was prepared, CI had not yet run for it. If CI disagrees with any
-local result above, **CI wins** and this report will be corrected on the same branch rather than
-re-silenced.
+### 12.1 Result for head `87d3cfaba9325cbecdfb8015d6f6280afc464346`
+
+Run: https://github.com/provelopment/provelopment-foundation/actions/runs/40483093547
+
+| Job / check | Status |
+| --- | --- |
+| `classify` | success — selected route **`full`** |
+| `full` | **success** |
+| `documentation` / `content` / `deployment` / `foundation` | skipped (by ownership) |
+| **`validate`** (the one required status context on `main`) | **success** |
+
+The classifier independently confirmed the `full` route: `src/**` is Foundation-owned, but
+`.github/**` is a shared surface, and a mixed change broadens validation rather than narrowing it.
+The `validate` job ran the `.temp` tracking guard and evaluated the routed result — it passed.
+
+CI and the local gate agree. Where the two could diverge (browser execution, platform differences),
+this report records the CI outcome as authoritative.
+
+This section describes head `87d3cfa` only. Any later commit on this branch — including a
+documentation-only one — has its own result, and quoting the result above for a different tree
+would be exactly the error this section exists to prevent.
 
 ---
 

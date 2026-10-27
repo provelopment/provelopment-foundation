@@ -1,10 +1,11 @@
 import { NextRequest } from "next/server";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
-import { deploymentEnvironment, resolveDeploymentForBuild } from "@/config/deployment-build.mjs";
+import { deploymentEnvironment, installationSpokes, resolveDeploymentForBuild } from "@/config/deployment-build.mjs";
 import { SPOKE_SELECTION_HEADER } from "@/config/spoke-selection";
 
 import { materializeSharedHostInstallation } from "../support/shared-host-installation.mjs";
+import { producePublicationProjection } from "../../scripts/efs/publication-projection.mjs";
 
 /**
  * PUBLIC-ASSET AUTHORIZATION IS PUBLICATION RIGHTS, NOT DECLARATION (R03 Task A)
@@ -101,6 +102,27 @@ const MEMBERS = [
 ];
 
 const installation = materializeSharedHostInstallation({ members: MEMBERS });
+
+/**
+ * R07 — the boundary authorizes from a VERIFIED PROJECTION, so the test PRODUCES one through the same step
+ * `pnpm build` runs (`scripts/efs/publication-projection.mjs`) instead of authoring a claims table. A test
+ * that skipped this would only prove that a hand-written table is read back.
+ */
+const projection = await producePublicationProjection({
+  root: installation.root,
+  manifestPath: installation.efsManifestFile,
+  spokeIdentities: (installationSpokes(installation.root).spokes ?? []).map((spoke) => ({
+    id: spoke.id,
+    spokeHubId: spoke.spokeHubId,
+  })),
+});
+if (projection.status !== "projected") {
+  throw new Error(
+    `the fixture's manifest must validate: ${
+      projection.status === "refused" ? projection.issues.join(" | ") : projection.status
+    }`,
+  );
+}
 
 // The REAL build seam produces the projection the boundary reads — not a fixture-authored table.
 const resolved = resolveDeploymentForBuild(

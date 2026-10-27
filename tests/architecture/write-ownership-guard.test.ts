@@ -123,6 +123,8 @@ const SANCTIONED_DOMAIN_WRITERS: Record<string, string> = {
     "<installation root>/<capsule>/operational-state.json — THIS installation's own operational record, refused a location outside the root it was constructed for. The first legitimate writer of B4A's record (B4B)",
   "scripts/installation/platform-typescript.mjs":
     "OS temp only — a per-process TypeScript resolver it writes and removes before returning, so a plain Node process can run the platform's own TypeScript tooling (B4B)",
+  "scripts/efs/publication-projection.mjs":
+    "<repo>/node_modules/.cache/foundation/efs-publications/** only — this Installation's VERIFIED publication projection, deliberately outside every deployment root so a build never writes into an installation it reads (R07)",
 };
 
 /**
@@ -384,7 +386,7 @@ describe("the executable writer inventory is explicit", () => {
   });
 
   it("names the sanctioned durable domains, each as ONE document/domain and no more", () => {
-    expect(Object.keys(SANCTIONED_DOMAIN_WRITERS)).toHaveLength(8);
+    expect(Object.keys(SANCTIONED_DOMAIN_WRITERS)).toHaveLength(9);
     expect(SANCTIONED_DOMAIN_WRITERS["scripts/sync-runtime-assets.mjs"]).toContain("public/assets");
     expect(SANCTIONED_DOMAIN_WRITERS["scripts/generate-country-code-reference.mjs"]).toContain(
       "COUNTRY-CODES.md",

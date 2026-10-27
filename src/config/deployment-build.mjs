@@ -63,6 +63,7 @@
  * implementation this seam and the TypeScript authority both consume, so a manifest this seam selects can
  * never be one the configuration/domain layer would refuse.
  */
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -268,64 +269,86 @@ export function installationSpokes(installationRoot) {
 const EFS_MANIFEST_ENV = "FOUNDATION_EFS_MANIFEST";
 
 /**
- * Project `efs/manifest.json` into the publication facts the request boundary may assert.
+ * WHERE A VALIDATED PROJECTION LIVES (R07)
+ * ========================================
+ *
+ * `next.config.ts` is SYNCHRONOUS (`env: deploymentEnvironment(resolveDeploymentForBuild())`), while the
+ * authoritative validator is TypeScript and can only run through Vite's module runner, which is async. The
+ * two facts are reconciled by producing the projection in a PREBUILD step
+ * (`scripts/efs/validate-publications.mjs`) and reading it here, synchronously.
+ *
+ * The cache is keyed by the Installation root's absolute path and stamped with the manifest digest, so a
+ * projection can never describe a different Installation or an older manifest. It is deliberately OUTSIDE
+ * every deployment root: a build must not write into an installation it is reading.
+ */
+export const EFS_PROJECTION_DIRECTORY = path.join(
+  "node_modules",
+  ".cache",
+  "foundation",
+  "efs-publications",
+);
+
+/** The manifest this deployment reads: the runtime override, else `<root>/efs/manifest.json`. */
+export function efsManifestPath(root, environment = process.env) {
+  const override = environment[EFS_MANIFEST_ENV]?.trim();
+  return override !== undefined && override !== ""
+    ? override
+    : path.join(root, "efs", "manifest.json");
+}
+
+/** Digest of the manifest's bytes, so a projection can never outlive the document it describes. */
+export function efsManifestDigest(manifestPath) {
+  return createHash("sha256").update(readFileSync(manifestPath)).digest("hex");
+}
+
+/** The projection file for one Installation root. */
+export function efsProjectionPath(root, repositoryRoot = process.cwd()) {
+  const key = createHash("sha256").update(path.resolve(root)).digest("hex").slice(0, 32);
+  return path.join(repositoryRoot, EFS_PROJECTION_DIRECTORY, `${key}.json`);
+}
+
+/**
+ * Project the VALIDATED publication facts the request boundary may assert.
  *
  * Three outcomes, and the caller must NOT collapse them:
  *
  *   `null`      this Installation has NO EFS manifest — an EFS-absent deployment, which keeps the released
  *               host-only asset rule;
- *   `[]`        an EFS manifest exists and declares no publication at all — EFS CONTROLS the deployment, and
- *               nothing is authorized;
- *   `[...]`     the bindings it declares.
+ *   `[]`        EFS CONTROLS the deployment and nothing is authorized — either the manifest declares no
+ *               publication, or no usable projection exists for it;
+ *   `[...]`     the verified claims of a validated manifest.
  *
- * DELIBERATELY NARROWER THAN THE MANIFEST: anything this function cannot read confidently projects NOTHING,
- * so a projection defect can only deny access, never grant it. The validated loader remains the authority
- * and refuses a malformed manifest at request time.
- *
- * NOTE (R04 §2, OPEN): this reads the document structurally rather than through `validateEfsManifest`, so it
- * cannot yet prove it agrees with the accepted publication contract. That agreement is required before this
- * projection may be relied on; see the implementation report §20.2 for the two candidate mechanisms. Until
- * then the projection is treated as NARROWER-BY-CONSTRUCTION ONLY for shapes it cannot parse.
+ * FAIL CLOSED: a manifest that exists but has no current projection yields `[]`, never `null`. A refused or
+ * missing projection must never reactivate legacy hostname authorization.
  *
  * @param {string} root the installation root whose `efs/manifest.json` is projected
  * @param {Record<string, string | undefined>} environment the build environment (manifest override)
  * @returns {{ host: string, spokeId: string, spokeHubId?: string }[] | null}
  */
 function efsPublicationClaims(root, environment) {
-  const override = environment[EFS_MANIFEST_ENV]?.trim();
-  const manifestPath =
-    override !== undefined && override !== "" ? override : path.join(root, "efs", "manifest.json");
+  const manifestPath = efsManifestPath(root, environment);
+  // EFS-ABSENT: the released host-only rule still applies. Nothing is deleted here — a READ must not
+  // mutate; the projection producer removes stale state, and a stale file is ignored by digest anyway.
   if (!existsSync(manifestPath)) return null;
 
+  const projectionPath = efsProjectionPath(root);
+  if (!existsSync(projectionPath)) return [];
+
   /** @type {unknown} */
-  let document;
+  let projection;
   try {
-    document = JSON.parse(readFileSync(manifestPath, "utf8"));
+    projection = JSON.parse(readFileSync(projectionPath, "utf8"));
   } catch {
     return [];
   }
-  if (document === null || typeof document !== "object" || Array.isArray(document)) return [];
-  const publications = /** @type {{ publications?: unknown }} */ (document).publications;
-  if (!Array.isArray(publications)) return [];
+  if (projection === null || typeof projection !== "object" || Array.isArray(projection)) return [];
 
-  /** @type {{ host: string, spokeId: string, spokeHubId?: string }[]} */
-  const claims = [];
-  for (const publication of publications) {
-    if (publication === null || typeof publication !== "object") continue;
-    const { spokeId, spokeHubId, bindings } = /** @type {Record<string, unknown>} */ (publication);
-    if (typeof spokeId !== "string" || spokeId.length === 0) continue;
-    if (spokeHubId !== undefined && typeof spokeHubId !== "string") continue;
-    if (!Array.isArray(bindings)) continue;
-    for (const binding of bindings) {
-      if (binding === null || typeof binding !== "object") continue;
-      const rawHost = /** @type {Record<string, unknown>} */ (binding).host;
-      if (typeof rawHost !== "string") continue;
-      const host = rawHost.trim().toLowerCase();
-      if (host === "") continue;
-      claims.push(spokeHubId === undefined ? { host, spokeId } : { host, spokeId, spokeHubId });
-    }
-  }
-  return claims;
+  const { manifestPath: recorded, manifestDigest, claims } =
+    /** @type {Record<string, unknown>} */ (projection);
+  if (recorded !== manifestPath) return [];
+  if (manifestDigest !== efsManifestDigest(manifestPath)) return [];
+  if (!Array.isArray(claims)) return [];
+  return /** @type {{ host: string, spokeId: string, spokeHubId?: string }[]} */ (claims);
 }
 
 

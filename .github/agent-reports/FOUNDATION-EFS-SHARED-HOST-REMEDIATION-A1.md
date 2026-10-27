@@ -695,3 +695,61 @@ Authorise §22.2 step 1 alone (`publication-bindings.mjs` + `publication.ts` re-
 it closes the *binding* half of the projection with one implementation and nothing else moves. Steps 2–4
 follow only if that slice proves behaviour-preserving under the existing EFS suites. Everything in §22.3
 remains outstanding and must not be reported as done.
+
+---
+
+## 24. R07 — the Vite adapter, and a fixture defect the old projection was hiding
+
+**Baseline reviewed:** `7c72f4a5abb2988693df44a904fa916356b63359` / tree
+`5236cd02461ee6fa293d5c5e28e8e9d5de4a01cb`.
+
+### 24.1 The experiment succeeded — no core conversion, no new dependency
+
+Vite **8.2.4** is already a direct dependency and `vitest.config.mts` already declares `@ → <repo>/src`.
+Through `createServer()` + `createServerModuleRunner(server.environments.ssr)` the **existing**
+`src/config/efs/manifest.ts` loads unchanged. Executed evidence:
+
+| Check | Result |
+| --- | --- |
+| module exports | `loadEfsManifest`, `validateEfsManifest` |
+| valid synthetic manifest (control) | `ok=true issues=[]` |
+| invalid binding host `shared.example.test/` | `ok=false`, issue `A binding host must be a bare hostname…` — and *only* that issue, proving the real validator ran |
+
+So §2B's 1,200-line conversion is **not needed and was not performed**. Typed core is untouched.
+
+### 24.2 What was implemented
+
+```text
+scripts/efs/publication-projection.mjs   ONE production path (Vite loads manifest.ts + publication.ts)
+scripts/efs/validate-publications.mjs    the build-preparation CLI; exits 1 on refusal
+pnpm build                               sync-runtime-assets && validate-publications && next build
+```
+
+`publication-projection.mjs` verifies each publication's owner with `publicationOwnedBy()` against the
+Installation's **actual** hierarchy (`installationSpokes()`), normalizes hosts with `normalizeBindingHost()`,
+and writes a digest-stamped projection to `<repo>/node_modules/.cache/foundation/efs-publications/<key>.json` —
+outside every deployment root, so a build never writes into an installation it reads.
+
+`src/config/deployment-build.mjs` reads it **synchronously** (`next.config.ts` is synchronous) and fails
+closed: manifest present but projection missing/stale/unreadable ⇒ `[]` (EFS controls, nothing authorized),
+never `null`. EFS-absent still yields `null`, preserving legacy host-only authorization. The reader performs
+no write at all — a read must not mutate, and `src/**` keeps its two establishment writers only.
+
+### 24.3 A real defect found by grounding the projection in the validator
+
+The shared-host fixture's manifest **never validated**. Its alias bindings omitted `aliasOf`, so the accepted
+validator refuses them (`Alias "alpha-alias-binding-1" does not name an existing canonical binding`) — and the
+structural projection could not see it. Fixed in `tests/support/shared-host-installation.mjs`: an alias now
+names its member's canonical binding id. `tests/integration/efs-asset-authorization.test.ts` now **produces**
+its projection through the same step the build runs, so it proves the chain instead of reading back a table.
+
+### 24.4 Verified this revision
+
+`pnpm test` **211 files passed** · `tsc --noEmit` clean · `pnpm lint` clean · `pnpm build` prebuild reports
+*3 verified claims* on the real deployment · architecture guards updated to classify the ONE new writer.
+
+### 24.5 Still outstanding (unchanged by R07)
+
+The committed browser/HTTP acceptance scenario, the neutral fixture rename (`group-one/{alpha,beta,gamma}`,
+`group-two/{delta,epsilon}`) and the scratch-root relocation away from OS temp are **not done**. The adapter
+landed first because it is the release blocker; these three remain the immediate next work.

@@ -200,6 +200,11 @@ function publicationDeclarations(member) {
   const entries =
     member.publications ??
     [{ prefix: member.prefix, entityId: member.entityId, host: member.publicationHost }];
+  // An alias must NAME the canonical binding it points at (`aliasOf`). The fixture used to omit it, which
+  // the accepted validator refuses — a defect the structural projection could not see.
+  const canonicalIndex = entries.findIndex((entry) => entry.canonical !== false);
+  const canonicalBindingId =
+    canonicalIndex === -1 ? undefined : `${entries[canonicalIndex].prefix}-binding-${canonicalIndex}`;
   return entries.map((entry, index) => ({
     id: `${member.spokeHubId}-${member.spokeId}-${entry.prefix}`,
     spokeId: member.spokeId,
@@ -222,7 +227,12 @@ function publicationDeclarations(member) {
         locales: ["en-001"],
         defaultLocale: "en-001",
         // An ALIAS binding is still a publication right; only canonical selection differs.
-        ...(entry.canonical === false ? { canonical: false } : { canonical: true }),
+        ...(entry.canonical === false
+          ? {
+              canonical: false,
+              ...(canonicalBindingId === undefined ? {} : { aliasOf: canonicalBindingId }),
+            }
+          : { canonical: true }),
       },
     ],
   }));

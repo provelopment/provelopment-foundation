@@ -211,6 +211,8 @@ describe("deployment-owned paths are spelled in ONE place", () => {
     // deployment exists.
     const approved = [
       "next.config.ts",
+      "scripts/efs/publication-projection.mjs",
+      "scripts/efs/validate-publications.mjs",
       "scripts/generate-country-code-reference.mjs",
       "scripts/installation/index.mjs",
       "scripts/sync-runtime-assets.mjs",

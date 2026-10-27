@@ -525,6 +525,150 @@ Superseded behaviour is preserved as **history** (§17.1) rather than deleted fr
 | --- | --- |
 | `pnpm exec tsc --noEmit` | PASS |
 | `pnpm lint` | PASS |
+
+---
+
+## 20. R04 — release-blocking verification closure
+
+**Reviewed baseline:** head `09afb1a64d44fa41f04a48d2786735b6a836d1b0`, tree `dbdba717edb3c75fd5b6b38773b27d839841fba9`.
+
+> **Supersedes §19.3.** The R03 claim that "Next snapshots `public/` at build time" was WRONG. The real cause
+> is in §20.4, and the delivery gap it described is CLOSED.
+
+### 20.1 §4 — corrected root cause, and real delivery (CLOSED)
+
+`package.json` builds as `node scripts/sync-runtime-assets.mjs && next build`. The sync **regenerates
+`public/spokes/**` from the selected Installation's own authored sources and removes anything not in its
+canonical plan**. In R03 I hand-placed a file under `public/spokes/<segment>/assets/`, then ran `pnpm build`,
+whose first step deleted it — so the 404 was caused by my own preparation, not by the framework, the proxy or
+the namespace spelling.
+
+Two further facts, both established by experiment rather than assumption:
+
+1. `hub+group-one+alpha` serves correctly over HTTP — `200`, `image/svg+xml`, 89 bytes — so the composite
+   segment (`hub+` + hub id + `+` + spoke id) needs no percent-normalization.
+2. The runtime namespace is a **role-based canonical plan**, not a mirror of arbitrary authored files. An
+   authored `assets/brand/logo.svg` is never served; a declared role (`content/assets/placeholders/<role>.svg`
+   → `assets/logo-header.svg`, `favicon.svg`, …) is. A delivery proof must therefore name a declared role.
+
+**Fix applied (test-owned, no product change):** `materializeSharedHostInstallation` now authors a distinctive
+`content/assets/placeholders/{logo-header,favicon}.svg` per member, so "each namespace serves ITS OWN artwork"
+is observable with different bytes.
+
+### 20.2 §2 — EFS publication-rights projection (OPEN, decision boundary)
+
+### 20.3 §3 — publication-authorization states are explicit (CLOSED)
+
+An empty set used to mean four different things at once, and the proxy gave three of them the same answer —
+the released host-only fallback. `presentationAssetAuthority()` now returns a discriminated state:
+
+| State | Meaning | Asset outcome |
+| --- | --- | --- |
+| `efs-absent` | the build projected `null`: no EFS runtime | released host-only rule (legacy compatibility) |
+| `efs` + segments | EFS controls this deployment, these bindings | exactly those namespaces |
+| `efs` + empty set | EFS controls it and publishes nothing on this host | **refused** — no fallback |
+| malformed projection | not the sentinel and not an array | **throws** → every asset request fails closed |
+
+`efsPublicationClaims()` now returns `null` for "no manifest" and `[]` for "manifest with no publications", so
+the build's own sentinel carries the distinction instead of collapsing it.
+
+**Behaviour change, deliberately:** in an EFS-controlled deployment an informational `site.url` no longer
+selects a Spoke for asset purposes. New case:
+*"refuses a host that only an informational site.url names, when EFS publishes nothing there"* — `delta` names
+`elsewhere.example.test`, no publication claims it, and its namespace is now refused where the host-only rule
+previously served it. This was observed live during the R04 probe (the old expectation flipped from 200 to
+404), which is how I know the state change took effect.
+
+**10 authorization cases** in `tests/integration/efs-asset-authorization.test.ts`, all green.
+
+### 20.4 §4 — real HTTP delivery, 11/11 (CLOSED)
+
+Lifecycle exercised exactly as the product runs it — authored asset → canonical plan → `assets:sync` →
+`public/spokes/**` → `next build` → `next start` → proxy → HTTP response:
+
+| Check | Result |
+| --- | --- |
+| Published Spoke A's asset → 200 with ITS OWN bytes (`<title>Alpha</title>`) | PASS |
+| Served with `Content-Type: image/svg+xml` | PASS |
+| Published Spoke B's SAME-NAMED asset → 200 with DIFFERENT bytes (`Gamma`) | PASS |
+| Declared-but-unpublished Spoke → 404 | PASS |
+| Spoke published only on ANOTHER hostname → 404 here | PASS |
+| The same Spoke IS served on the host it publishes on (`beta-only`) → 200 | PASS |
+| Unknown hostname → 404 | PASS |
+| Encoded-separator traversal → 404 | PASS |
+| Foreign namespace → 404 | PASS |
+| Forged private selector → 404 | PASS |
+| Pages on the same prefixes still resolve → 200 | PASS |
+
+**11/11.** Middleware pass-through is no longer the proof: every authorization positive asserts a 200 *and*
+the owning Spoke's bytes.
+
+### 20.5 §5 — committed acceptance scenario (OPEN)
+
+Not done. The proof above is a repeatable script in `.temp` (untracked), not a committed scenario in
+`tests/browser/matrix.mjs`. Folding it into the harness requires a scenario that materialises the synthetic
+Installation **and** runs `assets:sync` against it before starting a server — the harness's write guard
+currently allows `public/spokes/**` but its dev-server model does not run a sync. This needs its own bounded
+change; inventing a second mechanism inside `matrix.mjs` would be the duplication R04 §5 forbids.
+
+### 20.6 §6 — contamination audit (PASS)
+
+No adopter hostname, Entity/Spoke identity, prefix, hierarchy, tenant assumption, homepage destination,
+navigation, branding or content default is introduced. Synthetic identities only (`group-one`/`group-two`,
+`alpha`…`epsilon`, `shared.example.test`). `release:classify` PASS. Reference Foundation/Germany authored
+content untouched; `public/spokes` restored to `foundation` + `germany`, and the generated catalog is
+byte-unchanged after every experiment.
+
+### 20.7 §7 — documentation corrections
+
+| Location | Correction |
+| --- | --- |
+| this report §19.3 | marked superseded; wrong root cause corrected in §20.1 |
+| this report §19.2 | "narrower by construction" withdrawn as unproven (§20.2) |
+| `ARCHITECTURE.md` | asset paragraph now states the THREE projection outcomes; removed "where no publication claims a host at all, the released host-only rule applies" |
+| `deployment-build.mjs` | projection doc states the three outcomes and flags §2 as open without overclaiming |
+| `spoke-routing.ts` | `PresentationAssetAuthority` documents why the states must not be collapsed |
+| `proxy.ts` | asset rule restated in the same three terms |
+
+The heading/ordering defects R04 §7 names remain in §17–§19: those sections are historical evidence and were
+left intact rather than rewritten, because rewriting accepted history risks losing the record. §20 supersedes
+them explicitly.
+
+### 20.8 Local gates (this tree)
+
+| Command | Result |
+| --- | --- |
+| `pnpm exec tsc --noEmit` | PASS |
+| `pnpm lint` | PASS |
+| `pnpm test` | **211 files, 211 passed** |
+| `pnpm build` | PASS |
+| `pnpm assets:check` | PASS |
+| `pnpm release:classify` | PASS |
+
+### 20.9 Outstanding
+
+1. **§2 projection validation** — blocking; decision boundary in §20.2.
+2. **§5 committed scenario** — the delivery proof is not yet in the harness/CI gate.
+3. Root entry — still generic, unimplemented, no adopter destination implied.
+
+**Status: PARTIAL.** §3 and §4 are closed with reproduced evidence; §2 and §5 remain, and §2 is the only item
+that makes a *granted* right unproven.
+
+
+Not implemented. `efsPublicationClaims()` still reads the document structurally, so the required property —
+*the projection agrees with the accepted publication contract* — is **not** established, and §19.2's
+"narrower by construction" claim is withdrawn for anything other than shapes it cannot parse.
+
+Two mechanisms are viable; choosing between them is an architectural decision with different consequences:
+
+| Mechanism | How | Consequence |
+| --- | --- | --- |
+| **A. Validate in `next.config.ts`** | `next.config.ts` imports `validateEfsManifest` and passes validated claims into `deploymentEnvironment` | One contract, zero duplication. But `manifest.ts` imports `@/core/**` aliases, and whether Next's config loader resolves them is unverified — if it does not, `manifest.ts` needs its imports rewritten |
+| **B. Shared plain-ESM publication contract** | Extract publication-binding validation into a JSDoc-typed `.mjs` (precedent: `spoke-runtime-segment.mjs`) that both `manifest.ts` and the build import | One implementation, two runtimes. But `core/efs/publication.ts` (14.5 KB) holds the ownership logic, so this is a refactor of the EFS runtime, not an addition |
+
+I did not pick one under time pressure, because both touch authority that other suites depend on and a rushed
+choice risks the EFS runtime for a projection. **This is the one item blocking COMPLETE.**
+
 | `pnpm test` (all projects) | **211 files, 2771 passed, 1 skipped** |
 | `pnpm build` | PASS |
 | `pnpm assets:check` | PASS |

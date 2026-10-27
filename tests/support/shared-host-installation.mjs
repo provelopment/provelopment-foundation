@@ -94,6 +94,20 @@ function writeSpoke(root, member) {
   // publish on.
   config.site.url = `https://${member.siteUrlHost ?? SHARED_HOST}`;
   writeFileSync(path.join(target, "site.config.json"), `${JSON.stringify(config, null, 2)}\n`, "utf8");
+
+  // A ROLE asset authored where the canonical asset plan actually reads it
+  // (`content/assets/placeholders/<role>.svg`). Distinct bytes per Spoke make "each namespace serves ITS OWN
+  // artwork" observable over real HTTP. The arbitrary `assets/brand/logo.svg` in the capsule is NOT part of
+  // that plan and is never mirrored — which is why a delivery proof must name a declared role.
+  const placeholders = path.join(target, "content", "assets", "placeholders");
+  mkdirSync(placeholders, { recursive: true });
+  for (const role of ["logo-header", "favicon"]) {
+    writeFileSync(
+      path.join(placeholders, `${role}.svg`),
+      `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><title>${member.marker}</title></svg>\n`,
+      "utf8",
+    );
+  }
 }
 
 /** The `spokes.json` document: identified Spoke Hubs and their members, in authored order. */

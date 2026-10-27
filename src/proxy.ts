@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   hostRoutingForBuild,
   isSharedHostInRouting,
-  publishedRuntimeSegmentsForHost,
+  presentationAssetAuthority,
   routingEntryForSelection,
   spokeSelectionForHost,
   type SpokeHostRoutingEntry,
@@ -148,12 +148,14 @@ function continueWithSelectedSpoke(request: NextRequest, entry: SpokeHostRouting
  * carries the build's projection of the manifest's bindings; this function consumes it and decides nothing on
  * its own, so the proxy is not a second publication authority.
  *
- *   EFS-AUTHORIZED host — the host has at least one publication binding. Only Spokes those bindings name may
- *   serve their namespace. An informational `site.url` grants nothing, and a Spoke declared but not published
- *   here is refused even though its directory exists.
+ *   EFS PRESENT — this Installation's rights come from its publication bindings. Only Spokes those bindings
+ *   name on THIS host may serve their namespace. An empty answer means "EFS controls this deployment and
+ *   publishes nothing here", which is REFUSED: neither a declared Spoke nor an informational `site.url` may
+ *   stand in for a publication, and an unreadable projection refuses everything.
  *
- *   NO publication on this host — the released host-only rule applies, unchanged: an exclusive host serves
- *   only its own selected Spoke, a shared host names no owner, and an unclaimed host names nobody.
+ *   EFS ABSENT — no EFS runtime is configured at all, so the released host-only rule applies unchanged: an
+ *   exclusive host serves only its own selected Spoke, a shared host names no owner, an unclaimed host names
+ *   nobody.
  */
 function spokeAsset(request: NextRequest): NextResponse {
   const routing = hostRoutingForBuild();
@@ -162,9 +164,9 @@ function spokeAsset(request: NextRequest): NextResponse {
   // A namespace name is ONE path segment. Anything that could climb out of it is not a Spoke.
   if (segment === null) return refuse();
 
-  const published = publishedRuntimeSegmentsForHost(routing, host);
-  if (published.size > 0) {
-    return published.has(segment) ? passThrough(request) : refuse();
+  const authority = presentationAssetAuthority(routing, host);
+  if (authority.kind === "efs") {
+    return authority.segments.has(segment) ? passThrough(request) : refuse();
   }
 
   const entry = isSharedHostInRouting(routing, host) ? null : selectedEntry(routing, host);

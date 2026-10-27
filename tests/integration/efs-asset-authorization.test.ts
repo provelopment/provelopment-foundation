@@ -219,6 +219,14 @@ describe("a Spoke's presentation namespace is authorized by PUBLICATION, not dec
     }
   });
 
+  it("refuses a host that only an informational site.url names, when EFS publishes nothing there", async () => {
+    // `delta` names `elsewhere.example.test` as its origin, and NO publication claims that host. Under the
+    // released host-only rule that host would select `delta` and serve its artwork. Because EFS controls this
+    // deployment, an informational origin grants nothing: the host has no publication, so it is refused.
+    const delta = await segmentOf("group-two", "delta");
+    expect(refused(asset("elsewhere.example.test", `/spokes/${delta}/assets/logo-header.svg`))).toBe(true);
+  });
+
   it("does not forward a forged private selector upstream", async () => {
     const alpha = await segmentOf("group-one", "alpha");
     const delta = await segmentOf("group-two", "delta");

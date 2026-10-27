@@ -456,15 +456,36 @@ interface EfsPublicationClaim {
 
 const NO_PUBLISHED_SEGMENTS: ReadonlySet<string> = Object.freeze(new Set<string>());
 
-let publicationClaimsCache: readonly EfsPublicationClaim[] | null = null;
+/**
+ * Whether an Installation's presentation-asset rights come from EFS at all — and, when they do, which
+ * namespaces are authorized. The THREE outcomes R04 §3 requires to stay distinct:
+ *
+ *   `efs-absent`  no EFS runtime is configured: the released host-only rule applies (legacy compatibility);
+ *   `efs` + set   EFS controls this deployment: ONLY these namespaces are authorized, and an EMPTY set means
+ *                 "EFS controls it and publishes nothing here" — refused, never quietly handed to the
+ *                 host-only rule;
+ *   throw         the projection is malformed: every asset request fails closed.
+ *
+ * Collapsing `efs-absent` into `efs` (or the empty set into legacy) is what let a declared Spoke or an
+ * informational `site.url` decide a public asset URL. That conflation is the defect this type removes.
+ */
+export type PresentationAssetAuthority =
+  | { readonly kind: "efs-absent" }
+  | { readonly kind: "efs"; readonly segments: ReadonlySet<string> };
 
-/** The build's projected publication claims, normalized once. */
-function publicationClaimsForBuild(): readonly EfsPublicationClaim[] {
-  if (publicationClaimsCache !== null) return publicationClaimsCache;
+/** `undefined` = not read yet; `null` = this build has no EFS runtime (manifest absent). */
+let publicationClaimsCache: readonly EfsPublicationClaim[] | null | undefined;
+
+const EFS_ABSENT: PresentationAssetAuthority = Object.freeze({ kind: "efs-absent" });
+
+/** The build's projected publication claims, normalized once. `null` means "no EFS runtime". */
+function publicationClaimsForBuild(): readonly EfsPublicationClaim[] | null {
+  if (publicationClaimsCache !== undefined) return publicationClaimsCache;
 
   const raw = process.env[DEPLOYMENT_EFS_PUBLICATIONS_ENV]?.trim() ?? "";
-  if (raw === "") {
-    publicationClaimsCache = Object.freeze([]);
+  // Absent, or the build's explicit "no manifest" sentinel: an EFS-absent deployment.
+  if (raw === "" || raw === "null") {
+    publicationClaimsCache = null;
     return publicationClaimsCache;
   }
 
@@ -478,8 +499,10 @@ function publicationClaimsForBuild(): readonly EfsPublicationClaim[] {
     );
   }
   if (!Array.isArray(parsed)) {
+    // A projection that is neither the sentinel nor an array cannot be interpreted, so it authorizes nothing
+    // and refuses everything rather than falling back to a weaker rule.
     throw new Error(
-      "FOUNDATION-EFS-PUBLICATION-RIGHTS: the build's publication projection must be an array.",
+      "FOUNDATION-EFS-PUBLICATION-RIGHTS: the build's publication projection must be an array or null.",
     );
   }
 
@@ -502,27 +525,34 @@ function publicationClaimsForBuild(): readonly EfsPublicationClaim[] {
 }
 
 /**
- * The runtime segments `host` may serve because an explicit publication binding names them.
+ * The presentation-asset authority for one public host.
  *
  * A binding that names a Spoke this build does not declare grants NOTHING — composite identity is matched on
  * both halves, so a Hub cannot borrow its namesake's rights and an undeclared name cannot claim a namespace.
  */
-export function publishedRuntimeSegmentsForHost(
+export function presentationAssetAuthority(
   routing: InstallationHostRouting,
   host: string | null,
-): ReadonlySet<string> {
+): PresentationAssetAuthority {
+  const claims = publicationClaimsForBuild();
+  // NO EFS in this build at all: the released host-only rule remains available.
+  if (claims === null) return EFS_ABSENT;
+
+  // EFS controls this deployment. From here, `site.url` and declaration grant NOTHING.
   const normalized = normalizeHostname(host);
-  if (normalized === null) return NO_PUBLISHED_SEGMENTS;
+  if (normalized === null) return { kind: "efs", segments: NO_PUBLISHED_SEGMENTS };
 
   const segments = new Set<string>();
-  for (const claim of publicationClaimsForBuild()) {
+  for (const claim of claims) {
     if (claim.host !== normalized) continue;
     const entry = routing.spokes.find(
       (candidate) => candidate.id === claim.spokeId && candidate.spokeHubId === claim.spokeHubId,
     );
     if (entry !== undefined) segments.add(entry.runtimeSegment);
   }
-  return segments.size === 0 ? NO_PUBLISHED_SEGMENTS : segments;
+  return segments.size === 0
+    ? { kind: "efs", segments: NO_PUBLISHED_SEGMENTS }
+    : { kind: "efs", segments };
 }
 
 export function hostRoutingForBuild(): InstallationHostRouting {

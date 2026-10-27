@@ -62,8 +62,13 @@ Presentation-asset authorization follows the same authority, never the classific
 (`/spokes/<segment>/assets/**`) is served on a host only when an explicit publication binding on that host
 names that Spoke; being DECLARED in an Installation is not publication. The request boundary cannot read
 `efs/manifest.json`, so the build projects the manifest's bindings for it (`FOUNDATION_DEPLOYMENT_EFS_PUBLICATIONS`,
-alongside the routing description) — one projection of one authority, which can only ever be narrower than
-the manifest. Where no publication claims a host at all, the released host-only rule applies unchanged.
+alongside the routing description).
+
+That projection has THREE distinct outcomes, and they must not be collapsed (`presentationAssetAuthority`):
+**EFS absent** (the build projected `null`) keeps the released host-only rule; **EFS present with an empty
+set** means EFS controls the deployment and publishes nothing on that host, which is REFUSED; **EFS present
+with segments** authorizes exactly those. A malformed projection refuses everything. An informational
+`site.url` therefore never substitutes for a publication in an EFS-controlled deployment.
 
 `GET /` on a host whose bindings are all prefix-scoped names no publication and is refused. A deterministic
 root entry would require an explicit authored policy; there is no "whichever binding came first", and no

@@ -270,22 +270,32 @@ const EFS_MANIFEST_ENV = "FOUNDATION_EFS_MANIFEST";
 /**
  * Project `efs/manifest.json` into the publication facts the request boundary may assert.
  *
+ * Three outcomes, and the caller must NOT collapse them:
+ *
+ *   `null`      this Installation has NO EFS manifest — an EFS-absent deployment, which keeps the released
+ *               host-only asset rule;
+ *   `[]`        an EFS manifest exists and declares no publication at all — EFS CONTROLS the deployment, and
+ *               nothing is authorized;
+ *   `[...]`     the bindings it declares.
+ *
  * DELIBERATELY NARROWER THAN THE MANIFEST: anything this function cannot read confidently projects NOTHING,
  * so a projection defect can only deny access, never grant it. The validated loader remains the authority
  * and refuses a malformed manifest at request time.
  *
- * Every binding counts — canonical AND alias — because both are publication rights. `site.url` is never
- * consulted.
+ * NOTE (R04 §2, OPEN): this reads the document structurally rather than through `validateEfsManifest`, so it
+ * cannot yet prove it agrees with the accepted publication contract. That agreement is required before this
+ * projection may be relied on; see the implementation report §20.2 for the two candidate mechanisms. Until
+ * then the projection is treated as NARROWER-BY-CONSTRUCTION ONLY for shapes it cannot parse.
  *
  * @param {string} root the installation root whose `efs/manifest.json` is projected
  * @param {Record<string, string | undefined>} environment the build environment (manifest override)
- * @returns {{ host: string, spokeId: string, spokeHubId?: string }[]}
+ * @returns {{ host: string, spokeId: string, spokeHubId?: string }[] | null}
  */
 function efsPublicationClaims(root, environment) {
   const override = environment[EFS_MANIFEST_ENV]?.trim();
   const manifestPath =
     override !== undefined && override !== "" ? override : path.join(root, "efs", "manifest.json");
-  if (!existsSync(manifestPath)) return [];
+  if (!existsSync(manifestPath)) return null;
 
   /** @type {unknown} */
   let document;

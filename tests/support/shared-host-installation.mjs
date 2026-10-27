@@ -56,7 +56,7 @@ export const SHARED_HOST = "shared.example.test";
  *   the shared host; it is never the publication authority, and two Spokes may name the same one.
  * @property {string} [publicationHost] the host this member's single publication binds (default: shared host)
  * @property {string} [presentationSiteCode] the Site of THIS Spoke a publication selects for its shell
- * @property {readonly { prefix: string, entityId: string, host?: string }[]} [publications] SEVERAL
+ * @property {readonly { prefix: string, entityId: string, host?: string, canonical?: boolean }[]} [publications] SEVERAL
  *   publications from ONE Spoke, so a many-to-many topology can be expressed
  */
 
@@ -207,7 +207,8 @@ function publicationDeclarations(member) {
         defaultSiteId: "main",
         locales: ["en-001"],
         defaultLocale: "en-001",
-        canonical: true,
+        // An ALIAS binding is still a publication right; only canonical selection differs.
+        ...(entry.canonical === false ? { canonical: false } : { canonical: true }),
       },
     ],
   }));

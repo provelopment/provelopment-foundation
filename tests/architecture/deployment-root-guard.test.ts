@@ -242,6 +242,12 @@ describe("deployment-owned paths are spelled in ONE place", () => {
       // root resolves to), so it asks the seam itself about a DISPOSABLE root — exactly as the parity suite
       // above does. It selects no deployment and writes none: its root is its own OS-temp tree.
       "tests/unit/spoke-runtime-composite.test.ts",
+      // FOUNDATION-EFS-SHARED-HOST-REMEDIATION-A1-R03 — the ASSET-AUTHORIZATION suite proves the chain
+      // `manifest → build projection → proxy decision` by asking the REAL build seam to project a
+      // DISPOSABLE synthetic Installation's own `efs/manifest.json`. Asking the seam is what makes the proof
+      // meaningful (a hand-written projection table would prove nothing about the product), and it selects
+      // no deployment and writes none: its root is its own OS-temp tree.
+      "tests/integration/efs-asset-authorization.test.ts",
     ];
     // FOUNDATION-B4B adds three of these, and for the same reason the list already had entries: they must
     // know WHERE an installation's authored material lives, and asking the authority is the only sanctioned

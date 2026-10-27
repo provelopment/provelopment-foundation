@@ -149,6 +149,30 @@ export const DEPLOYMENT_SPOKE_SEGMENT_ENV = "FOUNDATION_DEPLOYMENT_SPOKE_SEGMENT
 export const DEPLOYMENT_HOST_ROUTING_ENV = "FOUNDATION_DEPLOYMENT_HOST_ROUTING";
 
 /**
+ * THE PUBLICATION RIGHTS THE EDGE MAY ASSERT, PROJECTED AT BUILD TIME
+ * ==================================================================
+ *
+ * The request boundary runs where the filesystem and the validated manifest are both unavailable, so it
+ * cannot decide whether a Spoke is *published* on a host — only whether a Spoke is *declared*. Those are not
+ * the same question, and treating "declared" as "published" let an unpublished Spoke claim a public asset
+ * URL on a shared host.
+ *
+ * This projection answers exactly the question the boundary is allowed to ask:
+ *
+ *     for THIS public host, which Spokes have an explicit EFS publication binding?
+ *
+ * It is a DERIVED READ-MODEL of `efs/manifest.json`, never an independent registry: nothing here is authored
+ * by hand, and nothing here can GRANT a right the manifest does not declare. It can only be NARROWER than
+ * the manifest — a binding that is unparseable, or that names no host, projects nothing — so a projection
+ * defect fails closed. The authoritative validation still happens at request time (`@/config/efs/manifest`),
+ * which refuses an invalid manifest outright rather than serving a subset of it.
+ *
+ * Ownership is never taken from `site.url` here: a Spoke's informational origin says which host it is SERVED
+ * FROM, not which host it may publish on.
+ */
+export const DEPLOYMENT_EFS_PUBLICATIONS_ENV = "FOUNDATION_DEPLOYMENT_EFS_PUBLICATIONS";
+
+/**
  * The capsule directory the selector probes: `<repositoryRoot>/deployment`.
  *
  * Exported because the spelling belongs HERE and nowhere else: a caller that needs to know where a
@@ -240,6 +264,61 @@ export function installationSpokes(installationRoot) {
 }
 
 
+/** The manifest override the runtime reads (`@/app/[[...segments]]/efs-request.ts`). Mirrored, not moved. */
+const EFS_MANIFEST_ENV = "FOUNDATION_EFS_MANIFEST";
+
+/**
+ * Project `efs/manifest.json` into the publication facts the request boundary may assert.
+ *
+ * DELIBERATELY NARROWER THAN THE MANIFEST: anything this function cannot read confidently projects NOTHING,
+ * so a projection defect can only deny access, never grant it. The validated loader remains the authority
+ * and refuses a malformed manifest at request time.
+ *
+ * Every binding counts — canonical AND alias — because both are publication rights. `site.url` is never
+ * consulted.
+ *
+ * @param {string} root the installation root whose `efs/manifest.json` is projected
+ * @param {Record<string, string | undefined>} environment the build environment (manifest override)
+ * @returns {{ host: string, spokeId: string, spokeHubId?: string }[]}
+ */
+function efsPublicationClaims(root, environment) {
+  const override = environment[EFS_MANIFEST_ENV]?.trim();
+  const manifestPath =
+    override !== undefined && override !== "" ? override : path.join(root, "efs", "manifest.json");
+  if (!existsSync(manifestPath)) return [];
+
+  /** @type {unknown} */
+  let document;
+  try {
+    document = JSON.parse(readFileSync(manifestPath, "utf8"));
+  } catch {
+    return [];
+  }
+  if (document === null || typeof document !== "object" || Array.isArray(document)) return [];
+  const publications = /** @type {{ publications?: unknown }} */ (document).publications;
+  if (!Array.isArray(publications)) return [];
+
+  /** @type {{ host: string, spokeId: string, spokeHubId?: string }[]} */
+  const claims = [];
+  for (const publication of publications) {
+    if (publication === null || typeof publication !== "object") continue;
+    const { spokeId, spokeHubId, bindings } = /** @type {Record<string, unknown>} */ (publication);
+    if (typeof spokeId !== "string" || spokeId.length === 0) continue;
+    if (spokeHubId !== undefined && typeof spokeHubId !== "string") continue;
+    if (!Array.isArray(bindings)) continue;
+    for (const binding of bindings) {
+      if (binding === null || typeof binding !== "object") continue;
+      const rawHost = /** @type {Record<string, unknown>} */ (binding).host;
+      if (typeof rawHost !== "string") continue;
+      const host = rawHost.trim().toLowerCase();
+      if (host === "") continue;
+      claims.push(spokeHubId === undefined ? { host, spokeId } : { host, spokeId, spokeHubId });
+    }
+  }
+  return claims;
+}
+
+
 /**
  * Resolves the deployment this build serves.
  *
@@ -261,7 +340,10 @@ export function installationSpokes(installationRoot) {
  * @param {string} [repositoryRoot] the repository the deployment is resolved inside
  * @returns {ResolvedDeployment}
  */
-export function resolveDeploymentForBuild(environment = process.env, repositoryRoot = process.cwd()) {
+export function resolveDeploymentForBuild(
+  environment = /** @type {Record<string, string | undefined>} */ (process.env),
+  repositoryRoot = process.cwd(),
+) {
   const override = environment[DEPLOYMENT_ROOT_ENV]?.trim();
   const capsuleRoot = capsuleDirectory(repositoryRoot);
   const capsuleAuthored =
@@ -289,6 +371,9 @@ export function resolveDeploymentForBuild(environment = process.env, repositoryR
   // M16 — the request boundary's routing description, resolved HERE from the same authorities this seam
   // already consumes (never composed by hand and never re-derived from a directory name).
   const hostRouting = hostRoutingForInstallation(root);
+  // The request boundary cannot read the filesystem or the manifest, so the build projects the ONE fact it
+  // may assert there: which Spokes have an explicit publication binding for a host.
+  const efsPublications = efsPublicationClaims(root, environment);
 
   if (authoring.mode === "legacy") {
     const siteConfigFile = path.join(root, DEPLOYMENT_CONFIG_FILE_NAME);
@@ -301,6 +386,7 @@ export function resolveDeploymentForBuild(environment = process.env, repositoryR
       config: readFileSync(siteConfigFile, "utf8"),
       spoke: null,
       hostRouting,
+      efsPublications,
     };
   }
 
@@ -323,6 +409,7 @@ export function resolveDeploymentForBuild(environment = process.env, repositoryR
       config: "",
       spoke: null,
       hostRouting,
+      efsPublications,
     };
   }
 
@@ -340,6 +427,7 @@ export function resolveDeploymentForBuild(environment = process.env, repositoryR
       config: readFileSync(siteConfigFile, "utf8"),
       spoke,
       hostRouting,
+      efsPublications,
     };
   }
 
@@ -356,6 +444,7 @@ export function resolveDeploymentForBuild(environment = process.env, repositoryR
     config: "",
     spoke: null,
     hostRouting,
+    efsPublications,
   };
 }
 
@@ -379,5 +468,6 @@ export function deploymentEnvironment(resolved) {
     [DEPLOYMENT_SPOKE_ROOT_ENV]: resolved.spoke?.relativeRoot ?? "",
     [DEPLOYMENT_SPOKE_SEGMENT_ENV]: resolved.spoke?.segment ?? "",
     [DEPLOYMENT_HOST_ROUTING_ENV]: JSON.stringify(resolved.hostRouting),
+    [DEPLOYMENT_EFS_PUBLICATIONS_ENV]: JSON.stringify(resolved.efsPublications),
   };
 }

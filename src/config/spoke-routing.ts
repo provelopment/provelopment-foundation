@@ -425,6 +425,106 @@ function hubSwitchersOf(raw: unknown): readonly SpokeHubSwitcherConfig[] | undef
  * repository that has not been built: `single` with no entries, which resolves no host at all. Nothing is
  * guessed from the absence.
  */
+/**
+ * THE PUBLICATION RIGHTS THE REQUEST BOUNDARY MAY ASSERT (R03)
+ * ===========================================================
+ *
+ * The boundary must answer a question it cannot compute: *is this Spoke PUBLISHED on this host?* It has no
+ * filesystem and no validated manifest, so it can only know what the build told it. The build projects the
+ * manifest's explicit bindings into this description, exactly as it projects hostname routing — one
+ * projection of one authority, never a second registry.
+ *
+ * The distinction this module exists to enforce:
+ *
+ *     DECLARED  a Spoke in `spokes.json`                 — necessary, NOT sufficient
+ *     PUBLISHED an explicit EFS binding for THIS host     — sufficient
+ *
+ * `site.url` is not an input. It is informational (`D31`), so a host appearing in zero, one or several
+ * informational origins changes nothing here.
+ *
+ * An EMPTY result is meaningful and is NOT "deny everything": it means no EFS publication claims this host
+ * at all, and the caller must apply the released host-only rule instead.
+ */
+const DEPLOYMENT_EFS_PUBLICATIONS_ENV = "FOUNDATION_DEPLOYMENT_EFS_PUBLICATIONS";
+
+/** One projected publication fact: which Spoke a host's binding names. */
+interface EfsPublicationClaim {
+  readonly host: string;
+  readonly spokeId: string;
+  readonly spokeHubId?: string;
+}
+
+const NO_PUBLISHED_SEGMENTS: ReadonlySet<string> = Object.freeze(new Set<string>());
+
+let publicationClaimsCache: readonly EfsPublicationClaim[] | null = null;
+
+/** The build's projected publication claims, normalized once. */
+function publicationClaimsForBuild(): readonly EfsPublicationClaim[] {
+  if (publicationClaimsCache !== null) return publicationClaimsCache;
+
+  const raw = process.env[DEPLOYMENT_EFS_PUBLICATIONS_ENV]?.trim() ?? "";
+  if (raw === "") {
+    publicationClaimsCache = Object.freeze([]);
+    return publicationClaimsCache;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(
+      `FOUNDATION-EFS-PUBLICATION-RIGHTS: the build's publication projection is not valid JSON: ` +
+        `${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error(
+      "FOUNDATION-EFS-PUBLICATION-RIGHTS: the build's publication projection must be an array.",
+    );
+  }
+
+  const claims: EfsPublicationClaim[] = [];
+  for (const entry of parsed) {
+    if (entry === null || typeof entry !== "object") continue;
+    const record = entry as Record<string, unknown>;
+    const host = typeof record.host === "string" ? normalizeHostname(record.host) : null;
+    const spokeId = typeof record.spokeId === "string" && record.spokeId !== "" ? record.spokeId : null;
+    // A malformed claim grants nothing: the projection can only ever be narrower than the manifest.
+    if (host === null || spokeId === null) continue;
+    const spokeHubId = typeof record.spokeHubId === "string" && record.spokeHubId !== ""
+      ? record.spokeHubId
+      : undefined;
+    claims.push(spokeHubId === undefined ? { host, spokeId } : { host, spokeId, spokeHubId });
+  }
+
+  publicationClaimsCache = Object.freeze(claims);
+  return publicationClaimsCache;
+}
+
+/**
+ * The runtime segments `host` may serve because an explicit publication binding names them.
+ *
+ * A binding that names a Spoke this build does not declare grants NOTHING — composite identity is matched on
+ * both halves, so a Hub cannot borrow its namesake's rights and an undeclared name cannot claim a namespace.
+ */
+export function publishedRuntimeSegmentsForHost(
+  routing: InstallationHostRouting,
+  host: string | null,
+): ReadonlySet<string> {
+  const normalized = normalizeHostname(host);
+  if (normalized === null) return NO_PUBLISHED_SEGMENTS;
+
+  const segments = new Set<string>();
+  for (const claim of publicationClaimsForBuild()) {
+    if (claim.host !== normalized) continue;
+    const entry = routing.spokes.find(
+      (candidate) => candidate.id === claim.spokeId && candidate.spokeHubId === claim.spokeHubId,
+    );
+    if (entry !== undefined) segments.add(entry.runtimeSegment);
+  }
+  return segments.size === 0 ? NO_PUBLISHED_SEGMENTS : segments;
+}
+
 export function hostRoutingForBuild(): InstallationHostRouting {
   if (cached !== null) return cached;
 

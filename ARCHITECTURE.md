@@ -43,20 +43,31 @@ No identity is inferred from a host, prefix, folder name, Site name or locale sp
 `deployment/spokes.json` declares the real Spoke hierarchy. A publication owner is resolved from
 those two declarations only.
 
-A hostname is not an exclusive Spoke property. `site.url` is a Spoke's canonical ORIGIN; the authority
-for a public address is the explicit binding. So a hostname is classified:
+A hostname is not an exclusive Spoke property. `site.url` is a Spoke's canonical ORIGIN — informational —
+and the authority for a public address is the explicit binding. So a hostname is classified for the purpose
+of LEGACY HOST-ONLY DISPATCH:
 
-- **exclusive** — claimed by exactly one declared Spoke. Hostname dispatch selects it, as always, and a
-  publication owned by another Spoke may not serve it (that is the `host-is-claimed-by-another-spoke`
-  conflict, and it still fails closed).
+- **exclusive** — claimed by exactly one declared Spoke. Hostname dispatch selects it.
 - **shared** — claimed by more than one declared Spoke. Several Spokes then publish disjoint path
-  prefixes of it, hostname dispatch selects **nothing**, and the binding alone decides the owner.
-- **unknown** — claimed by nobody. A binding may introduce it; the publication owner is then the
-  authority.
+  prefixes of it, and hostname dispatch selects **nothing**.
+- **unknown** — claimed by nobody. A binding may introduce it.
 
-`GET /` on a host whose bindings are all prefix-scoped names no publication and is refused. A
-deterministic root entry therefore requires an explicit authored policy; there is no "whichever
-binding came first".
+That classification decides only which Spoke a host with no matching binding may fall back to. It is **not**
+an ownership input for an EFS publication: an informational `site.url` cannot veto a publication whose
+binding names its own owner. A publication is refused only when its declaration is unusable — an undeclared
+Spoke, the wrong Spoke Hub, an ambiguous owner, a flat/legacy Installation with no explicit hierarchy, or two
+publications claiming the same host and prefix (`bindingIssues`, the explicit collision check).
+
+Presentation-asset authorization follows the same authority, never the classification. A Spoke's namespace
+(`/spokes/<segment>/assets/**`) is served on a host only when an explicit publication binding on that host
+names that Spoke; being DECLARED in an Installation is not publication. The request boundary cannot read
+`efs/manifest.json`, so the build projects the manifest's bindings for it (`FOUNDATION_DEPLOYMENT_EFS_PUBLICATIONS`,
+alongside the routing description) — one projection of one authority, which can only ever be narrower than
+the manifest. Where no publication claims a host at all, the released host-only rule applies unchanged.
+
+`GET /` on a host whose bindings are all prefix-scoped names no publication and is refused. A deterministic
+root entry would require an explicit authored policy; there is no "whichever binding came first", and no
+such capability is implemented.
 
 There is one production request path. Legacy Page/locale composition is reachable only through a
 non-production test utility gated by `FOUNDATION_ENABLE_LEGACY_TEST_RUNTIME`; it is never a fallback

@@ -133,6 +133,8 @@ const SANCTIONED_DOMAIN_WRITERS: Record<string, string> = {
  * report directory. The runtime manifest is what proves none of them reaches shipped state.
  */
 const TEST_SCRATCH_WRITERS: Record<string, string> = {
+  "tests/browser/shared-host.scenario.mjs":
+    "The harness scratch roots (its disposable Installation and generated Spoke asset namespaces, written ONLY through the canonical asset synchroniser and restored by re-running it for the installed deployment), plus the projection cache that same producer writes (R09)",
   "tests/integration/efs-publication-projection.test.ts":
     "OS temp (the disposable synthetic Installations it materialises, through `tests/support/shared-host-installation.mjs`) and the repository's IGNORED projection cache `<repo>/node_modules/.cache/foundation/efs-publications/**`, which it writes only by invoking the production producer; it mutates its own fixtures' manifests to prove staleness, never a committed deployment (R08)",
   "tests/browser/scratch.mjs": "the guard: OS temp + `tests/browser/.report/` + the generated Spoke namespaces, refusing every other target",

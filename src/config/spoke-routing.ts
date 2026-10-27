@@ -24,6 +24,7 @@ import {
   normalizeHostname,
   resolveSpokeFromHost,
   resolveSpokeRefFromHost,
+  sharedHostnamesIn,
   type Hostname,
   type IdentifiedSpokeRef,
   type Spoke,
@@ -704,6 +705,34 @@ export function routingEntryForSelection(
         : spoke.spokeHubId === selection.spokeHubId && spoke.id === selection.spokeId,
     ) ?? null
   );
+}
+
+/**
+ * THE ENTRIES CLAIMING `host` EXACTLY, and whether one of them is enough to answer a request.
+ *
+ * `0` entries: no Spoke claims this host (EFS may still own it, and an unclaimed host is refused here).
+ * `1` entry: an EXCLUSIVE claim — hostname dispatch answers with it, exactly as it always has.
+ * `2+` entries: a SHARED host. Several Spokes publish different path prefixes of it (`D31`), so no
+ * hostname rule may name an owner and dispatch answers NOTHING. The classification itself is the domain's
+ * (`@/core/spoke`'s `sharedHostnamesIn`), so the boundary cannot form a second opinion.
+ */
+export function routingClaimantsForHost(
+  routing: InstallationHostRouting,
+  host: string | null | undefined,
+): readonly SpokeHostRoutingEntry[] {
+  const normalized = normalizeHostname(host);
+  if (normalized === null) return [];
+  return routing.spokes.filter((entry) => entry.hostnameClaims.includes(normalized));
+}
+
+/** Whether this Installation's Spokes SHARE `host` — the one question a path-named asset needs. */
+export function isSharedHostInRouting(
+  routing: InstallationHostRouting,
+  host: string | null | undefined,
+): boolean {
+  const normalized = normalizeHostname(host);
+  if (normalized === null) return false;
+  return sharedHostnamesIn(routing.spokes.map((entry) => entry.hostnameClaims)).has(normalized);
 }
 
 /**

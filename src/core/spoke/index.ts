@@ -24,8 +24,10 @@
  * `spokeByRef`) and its reserved implicit marker (`IMPLICIT_SPOKE_HUB_ID`, declared independently of the
  * implicit Spoke and Site Hub markers). `SpokeHub` itself is NOT redefined: an `IdentifiedSpokeHub` IS a
  * `SpokeHub`, so every existing consumer compiles and behaves exactly as before. The collection's
- * coherence is COMPOSED from the existing authorities (`./coherence`, `./spoke-hub-id`) plus the two rules
- * that only exist across Hubs: unique Hub identity, and one Spoke in one Hub per exact hostname.
+ * coherence is COMPOSED from the existing authorities (`./coherence`, `./spoke-hub-id`) plus the one rule
+ * that only exists across Hubs: unique Hub identity. A hostname claimed by several Spokes is not a defect;
+ * `sharedHostnames` classifies it as SHARED, `./resolve` therefore selects nothing on that host, and an
+ * explicit EFS publication binding is what answers a request there (`D31`).
  */
 export { normalizeHostname, hostnameFromOrigin } from "./hostname";
 export type { Hostname } from "./hostname";
@@ -56,11 +58,12 @@ export {
   identifiedSpokeHubCollectionIssues,
   isCoherentIdentifiedSpokeHubCollection,
   resolveSpokeRefFromHost,
+  sharedHostnamesAcrossHubs,
   spokeByRef,
 } from "./spoke-hub-collection";
 export type { IdentifiedHubClaims, IdentifiedSpokeSelection } from "./spoke-hub-collection";
 
-export { isCoherentSpokeHub, spokeHubIssues } from "./coherence";
+export { isCoherentSpokeHub, sharedHostnames, sharedHostnamesIn, spokeHubIssues } from "./coherence";
 
 export { hubForSiteCode } from "./site-ownership";
 

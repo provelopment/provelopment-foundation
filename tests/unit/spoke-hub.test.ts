@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   isCoherentSpokeHub,
   resolveSpokeFromHost,
+  sharedHostnames,
   spokeById,
   spokeHubIssues,
   type Hub,
@@ -21,8 +22,9 @@ import { resolveSites, type ResolvedSite } from "@/core/site";
  *
  * Hostname ownership is EXPLICIT and EXACT. A Spoke states its canonical hostname plus any exact
  * aliases, and a claim for `example.com` NEVER claims `sub.example.com` — so `sub.example.com` can
- * belong to a different Spoke, and the only ownership conflict possible is two Spokes naming the very
- * same hostname.
+ * belong to a different Spoke. Two Spokes may also name the very SAME hostname: that is a SHARED host,
+ * which is legitimate under `D31` because the explicit publication binding, not the host, names a public
+ * address — and which dispatch answers with NOTHING.
  *
  * The module is unwired (nothing in the application imports it); these tests are its only consumer.
  */
@@ -121,7 +123,7 @@ describe("hostname → Spoke resolution", () => {
   });
 });
 
-describe("Spoke Hub coherence — one exact hostname belongs to one Spoke", () => {
+describe("Spoke Hub coherence — a hostname may be shared, and a shared host dispatches nothing", () => {
   it("reports nothing for a coherent Spoke Hub", () => {
     const spokeHub = coherentSpokeHub();
     expect(spokeHubIssues(spokeHub)).toEqual([]);
@@ -178,14 +180,23 @@ describe("Spoke Hub coherence — one exact hostname belongs to one Spoke", () =
     );
   });
 
-  it("refuses the SAME exact hostname in two Spokes", () => {
+  it("accepts the SAME exact hostname in two Spokes and classifies it as SHARED", () => {
     const shared = spokeHubOf([
       spokeOf("a", "example.com", ["example.com"]),
       spokeOf("b", "example.com", ["example.com"]),
     ]);
-    const issues = spokeHubIssues(shared);
-    expect(issues.some((issue) => issue.includes("is claimed by more than one Spoke"))).toBe(true);
-    expect(isCoherentSpokeHub(shared)).toBe(false);
+    // A hostname authored by two Spokes is NOT a malformed declaration. `D31` makes the explicit
+    // publication binding the authority for a public address, so two Spokes may publish different path
+    // prefixes of the SAME host; the hostname is then SHARED and names no owner.
+    expect(spokeHubIssues(shared)).toEqual([]);
+    expect(isCoherentSpokeHub(shared)).toBe(true);
+    expect([...sharedHostnames(shared.spokes)]).toEqual(["example.com"]);
+
+    // The classification is what dispatch asks, and dispatch answers NOTHING on a shared host: a first-match
+    // rule would silently give every request on the host to whichever Spoke was declared first.
+    expect(resolveSpokeFromHost(shared, "example.com")).toBeNull();
+    // An EXCLUSIVE claim is untouched by that refusal.
+    expect(resolveSpokeFromHost(coherentSpokeHub(), "example.com")?.spokeId).toBeTruthy();
   });
 });
 

@@ -13,13 +13,17 @@
  *   · the Installation's runtime hierarchy (`spokes.json`, resolved once per build).
  *
  * A hostname, URL prefix, Site, Facet or Entity name never establishes ownership. A binding may
- * legitimately introduce a host that the older Spoke-host routing table does not know — the
- * publication owner is then the authority — but a host that the routing table DOES claim may only
- * be served by the Spoke it claims. That is a conflict, and it fails closed.
+ * legitimately introduce a host that the older Spoke-host routing table does not know — the publication
+ * owner is then the authority — and, because `D31` makes the BINDING the authority for a public address, a
+ * hostname may legitimately be SHARED by several Spokes publishing different path prefixes of it. What is
+ * never legitimate is a publication serving a host that ONE other Spoke claims EXCLUSIVELY: that is a
+ * conflict, and it fails closed.
  *
  * There is no `null` context and no reserved implicit Spoke. An Installation that declares no Spoke
  * hierarchy cannot own an EFS publication at all: it is a setup diagnostic, not a permissive mode.
  */
+import { normalizeHostname } from "@/core/spoke";
+
 import type { EfsPublicationDeclaration } from "@/config/efs/manifest";
 import {
   runtimeContextForSpoke,
@@ -27,10 +31,7 @@ import {
   type InstallationRuntimeSpoke,
   type SpokeRuntimeContext,
 } from "@/config/installation-runtime";
-import {
-  installationRuntimeIndexForBuild,
-  runtimeContextForRequestHost,
-} from "@/config/spoke-request";
+import { installationRuntimeIndexForBuild } from "@/config/spoke-request";
 import { publicationOwnedBy, type EfsBinding } from "@/core/efs/publication";
 
 /** The exact reason an ownership declaration cannot authorize a request. */
@@ -116,34 +117,66 @@ export function publicationOwnerInInstallation(
 /**
  * Resolve the owner of `publication` for `host`, checking BOTH declarations.
  *
- * The publication must name a real Spoke. If the host-routing table claims the host for another
- * Spoke, the request is a conflict and is refused. An unclaimed host is not an error: an explicit
- * EFS binding is allowed to introduce one for the publication's declared owner.
+ * The publication must name a real Spoke. The hostname is then classified, because a hostname is not an
+ * exclusive Spoke property (`D31`):
+ *
+ *   · EXCLUSIVELY claimed by another Spoke → CONFLICT, refused. A dedicated host belongs to the one Spoke
+ *     that authored it, and a publication may not hijack it. This is the protection the rule always
+ *     provided, and it is unchanged.
+ *   · claimed by NOBODY → the binding INTRODUCES the host for the publication's declared owner. That is the
+ *     accepted behaviour, unchanged.
+ *   · claimed by SEVERAL Spokes → the host is SHARED. Several Spokes legitimately publish different path
+ *     prefixes of it, so the hostname cannot name an owner at all — and the explicit binding, already
+ *     matched from `host + pathname` by the caller, is the authority. The publication's declared owner
+ *     stands.
+ *
+ * Nothing here guesses: a shared host is not "the first claimant's", and the publication's own declaration
+ * is what fixes the owner in every accepted case.
  */
 export function efsPublicationOwnerForRequest(
   publication: EfsPublicationDeclaration,
   host: string,
 ): EfsOwnerResolution {
-  const resolved = publicationOwnerInInstallation(installationRuntimeIndexForBuild(), publication);
+  const index = installationRuntimeIndexForBuild();
+  const resolved = publicationOwnerInInstallation(index, publication);
   if (resolved.kind === "refused") return resolved;
 
-  const hostContext = runtimeContextForRequestHost(host);
+  const claimants = hostClaimantsInInstallation(index, host);
+  if (claimants.length !== 1) return resolved;
+
+  const [claimant] = claimants;
   if (
-    hostContext !== null &&
-    (hostContext.id !== resolved.context.id ||
-      hostContext.spokeHubId !== resolved.context.spokeHubId)
+    claimant.id === resolved.context.id &&
+    claimant.spokeHubId === resolved.context.spokeHubId
   ) {
-    return {
-      kind: "refused",
-      reason: "host-is-claimed-by-another-spoke",
-      detail:
-        `Host "${host}" is claimed by Spoke "${hostContext.id}"` +
-        `${hostContext.spokeHubId === undefined ? "" : ` in Hub "${hostContext.spokeHubId}"`}, ` +
-        `but the publication is owned by "${publication.spokeId}"` +
-        `${publication.spokeHubId === undefined ? "" : ` in Hub "${publication.spokeHubId}"`}.`,
-    };
+    return resolved;
   }
-  return resolved;
+
+  return {
+    kind: "refused",
+    reason: "host-is-claimed-by-another-spoke",
+    detail:
+      `Host "${host}" is claimed by Spoke "${claimant.id}"` +
+      `${claimant.spokeHubId === undefined ? "" : ` in Hub "${claimant.spokeHubId}"`}, ` +
+      `but the publication is owned by "${publication.spokeId}"` +
+      `${publication.spokeHubId === undefined ? "" : ` in Hub "${publication.spokeHubId}"`}.`,
+  };
+}
+
+/**
+ * The declared Spokes claiming `host` EXCLUSIVELY — the classification every ownership decision needs.
+ *
+ * `0` is a host the routing table does not know (a binding may introduce it), `1` is an EXCLUSIVE claim by
+ * that Spoke, and `2+` is a SHARED host that no hostname rule may answer. Normalization is the ONE pure
+ * step (`@/core/spoke`), so a caller cannot compare a raw `Host` header against a claim by accident.
+ */
+export function hostClaimantsInInstallation(
+  index: InstallationRuntimeIndex,
+  host: string,
+): readonly InstallationRuntimeSpoke[] {
+  const normalized = normalizeHostname(host);
+  if (normalized === null) return [];
+  return index.spokes.filter((spoke) => spoke.hostnameClaims.includes(normalized));
 }
 
 /** A binding's publication owner, with the binding's own host as the conflict check. */

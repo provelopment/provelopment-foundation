@@ -9,6 +9,8 @@ import {
   isCoherentIdentifiedSpokeHubCollection,
   partitionSitesIntoHubs,
   resolveSpokeFromHost,
+  resolveSpokeRefFromHost,
+  sharedHostnamesAcrossHubs,
   spokeByRef,
   spokeCollectionIssues,
   spokeHubCollectionIssues,
@@ -26,8 +28,9 @@ import { resolveSites, type ResolvedSite } from "@/core/site";
  * ==========================================
  *
  * The OUTER layer gains an identity: an Installation may contain SEVERAL independently identified Spoke
- * Hubs, each owning its own Spoke membership, while every hostname claim stays unique across the whole
- * Installation.
+ * Hubs, each owning its own Spoke membership. A hostname claimed by one Spoke stays EXCLUSIVE; a hostname
+ * claimed by members of two Hubs is a SHARED host, which is legitimate under `D31` and which hostname
+ * dispatch answers with nothing.
  *
  * What this file proves, in the order it proves it:
  *
@@ -175,21 +178,24 @@ describe("identified Spoke Hubs", () => {
     expect(issues).toMatch(/Spoke Hub "two": The Spoke Hub coordinates no Spoke/);
   });
 
-  it("refuses ONE exact hostname claimed in TWO Hubs, and never misreads a duplicate inside one", () => {
-    const collision: InstallationSpokeHubCollection = [
+  it("accepts ONE exact hostname claimed in TWO Hubs as a SHARED host, and never misreads a duplicate inside one", () => {
+    const sharedHost: InstallationSpokeHubCollection = [
       hubOf("one", [spokeOf("global", "shared.example.test", ["ww"])]),
       hubOf("two", [spokeOf("de", "shared.example.test", ["de"])]),
     ];
-    const collisionIssues = identifiedSpokeHubCollectionIssues(collision).join("\n");
-    expect(collisionIssues).toMatch(
-      /hostname "shared\.example\.test" is claimed in more than one Spoke Hub/,
-    );
-    expect(collisionIssues).toMatch(/Spoke "global" in Spoke Hub "one"/);
-    expect(collisionIssues).toMatch(/Spoke "de" in Spoke Hub "two"/);
-    expect(isCoherentIdentifiedSpokeHubCollection(collision)).toBe(false);
+    // Two Hubs publishing on one hostname is a legitimate SHARED host (`D31`): the collection is coherent,
+    // and the hostname is classified rather than refused.
+    expect(identifiedSpokeHubCollectionIssues(sharedHost)).toEqual([]);
+    expect(isCoherentIdentifiedSpokeHubCollection(sharedHost)).toBe(true);
+    expect([...sharedHostnamesAcrossHubs(sharedHost)]).toEqual(["shared.example.test"]);
 
-    // The SAME hostname stated twice WITHIN one Hub is the EXISTING authority's finding, and must never be
-    // reported as a collision BETWEEN Hubs — because it is not one.
+    // Dispatch answers NOTHING on it — not the first Hub's member, not the second's.
+    const claims = sharedHost.map((hub) => ({ spokeHubId: hub.identity.id, spokes: hub.spokes }));
+    expect(resolveSpokeRefFromHost(claims, "shared.example.test")).toBeNull();
+
+    // The SAME hostname stated twice WITHIN one Hub remains a DECLARATION defect (the existing authority's
+    // finding), and must never be misread as a shared host: one Spoke naming a claim twice names ONE
+    // claimant, so the classification stays empty.
     const repeatedInsideOneHub: InstallationSpokeHubCollection = [
       {
         identity: { id: "one" },
@@ -207,7 +213,7 @@ describe("identified Spoke Hubs", () => {
     ];
     const repeatedIssues = identifiedSpokeHubCollectionIssues(repeatedInsideOneHub).join("\n");
     expect(repeatedIssues).toMatch(/is stated more than once/);
-    expect(repeatedIssues).not.toMatch(/claimed in more than one Spoke Hub/);
+    expect([...sharedHostnamesAcrossHubs(repeatedInsideOneHub)]).toEqual([]);
   });
 
   it("COMPOSES the per-Hub rules instead of restating them", () => {

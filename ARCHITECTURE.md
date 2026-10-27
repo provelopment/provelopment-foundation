@@ -41,9 +41,22 @@ No identity is inferred from a host, prefix, folder name, Site name or locale sp
 - each binding's host, prefix, Site set/mode, locales, default locale and canonical/alias role.
 
 `deployment/spokes.json` declares the real Spoke hierarchy. A publication owner is resolved from
-those two declarations only. A host the legacy host-routing table claims for another Spoke is a
-conflict and is refused. A host introduced only by an EFS binding is legitimate; its publication
-owner is the authority.
+those two declarations only.
+
+A hostname is not an exclusive Spoke property. `site.url` is a Spoke's canonical ORIGIN; the authority
+for a public address is the explicit binding. So a hostname is classified:
+
+- **exclusive** — claimed by exactly one declared Spoke. Hostname dispatch selects it, as always, and a
+  publication owned by another Spoke may not serve it (that is the `host-is-claimed-by-another-spoke`
+  conflict, and it still fails closed).
+- **shared** — claimed by more than one declared Spoke. Several Spokes then publish disjoint path
+  prefixes of it, hostname dispatch selects **nothing**, and the binding alone decides the owner.
+- **unknown** — claimed by nobody. A binding may introduce it; the publication owner is then the
+  authority.
+
+`GET /` on a host whose bindings are all prefix-scoped names no publication and is refused. A
+deterministic root entry therefore requires an explicit authored policy; there is no "whichever
+binding came first".
 
 There is one production request path. Legacy Page/locale composition is reachable only through a
 non-production test utility gated by `FOUNDATION_ENABLE_LEGACY_TEST_RUNTIME`; it is never a fallback
@@ -779,8 +792,10 @@ today is narrower than the approved target. These two lists are not each other:
 - SEVERAL independently identified Spoke Hubs per installation: an Installation may author `spokeHubs[]`,
   each Hub carrying its id, its members and its OWN Hub-scoped switcher. Its members are addressed by the
   COMPOSITE `(SpokeHubId, SpokeId)`, so a local id may repeat across Hubs.
-- Spoke ids scoped to their owning Spoke Hub — while an exact hostname claim stays UNIQUE Installation-wide,
-  because a request carries one host and must select exactly one Spoke in exactly one Hub.
+- Spoke ids scoped to their owning Spoke Hub — while an EXCLUSIVE hostname claim (one Spoke only) still
+  selects that Spoke on its own. A hostname claimed by more than one Spoke is a SHARED host: it selects
+  nothing by hostname, and only an explicit EFS binding (host + whole-segment prefix) may answer a
+  request there.
 - Managed-mode composite Site ownership and resolution: `(BusinessId, SiteId)` carried through membership and
   lookup. **This remains unimplemented** (and is not part of this work).
 - The identity-safe addressing, content, dictionary and asset isolation the composite identity implies —

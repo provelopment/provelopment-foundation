@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import {
   hostRoutingForBuild,
+  isSharedHostInRouting,
   routingEntryForSelection,
   spokeSelectionForHost,
   type SpokeHostRoutingEntry,
@@ -100,12 +101,31 @@ function continueWithSelectedSpoke(request: NextRequest, entry: SpokeHostRouting
   return NextResponse.next({ request: { headers } });
 }
 
-/** A Spoke's own artwork is served ONLY on a host that Spoke answers for. */
+/**
+ * A Spoke's own artwork is served ONLY to a caller that has named THAT Spoke.
+ *
+ * The two cases are the two the hostname has:
+ *
+ *   EXCLUSIVE host (or the one-Spoke compatibility rule) — the host selects one Spoke, and only that
+ *   Spoke's namespace may be read, exactly as before. `beta.example` still cannot fetch `alpha`'s artwork.
+ *
+ *   SHARED host — several Spokes publish different path prefixes of this host, so the host selects nobody
+ *   and the PATH is the only thing that names an owner. A segment this Installation declares is that
+ *   Spoke's own namespace and may be read; a segment it does not declare is refused. This is what lets a
+ *   shared host serve its own members' presentation artwork without granting any access a request never
+ *   asked for: the namespace is already public, and it is named explicitly in the URL.
+ */
 function spokeAsset(request: NextRequest): NextResponse {
   const routing = hostRoutingForBuild();
+  const host = request.headers.get("host");
   const segment = decodeURIComponent(request.nextUrl.pathname.split("/").filter(Boolean)[1] ?? "");
-  const entry = selectedEntry(routing, request.headers.get("host"));
 
+  if (isSharedHostInRouting(routing, host)) {
+    const declared = routing.spokes.some((entry) => entry.runtimeSegment === segment);
+    return declared ? NextResponse.next() : refuse();
+  }
+
+  const entry = selectedEntry(routing, host);
   if (entry === null || entry.runtimeSegment !== segment) return refuse();
   return NextResponse.next();
 }

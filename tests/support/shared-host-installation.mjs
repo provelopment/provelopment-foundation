@@ -308,3 +308,13 @@ export function materializeSharedHostInstallation({
     cleanup: () => rmSync(root, { recursive: true, force: true }),
   };
 }
+
+/**
+ * The authored Spoke root of one member inside the Installation.
+ *
+ * Exported so a caller can NAME the Spoke's own presentation namespace in its configuration without
+ * re-deriving the locator rule this module owns.
+ */
+export function spokeRootOf(root, member) {
+  return path.join(root, ...locatorOf(member).split("/"));
+}

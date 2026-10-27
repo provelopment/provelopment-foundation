@@ -9,7 +9,7 @@
  * that proves a forged one is refused.
  */
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import path from "node:path";
 
@@ -22,9 +22,11 @@ import { producePublicationProjection } from "../../scripts/efs/publication-proj
 import {
   SHARED_HOST,
   SHARED_HOST_MEMBERS,
+  spokeRootOf,
   materializeSharedHostInstallation,
 } from "../support/shared-host-installation.mjs";
 import { scratchRoot } from "./scratch.mjs";
+import { buildPlan } from "../../scripts/sync-runtime-assets.mjs";
 
 export const id = "shared-host";
 
@@ -105,6 +107,50 @@ async function waitForSharedHost(port, timeoutMs) {
   }
   throw new Error("shared host never served /alpha: " + last);
 }
+/**
+ * Make each Spoke NAME its own presentation namespace.
+ *
+ * The namespace segment is the authority's COMPOSITE encoding (Hub + Spoke), so it is read from the canonical
+ * plan rather than re-derived. Without this every Spoke would name the platform namespace, and "each Spoke
+ * serves its own artwork" could not be observed over HTTP at all.
+ */
+/**
+ * Does a rendered shell name THIS Spoke's presentation namespace?
+ *
+ * A URL in a document may carry the composite segment verbatim or percent-encode the `+` that joins its
+ * parts, and both forms address the same namespace - so both are accepted, and NEITHER owner's is accepted
+ * for the other Spoke.
+ */
+function namesNamespace(body, segment) {
+  return (
+    body.includes("/spokes/" + segment + "/assets/") ||
+    body.includes("/spokes/" + segment.replace(/\+/g, "%2B") + "/assets/")
+  );
+}
+function nameOwnNamespaces(installation, members) {
+  const segments = {};
+  for (const member of members) {
+    const plan = buildPlan(installation.root).filter(
+      (row) =>
+        typeof row.namespace === "string" &&
+        row.namespace.startsWith("spoke:") &&
+        row.namespace.split("+").pop() === member.spokeId,
+    );
+    const match = plan.length === 0 ? null : [null, plan[0].namespace.slice("spoke:".length)];
+    if (match === null) throw new Error("the canonical plan has no namespace for " + member.spokeId);
+    segments[member.spokeId] = match[1];
+    const configFile = path.join(spokeRootOf(installation.root, member), "site.config.json");
+    const config = JSON.parse(readFileSync(configFile, "utf8"));
+    const base = "https://" + SHARED_HOST;
+    config.assets = {
+      ...config.assets,
+      favicon: base + "/spokes/" + match[1] + "/assets/favicon.svg",
+      logo: base + "/spokes/" + match[1] + "/assets/logo-header.svg",
+    };
+    writeFileSync(configFile, JSON.stringify(config, null, 2) + "\n", "utf8");
+  }
+  return segments;
+}
 async function start(harness, installation) {
 
 
@@ -150,10 +196,16 @@ async function start(harness, installation) {
 
 export async function run(chrome, harness) {
   const rows = [];
+  // CAPTURED BEFORE any scenario writes to it, so teardown can restore exactly (R10 s4).
+  const previousEnv = {};
+  for (const name of ["FOUNDATION_DEPLOYMENT_ROOT", "FOUNDATION_EFS_MANIFEST", "FOUNDATION_EFS_CAPSULE"]) {
+    previousEnv[name] = process.env[name];
+  }
   const installation = materializeSharedHostInstallation({
     root: mkdtempSync(path.join(scratchRoot(), "foundation-shared-host-")),
     members: MEMBERS,
   });
+  const segments = nameOwnNamespaces(installation, MEMBERS);
   let server = null;
 
   try {
@@ -196,23 +248,44 @@ export async function run(chrome, harness) {
       alias.status === 200 && alias.body.includes("About Beta"),
       "status=" + alias.status,
     );
-
-    const alphaAsset = (await request({ port, pathname: "/alpha/en-001/home" })).body.match(/src="([^"]*logo-header[^"]*)"/);
-    const betaAsset = (await request({ port, pathname: "/beta/en-001/home" })).body.match(/src="([^"]*logo-header[^"]*)"/);
-    const hrefOf = (match) => (match === null ? "" : match[1]);
-    const alphaHref = hrefOf(alphaAsset);
-    const betaHref = hrefOf(betaAsset);
-    const alphaBytes = alphaHref === "" ? { status: 0, body: "" } : await request({ port, pathname: alphaHref });
-    const betaBytes = betaHref === "" ? { status: 0, body: "" } : await request({ port, pathname: betaHref });
+    // ---- presentation artwork: the Spoke's OWN composite namespace, owner-specific BYTES ------------
+    // The namespace SEGMENT is the authority's composite encoding, so it is READ from the canonical plan
+    // (`spokeNamespacePlan`) and never re-derived here. Each Spoke's config names its own namespace (see
+    // `nameOwnNamespaces`), so the rendered shell is what points a browser at the artwork - and the BYTES
+    // are what we judge, not a marker string.
+    const alphaHome = await request({ port, pathname: "/alpha/en-001/home" });
+    const betaHome = await request({ port, pathname: "/beta/en-001/home" });
     harness.check(
       rows,
-      "presentation assets are served (200) with OWNER-SPECIFIC bytes",
-      alphaBytes.status === 200 &&
-        betaBytes.status === 200 &&
-        alphaBytes.body.includes("Alpha") &&
-        betaBytes.body.includes("Beta") &&
-        alphaBytes.body !== betaBytes.body,
-      "status=" + alphaBytes.status + "/" + betaBytes.status + " href=" + (alphaHref || "none"),
+      "no document references ANOTHER owner's presentation namespace",
+      !namesNamespace(alphaHome.body, segments.beta) &&
+        !namesNamespace(betaHome.body, segments.alpha),
+      "alpha=" + segments.alpha + " beta=" + segments.beta +
+        " spokeUrlsInAlpha=" + String((alphaHome.body.match(/\/spokes\/[^"]*/g) ?? []).slice(0, 3)),
+    );
+    const alphaFavicon = await request({ port, pathname: "/spokes/" + segments.alpha + "/assets/favicon.svg" });
+    const betaFavicon = await request({ port, pathname: "/spokes/" + segments.beta + "/assets/favicon.svg" });
+    harness.check(
+      rows,
+      "published presentation assets are 200 with OWNER-SPECIFIC bytes",
+      alphaFavicon.status === 200 &&
+        betaFavicon.status === 200 &&
+        alphaFavicon.body.includes("Alpha") &&
+        betaFavicon.body.includes("Beta") &&
+        alphaFavicon.body !== betaFavicon.body,
+      "status=" + alphaFavicon.status + "/" + betaFavicon.status,
+    );
+    harness.check(
+      rows,
+      "a DECLARED but UNPUBLISHED Spoke's presentation asset is refused",
+      (await request({ port, pathname: "/spokes/" + segments.zeta + "/assets/favicon.svg" })).status !== 200,
+      "segment=" + segments.zeta,
+    );
+    harness.check(
+      rows,
+      "a FOREIGN Spoke namespace is refused on this host",
+      (await request({ port, pathname: "/spokes/hub+group-one+omega/assets/favicon.svg" })).status !== 200,
+      "foreign namespace",
     );
 
     const rootPath = await request({ port, pathname: "/" });
@@ -266,21 +339,36 @@ export async function run(chrome, harness) {
       error instanceof Error ? error.message : String(error),
     );
   } finally {
+    // RESTORATION IS PART OF THE TEST (R10 s4): every step reports a failure instead of swallowing one, and
+    // the process environment returns to EXACTLY its previous values - deleted only where it was absent -
+    // so a later scenario can never inherit this Installation.
+    const problems = [];
     try {
       await harness.stopServer(server);
-    } catch {
-      /* already gone */
+    } catch (error) {
+      problems.push("stopServer: " + String(error));
     }
-    delete process.env.FOUNDATION_EFS_MANIFEST;
-    delete process.env.FOUNDATION_EFS_CAPSULE;
-    delete process.env.FOUNDATION_DEPLOYMENT_ROOT;
-    rmSync(efsProjectionPath(installation.root, process.cwd()), { force: true });
-    installation.cleanup();
+    for (const [name, value] of Object.entries(previousEnv)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+    try {
+      rmSync(efsProjectionPath(installation.root, process.cwd()), { force: true });
+      installation.cleanup();
+    } catch (error) {
+      problems.push("cleanup: " + String(error));
+    }
     try {
       syncAssets(null);
-    } catch {
-      /* pnpm assets:check reports it if it ever fails */
+    } catch (error) {
+      problems.push("asset restore: " + String(error));
     }
+    harness.check(
+      rows,
+      "the scenario restored the environment, its Installation and the generated assets",
+      problems.length === 0,
+      problems.join(" | "),
+    );
   }
 
   return rows;

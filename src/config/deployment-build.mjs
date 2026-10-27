@@ -64,7 +64,7 @@
  * never be one the configuration/domain layer would refuse.
  */
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 
 import {
@@ -314,11 +314,40 @@ export function efsManifestDigest(manifestPath) {
   return createHash("sha256").update(readFileSync(manifestPath)).digest("hex");
 }
 
-/** The projection file for one Installation root. */
+/**
+ * The projection file for one Installation root.
+ *
+ * The key is a digest of the root's CANONICAL path, because the producer and the reader must name the SAME
+ * file for the same Installation (R11 §5). Two spellings of one directory — a temporary root reached through
+ * a short alias, a case variant, a trailing separator — are one Installation, and a key that disagreed would
+ * let a producer's refusal delete one file while the boundary kept reading another: the exact "an old
+ * projection must not survive the failure" defect. Canonicalization happens HERE, once, for both sides.
+ */
 export function efsProjectionPath(root, repositoryRoot = process.cwd()) {
-  const key = createHash("sha256").update(path.resolve(root)).digest("hex").slice(0, 32);
+  const resolved = (() => {
+    try {
+      return realpathSync(root);
+    } catch {
+      // A root that does not exist yet is still keyable; `path.resolve` keeps the function total.
+      return path.resolve(root);
+    }
+  })();
+  const key = createHash("sha256").update(resolved).digest("hex").slice(0, 32);
   return path.join(repositoryRoot, EFS_PROJECTION_DIRECTORY, `${key}.json`);
 }
+
+/**
+ * The sentinel an UNRESOLVABLE Installation hierarchy yields (R11 §5)
+ * ==================================================================
+ *
+ * `installationSpokes(root)` throwing means the question "which Spokes does this Installation declare?"
+ * has NO answer — not that it declares none. Such a state must never establish ownership provenance, so
+ * the digest is a value no recorded digest can equal and the reader grants nothing for it.
+ *
+ * It is exported because BOTH sides of the contract have to name it: the reader compares against it, and
+ * the producer must REFUSE instead of recording it (§5). Two string literals would let one side drift.
+ */
+export const EFS_HIERARCHY_UNRESOLVED = "unresolvable-installation";
 
 /**
  * Digest of the Installation's OWN Spoke hierarchy declaration (R09 §2)
@@ -338,7 +367,7 @@ export function efsInstallationDigest(root) {
   try {
     manifestFile = installationSpokes(root).manifestFile;
   } catch {
-    return "unresolvable-installation";
+    return EFS_HIERARCHY_UNRESOLVED;
   }
   return typeof manifestFile === "string" && existsSync(manifestFile)
     ? createHash("sha256").update(readFileSync(manifestFile)).digest("hex")

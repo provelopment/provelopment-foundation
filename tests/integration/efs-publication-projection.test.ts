@@ -446,4 +446,35 @@ describe("a cached projection is trusted only while it is current (R08-C)", () =
     expect(projectedClaims(second.root, second.efsManifestFile)).toEqual([]);
     expect(projectedClaims(first.root, first.efsManifestFile)).toHaveLength(5);
   });
+
+  /**
+   * A PRODUCER AND A READER MUST NOT AGREE ON A SENTINEL (R11 §5)
+   * ===========================================================
+   *
+   * The reader grants nothing when the Installation hierarchy cannot be resolved. If the producer were still
+   * allowed to write a projection recording that same value, both sides would agree on an ownership fact
+   * neither of them had established. The producer therefore REFUSES, and the projection that used to be
+   * valid is removed, so no later request can still be authorized by it.
+   */
+  it("refuses an unresolvable hierarchy and removes the projection that hierarchy invalidated", async () => {
+    const installation = materialize();
+    const projected = await producePublicationProjection({
+      root: installation.root,
+      manifestPath: installation.efsManifestFile,
+      spokeIdentities: SPOKES,
+    });
+    expect(projected.status).toBe("projected");
+    expect(projectedClaims(installation.root, installation.efsManifestFile)).toHaveLength(5);
+
+    // The Installation's own hierarchy declaration disappears: NOTHING states which Spokes exist, which is
+    // neither "no Spokes" nor "the Spokes we remember".
+    rmSync(path.join(installation.root, "spokes.json"), { force: true });
+
+    const refused = await producePublicationProjection({
+      root: installation.root,
+      manifestPath: installation.efsManifestFile,
+      spokeIdentities: SPOKES,
+    });
+    expect(refused.status).toBe("refused");
+  });
 });

@@ -21,6 +21,7 @@ import path from "node:path";
 import { createServer, createServerModuleRunner } from "vite";
 
 import {
+  EFS_HIERARCHY_UNRESOLVED,
   efsInstallationDigest,
   efsManifestDigest,
   efsProjectionPath,
@@ -61,6 +62,28 @@ export async function producePublicationProjection(input) {
     }
     // GENUINE NON-EFS INSTALLATION: the released host-only rule stands.
     return { status: "absent" };
+  }
+
+  // AN UNRESOLVABLE HIERARCHY IS A REFUSAL, NOT A SENTINEL (R11 §5)
+  // ---------------------------------------------------------------
+  // The ownership of a publication is a statement ABOUT a Spoke hierarchy: `group-one/alpha` owns a
+  // binding only because the Installation declares that Hub and that Spoke. When the declaration cannot be
+  // resolved there is nothing to verify against, so recording the sentinel would produce a projection whose
+  // "verified against" value happens to equal the reader's "cannot verify" value — the two sides would agree
+  // on a fact neither of them established. Refusing here, BEFORE any claim is computed, keeps provenance
+  // one-sided: only a hierarchy that was actually read can ever authorize a binding. The stale projection is
+  // removed too, so an earlier successful build cannot remain usable after the hierarchy became unreadable.
+  const installationDigest = efsInstallationDigest(input.root);
+  if (installationDigest === EFS_HIERARCHY_UNRESOLVED) {
+    rmSync(projectionPath, { force: true });
+    return {
+      status: "refused",
+      issues: [
+        `the Installation hierarchy at ${input.root} cannot be resolved, so no publication may be ` +
+          "verified against it: repairing the installation's Spoke declaration is required before a " +
+          "publication can be served",
+      ],
+    };
   }
 
   const server = await createServer({
@@ -147,8 +170,9 @@ export async function producePublicationProjection(input) {
         {
           manifestPath: input.manifestPath,
           manifestDigest: efsManifestDigest(input.manifestPath),
-          // The hierarchy this projection's ownership claim was verified AGAINST (R09 §2).
-          installationDigest: efsInstallationDigest(input.root),
+          // The hierarchy this projection's ownership claim was verified AGAINST (R09 §2). It is the digest
+          // computed before validation began — one read, so what is recorded is what was verified against.
+          installationDigest,
           claims,
         },
         null,

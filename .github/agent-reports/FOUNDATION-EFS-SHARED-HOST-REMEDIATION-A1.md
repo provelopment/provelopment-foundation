@@ -885,3 +885,77 @@ found a live cross-scenario authorization fallback that had been invisible while
   characterised first, which means identifying which EFS scenario's declaration does not resolve.
 - **§8 write boundary** — the mechanism exists and is verified, but pointing scratch inside the repository
   contradicts the guard's rule that synthetic state lives outside it. One architect decision needed.
+
+---
+
+## 26. R09 — closure: hierarchy freshness, a proven shared host, and the scratch decision
+
+**Reviewed baseline:** `bea060fec813ae9844922a0923bb588910d93e8b`. **This revision:**
+`72596b19ac678377daa3624220a77fa7a47b5ba0` / tree `1b6253163c43bf11ba019eb410476b9534d98f54`.
+
+### 26.1 R09 §2 — the R08 withdrawal was based on a misattribution (CORRECTED)
+
+The R08 report said the hierarchy digest "broke the browser gate". Investigating as instructed shows
+otherwise: `pnpm test:browser` failed at R08 **after** the digest was withdrawn, and the actual cause was the
+scenarios assigning the STRING `"undefined"` to `FOUNDATION_EFS_MANIFEST` (fixed in `4ad6844`). The digest was
+never the cause; it was withdrawn for the wrong reason.
+
+Facts established by reading the code rather than assuming:
+
+- **No browser scenario produces a projection at all.** They spawn `next dev` directly. `efs.scenario`'s asset
+  assertion is *Entity-scoped* — authorized by resolving the prefix to its Entity, not by the host/Spoke
+  projection — which is why that suite stayed green with no projection present.
+- The request boundary is **fs-free by design** (its own comment says "only the build can answer it"). Live
+  invalidation is therefore not the accepted contract, and R09 correctly asks not to claim it.
+
+Freshness is therefore enforced where authority is established — the producer at build and at dev start —
+and the projection carries the hierarchy it was verified against:
+
+- `efsInstallationDigest(root)` resolves the declaration through the ONE authority
+  (`installationSpokes().manifestFile`), never by composing a path.
+- An unresolvable hierarchy yields `unresolvable-installation`, a value no recorded digest can equal, so an
+  unreadable hierarchy is indistinguishable from a stale projection and grants nothing.
+- The reader refuses the whole projection on any mismatch; the producer refuses ownership the current
+  hierarchy does not grant.
+
+**Evidence (§2 proof points 1–4), in `tests/integration/efs-publication-projection.test.ts`:**
+
+1. stale authorization is not granted — hierarchy renamed in place → `[]`;
+2. a fresh validation REFUSES — the owning Spoke is removed, the producer returns `refused`, the boundary
+   grants `[]`;
+3. restoring the hierarchy allows a newly VALIDATED projection — `projected`, five claims again;
+4. existing browser scenarios pass with the digest in place — **11,101 checks across the eight foundation
+   scenarios** (`header-identity` 10407, `hub-switcher` 254, `multi-hub` 219, `multihost` 105,
+   `parity-chrome` 64, `required-location` 29, `unlisted-visibility` 23).
+
+Evidence classes, stated precisely: the digest is proved at **build/dev startup** (producer + reader) and by
+direct runtime resolution. A **running** dev server keeps the claims inlined by `next.config.ts` from
+startup; that is the documented contract, not a demonstrated live check, and no live invalidation is claimed.
+
+### 26.2 R09 §3 — duplicate bindings are now proved refused (CORRECTED)
+
+The test that accepted either outcome is replaced. For a duplicate host+prefix binding it now asserts three
+independent refusals: `loadEfsManifest()` refuses the document; the projection refuses it with no partial
+host/Spoke authorization; and `scripts/efs/validate-publications.mjs` — the step `pnpm build` runs before
+`next build` — **exits non-zero**. The positive companion remains: several valid bindings on different
+prefixes from one Spoke succeed and deduplicate to one presentation-asset permission.
+
+### 26.6 Exact-head CI at handback — NOT GREEN, and why
+
+`fd70de302ffc97ba6acda2e24d1a655b13828a14` / tree `02af564ad872c07222551c03bb34555f77aa9455`:
+run `40539727545` — classify **success**, full **failure** (`Run pnpm test:browser`), validate **failure**.
+`pnpm test` PASSES on this head, including the writer classification the previous run demanded.
+
+The failing check is the NEW scenario. It is the only delta in `test:browser`: the eight pre-existing
+foundation scenarios passed locally with the hierarchy digest restored (11,101 checks), and the same
+suite is the one CI runs. Locally the scenario first failed on readiness and that was fixed (the probe
+now sends the shared host and the page provably returned 200); the post-fix full-matrix run was not
+completed before this handback, so the scenario own result is UNVERIFIED beyond compile, lint and the
+direct 200 probe.
+
+I did NOT remove the scenario to make the gate green: the deliverable exists, is registered and is
+reviewable, and hiding it would misrepresent the state. The branch is therefore RED on one check until
+that scenario is finished.
+
+Everything else in this revision is green: `pnpm test` (2787 passed, 1 skipped), `tsc`, `lint`,
+`pnpm build`, and the eight scenario browser run.

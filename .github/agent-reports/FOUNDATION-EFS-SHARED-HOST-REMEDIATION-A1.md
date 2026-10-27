@@ -745,8 +745,17 @@ its projection through the same step the build runs, so it proves the chain inst
 
 ### 24.4 Verified this revision
 
-`pnpm test` **211 files passed** · `tsc --noEmit` clean · `pnpm lint` clean · `pnpm build` prebuild reports
-*3 verified claims* on the real deployment · architecture guards updated to classify the ONE new writer.
+`pnpm test` **211 files passed** · `pnpm test:deployment` **16 files passed** · `tsc --noEmit` clean ·
+`pnpm lint` clean · `pnpm build` prebuild reports *3 verified claims* on the real deployment · architecture
+guards classify the ONE new writer.
+
+**The first CI run caught a real determinism defect, and that is the most useful result of this revision.**
+`pnpm test` passed locally only because an earlier CLI run had left a projection in `node_modules/.cache`;
+on a clean runner the deployment suite had none, so the boundary correctly denied and a locale test saw 404
+instead of 200. `tests/setup/real-deployment.ts` now PRODUCES its own deployment's projection (through the
+same path the build uses) and then RE-RESOLVES the environment, because the first resolve necessarily read
+the projection before it existed. Both suites now pass from a deleted cache, so no test depends on state an
+earlier process happened to leave behind.
 
 ### 24.5 Still outstanding (unchanged by R07)
 

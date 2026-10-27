@@ -14,11 +14,43 @@
  * run with no deployment installed at all: a missing deployment fails THIS suite loudly, with the
  * authority's own message, and never silently falls back to some other identity.
  */
-import { deploymentEnvironment, resolveDeploymentForBuild } from "@/config/deployment-build.mjs";
+import {
+  deploymentEnvironment,
+  efsManifestPath,
+  installationSpokes,
+  resolveDeploymentForBuild,
+} from "@/config/deployment-build.mjs";
 import { deploymentPaths } from "@/config/deployment-root";
 
+import { producePublicationProjection } from "../../scripts/efs/publication-projection.mjs";
+
 const resolved = resolveDeploymentForBuild();
-Object.assign(process.env, deploymentEnvironment(resolved));
+
+/**
+ * R07 — THE DEPLOYMENT'S OWN PROJECTION, PRODUCED THE WAY THE BUILD PRODUCES IT.
+ *
+ * Presentation-asset permission is granted only from a VALIDATED manifest, so a deployment run must have
+ * this deployment's verified projection before any runtime module reads its environment. Deriving it here
+ * — from the deployment the authority just selected — is what makes the result deterministic: it can never
+ * depend on a projection some earlier build happened to leave behind.
+ */
+const projection = await producePublicationProjection({
+  root: resolved.root,
+  manifestPath: efsManifestPath(resolved.root, process.env),
+  spokeIdentities: (installationSpokes(resolved.root).spokes ?? []).map((spoke) => ({
+    id: spoke.id,
+    spokeHubId: spoke.spokeHubId,
+  })),
+});
+if (projection.status === "refused") {
+  throw new Error(
+    `this deployment's EFS manifest must validate: ${projection.issues.join(" | ")}`,
+  );
+}
+
+// Re-resolved AFTER the projection exists: `resolveDeploymentForBuild()` reads it, so the environment this
+// suite publishes must be derived from the projection it just produced — not from the file's absence.
+Object.assign(process.env, deploymentEnvironment(resolveDeploymentForBuild()));
 
 // One identity per run: the deployment the authority selected must be the one the runtime authority
 // publishes, so a deployment test can never read a mixture of two deployments. Paths are published

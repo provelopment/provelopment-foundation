@@ -477,6 +477,70 @@ completeness it had not earned, and repeating that would be worse than reporting
 ### 17.3 §4 — real integration evidence — **NOT COMPLETED**
 
 The synthetic publications still carry no `presentationSiteCode`, so none renders the Spoke presentation
+
+### 19.4 Generic-product contamination audit (R03 §7)
+
+| Check | Result |
+| --- | --- |
+| adopter-owned domains in new code, fixtures or docs | none — only `*.example.test` |
+| business/tenant identifiers used as a routing authority | none |
+| fixed "main website" Spoke, default Entity or default Facet | none |
+| MY-specific prefix conventions | none |
+| business-specific templates or navigation | none |
+| provider-specific behaviour presented as architecture | none |
+| `site.url` used as an EFS authorization source | removed |
+| tests, reports, demo-only content in the release payload | unchanged (`.temp/**` untracked; this report is release-`excluded`) |
+
+The reference Foundation/Germany Installation keeps its authored content untouched; nothing in it was
+promoted to a product default. All new fixtures use neutral identities (`group-one`/`group-two`,
+`alpha`…`epsilon`, `shared.example.test`).
+
+### 19.5 Documentation inventory (R03 §6)
+
+| File | Change |
+| --- | --- |
+| `ARCHITECTURE.md` | host classification re-labelled as LEGACY HOST-ONLY DISPATCH; the superseded `host-is-claimed-by-another-spoke` veto claim removed; presentation-asset authorization rule added; no-root-entry statement made explicit |
+| `src/config/efs/owner.ts` | corrected in R02 — hostname is not an ownership input |
+| `src/core/spoke/**` | corrected in R02 — classification is shared/not-shared, never "first claimant" |
+| `src/config/spoke-routing.ts` | new projection section stating `declared ≠ published` |
+| `src/proxy.ts` | asset rule rewritten; forged-selector deletion documented |
+| `src/config/deployment-build.mjs` | projection documented as narrower-than-manifest |
+
+Superseded behaviour is preserved as **history** (§17.1) rather than deleted from the record.
+
+### 19.6 Open questions
+
+1. **Static delivery of composite-segment namespaces** — the unverified 200 in §19.3. Either prove it against
+   a `sync-runtime-assets`-generated namespace, or decide that the URL spelling must be percent-normalized.
+   This is the only item that could make a *served* asset claim false.
+2. **Root entry** — still an unimplemented generic future capability (`rootEntry` on one canonical binding,
+   resolving only to that binding's already-declared Site/locale/Page). Not built; no hostname, Spoke or
+   destination is implied by the product.
+3. **Browser-harness scenario** — the production HTTP proof lives outside `matrix.mjs`; folding an equivalent
+   shared-host scenario into the harness is follow-up work.
+
+### 19.7 Local gates for this revision
+
+| Command | Result |
+| --- | --- |
+| `pnpm exec tsc --noEmit` | PASS |
+| `pnpm lint` | PASS |
+| `pnpm test` (all projects) | **211 files, 2771 passed, 1 skipped** |
+| `pnpm build` | PASS |
+| `pnpm assets:check` | PASS |
+| `pnpm release:classify` | PASS |
+
+`pnpm test:deployment` and `pnpm test:browser` are reported with the exact-head CI result rather than
+asserted here.
+
+### 19.8 Next step
+
+Review this revision. §19.6.1 is the only open item that could make a served-asset claim false and should
+settle before merge; §19.6.2 needs a separate generic architectural authorisation before any code.
+
+**Status: PARTIAL** — Task A implemented, reproduced and proved; Task B proved over production HTTP for
+pages, discovery and boundary decisions, with static asset delivery at a composite segment left open.
+
 shell, and there is no production-build HTTP or browser acceptance for the five prefixes. Existing coverage
 remains mocked-header integration tests and the Foundation/Germany reference suites, which were re-run green
 (§18) but do not exercise a shared host end to end.
@@ -550,4 +614,90 @@ request with no code. Nothing here is an accepted decision.
 
 ---
 
-**End of report. Status: PARTIAL.**
+
+
+---
+
+## 19. R03 — generic publication, asset authorization and integration
+
+**Reviewed baseline for this revision:** head `37618fbf1efda07dacb3d1e023d4a2bc7bd99c3d`, tree
+`6ec740d6b6d552038e6a51c0fb97782606c605d6` (the R02 head).
+
+### 19.1 The asset defect, corrected
+
+`spokeAsset()` admitted any **declared** runtime segment on a shared host. R03 §4 is right that declared is
+not published: a Spoke composed into `spokes.json` has a namespace in `public/spokes/**` and could claim a
+public asset URL on a host it does not publish on.
+
+The boundary cannot fix that by reading the manifest — it runs where neither the filesystem nor the validated
+manifest exists. It therefore consumes the same kind of build-inlined projection it already consumes for
+hostname routing.
+
+### 19.2 One publication authority, projected once
+
+| Layer | Question | Authority |
+| --- | --- | --- |
+| `deployment-build.mjs` (build) | which Spokes does each binding name? | reads `efs/manifest.json` |
+| `spoke-routing.ts` (edge) | which segments may this host serve? | consumes the projection |
+| `proxy.ts` | allow or refuse this namespace? | consumes that answer only |
+
+The projection is a **derived read-model**, not a registry: nothing is hand-maintained, and it can only be
+**narrower** than the manifest — an unparseable publication or a binding with no host projects nothing — so a
+projection defect denies access rather than granting it. The validated loader remains the authority and
+refuses a malformed manifest outright at request time. `site.url` is never consulted.
+
+Authorization rule, in order:
+
+1. a namespace name must be exactly ONE path segment (`assetSegment`), so an encoded separator, an empty
+   segment or a dot segment is refused before any lookup;
+2. if the host has **any** publication binding, only the Spokes those bindings name may serve their
+   namespace — canonical AND alias bindings both count; a declared-but-unpublished Spoke is refused;
+3. if the host has **no** publication at all, the released host-only rule applies unchanged (exclusive host →
+   its own Spoke only; shared host → nobody; unclaimed → nobody).
+
+Forged selectors: `passThrough()` now DELETES `SPOKE_SELECTION_HEADER` and `EFS_REQUEST_PATH_HEADER` rather
+
+### 19.3 Evidence
+
+**Authorization — 9 cases, `tests/integration/efs-asset-authorization.test.ts`.** These drive the REAL
+`proxy()` against a projection the REAL build seam produced from the REAL manifest, not a hand-written table.
+Covered: several informational matches · exactly one · none · one Spoke on several hosts including an alias
+binding · disjoint prefixes on one host · declared-but-unpublished refused · a publication selecting a
+presentation Site · identical asset names in separate namespaces · foreign/unknown namespace · encoded
+separator traversal · forged selector not forwarded.
+
+**Reproduction.** Reverting `spokeAsset()` to the R02 declaration check makes the
+declared-but-unpublished case fail the authorization assertion — the exact defect R03 §4 describes. The suite
+is written so that reversion is detectable, not merely described.
+
+**Production build, real HTTP — 20/20.** `next build` + `next start` against a disposable synthetic
+Installation (two Spoke Hubs, five publishing Spokes, one declared-but-unpublished Spoke, neutral
+`*.example.test` identities), requested over the wire with an explicit `Host: shared.example.test`:
+
+| Check | Result |
+| --- | --- |
+| `/alpha`, `/beta`, `/gamma`, `/tenant-a`, `/tenant-b` → declared owner | PASS ×5 |
+| canonical URL per prefix | PASS ×5 |
+| presenting publication renders the Spoke shell | PASS |
+| host sitemap lists every authorized publication | PASS |
+| robots names the host sitemap | PASS |
+| `GET /` with no root-entry policy → 404, no implicit redirect | PASS |
+| unknown prefix → 404 | PASS |
+| unclaimed host → 404 | PASS |
+| published Spoke namespace not refused by the boundary | PASS |
+| declared-but-unpublished namespace refused | PASS |
+| foreign namespace refused | PASS |
+| forged private selector does not grant a namespace | PASS |
+
+**NOT proven:** a real HTTP **200** for a Spoke presentation asset. Next snapshots `public/` at build time;
+after placing a file under the composite segment (`hub+group-one+alpha`) and rebuilding, the request still
+returned the framework 404 rather than the asset. The boundary authorized it — that is what the check asserts
+— but static delivery of a composite segment over HTTP is **unverified** in this synthetic run. The existing
+multi-hub browser scenario exercises generated namespaces for the reference Installation and was green, but
+that is not the same claim.
+
+than forwarding client-supplied values under the boundary's private names.
+
+**Distinct contracts kept distinct:** Spoke presentation assets (`/spokes/<segment>/**`, authorized as
+above), platform-shared assets (`/assets/**`, untouched), and Entity/Facet capsule assets
+(`/[site]/owner-assets/**`, authorized by the publication owner in `efs-asset-response.ts`).

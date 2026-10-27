@@ -170,6 +170,12 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
     "OS temp only: the disposable FOUR-SPOKE Installation (one Hub: manifest, per-Spoke configuration, " +
     "dictionaries and content) it authors for the Hub-scoped switcher's browser proof, and the caller removes. " +
     "The committed synthetic fixture is only ever READ (R1)",
+  "tests/support/shared-host-installation.mjs":
+    "OS temp only: the disposable FIVE-SPOKE / TWO-IDENTIFIED-HUB shared-host Installation (manifest, " +
+    "per-Spoke configuration, dictionaries, content and per-Spoke artwork, plus the EFS manifest that " +
+    "binds five publications to five prefixes of ONE hostname) it authors for the shared-host publication " +
+    "proofs, and the caller removes. It writes inside the root it creates or is given and nowhere else, so " +
+    "the committed synthetic fixture, the selected deployment and `public/**` are only ever READ (A1, R1)",
   "tests/browser/hub-switcher.scenario.mjs":
     "OS temp only: the disposable four-Spoke Installation (materialised through that fixture builder) and its " +
     "dev server; the browser reads the rendered pages. Every write goes through the harness's own guarded " +

@@ -15,6 +15,13 @@ import { robotsForContext } from "./robots-context";
  * advertises `https://alpha.example/sitemap.xml` and Beta's advertises Beta's. A host NO Spoke answers
  * advertises no sitemap at all: refusing is the only honest answer.
  */
+/**
+ * HOST-DEPENDENT, SO NEVER PRERENDERED (A9-R03) — the same reason as `sitemap.ts`: the advertised origin
+ * is the requesting host's Spoke, so a single prerendered file would advertise one Spoke's URL on every
+ * other Spoke's hostname.
+ */
+export const dynamic = "force-dynamic";
+
 export default async function robots(): Promise<MetadataRoute.Robots> {
   const rules = { userAgent: "*", allow: "/" } as const;
 

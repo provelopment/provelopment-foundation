@@ -1,7 +1,14 @@
 import type { CommunicationConfiguration } from "@/config/schema";
 import type { PageLinkReference, PageLinkResolver } from "@/core/page-document";
 
-import { identifier, MAX_IDENTIFIER_LENGTH, projectPublicContact } from "../../../modules/connect/src/index.js";
+/**
+ * The ONLY Foundation-side import of Connect, and it is Connect's public entry point — extensionless, the
+ * convention Web-1 proved: the pinned tree is TypeScript SOURCE (`modules/connect/src/index.ts`), and
+ * appending `.js` names a file that does not exist in the pinned bytes. Naming it `.js` to "look like"
+ * emitted output is exactly what Turbopack refused; the fix is the honest specifier, never a rewritten
+ * Connect tree.
+ */
+import { identifier, MAX_IDENTIFIER_LENGTH, projectPublicContact } from "../../../modules/connect/src/index";
 
 /** The authored Site entry this adapter reads; never authored by the adopter beyond its own Site. */
 type DeclaredPublicContact = NonNullable<CommunicationConfiguration["publicContact"]>[string];

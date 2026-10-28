@@ -4,8 +4,8 @@
   "private": true,
   "license": "Apache-2.0",
   "scripts": {
-    "dev": "node scripts/sync-runtime-assets.mjs && node scripts/efs/validate-publications.mjs && next dev",
-    "build": "node scripts/sync-runtime-assets.mjs && node scripts/efs/validate-publications.mjs && next build",
+    "dev": "node scripts/sync-runtime-assets.mjs && node scripts/efs/validate-publications.mjs && next dev --webpack",
+    "build": "node scripts/sync-runtime-assets.mjs && node scripts/efs/validate-publications.mjs && next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",

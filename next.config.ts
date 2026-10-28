@@ -27,6 +27,31 @@ const nextConfig: NextConfig = {
    * has no production effect.
    */
   devIndicators: false,
+  /**
+   * THE PINNED MODULE'S SPECIFIERS ARE NodeNext TYPESCRIPT, AND THE BUNDLER MUST READ THEM THAT WAY
+   * ==============================================================================================
+   *
+   * Connect's released source imports its own files the way TypeScript ESM requires: `'./domain/x.js'`,
+   * naming the EMITTED name of a file that ships as `x.ts`. `tsc` maps that by design; Turbopack does not,
+   * and fails the build on every internal import of the module (not only Foundation's entry-point
+   * specifier). The two available corrections are (a) teach the bundler the mapping, or (b) generate
+   * JavaScript from the pinned tree — and (b) would mean manufacturing build output from immutable source
+   * to satisfy a consumer, so (a) is the honest one.
+   *
+   * Webpack's `extensionAlias` is exactly that mapping, which is why the build runs on webpack
+   * (`--webpack` in the `dev`/`build` scripts). This is a BUILD-level concern only: the pinned bytes are
+   * untouched, Foundation still imports nothing but the module's public entry point, and application code
+   * cannot observe which bundler produced the page.
+   */
+  webpack: (config) => {
+    config.resolve.extensionAlias = {
+      ...config.resolve.extensionAlias,
+      ".js": [".ts", ".tsx", ".js"],
+      ".mjs": [".mts", ".mjs"],
+      ".cjs": [".cts", ".cjs"],
+    };
+    return config;
+  },
 };
 
 export default nextConfig;

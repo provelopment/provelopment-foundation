@@ -19,7 +19,7 @@ modules/connect/LICENSE-CONNECT.md  the licence and attribution record — READ 
 `src/index.ts` is the Module's public entry point, and the only import Foundation may use:
 
 ```ts
-import { SendDirectEnquiry } from "../../../modules/connect/src/index.js";
+import { SendDirectEnquiry } from "../../../modules/connect/src/index";
 ```
 
 It exports **domain contracts, application use cases and port interfaces — and nothing else**. The
@@ -31,6 +31,12 @@ That snippet is the real Foundation import, written from `src/adapters/connect/`
 directories below the repository root: no `@/` alias reaches outside `src/`, so a file one level
 shallower needs one fewer `../`. Never point it at a module-internal path — `index.ts` is the whole
 published surface, and the architecture suite fails a deep import.
+
+The specifier is **extensionless on purpose**, and it must stay that way: the pinned tree is TypeScript
+*source*, so `index` names a file that really exists there, while `index.js` names one that does not.
+Writing `.js` to imitate compiled output makes the import look like build output and fails the
+production build (Turbopack refuses to resolve it). The correction belongs in Foundation's specifier —
+never in the pinned bytes, which are never edited to satisfy a consumer.
 
 ## Verify the pin
 

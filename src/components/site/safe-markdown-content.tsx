@@ -1,4 +1,4 @@
-import { renderSafeMarkdown } from "@/adapters/markdown/safe-markdown";
+import { renderSafeMarkdown, type MarkdownLinkResolver } from "@/adapters/markdown/safe-markdown";
 
 /**
  * THE RENDERER OF THE SAFE MARKDOWN AUTHORING MODE
@@ -24,12 +24,20 @@ interface SafeMarkdownContentProps {
   readonly markdown: string;
   /** Extra classes for the prose container. */
   readonly className?: string;
+  /**
+   * The OPTIONAL per-render answer for a reserved `#link:<declarationId>` marker (A8 Phase F).
+   *
+   * It is forwarded to the renderer and never stored: a page's application links belong to that page's
+   * render, so two documents — or two concurrent requests — cannot see each other's destinations. Absent
+   * means "this surface has no application context", and a marker then renders as its words alone.
+   */
+  readonly resolveLink?: MarkdownLinkResolver;
 }
 
-export function SafeMarkdownContent({ markdown, className }: SafeMarkdownContentProps) {
+export function SafeMarkdownContent({ markdown, className, resolveLink }: SafeMarkdownContentProps) {
   // Allowlisted by `renderSafeMarkdown` — the policy lives with the parser, never
   // with the view.
-  const html = renderSafeMarkdown(markdown);
+  const html = renderSafeMarkdown(markdown, resolveLink);
 
   return (
     <div

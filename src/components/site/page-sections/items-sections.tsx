@@ -16,13 +16,13 @@ import { Grid } from "@/components/ui/grid";
  * do, why us, what you get). It is deliberately distinct from `cards`: no media, no
  * meta line, no action, and an optional decorative icon.
  */
-export function FeaturesSection({ section, id }: SectionViewProps<"features">) {
+export function FeaturesSection({ section, id, resolveLink }: SectionViewProps<"features">) {
   return (
     <section
       className={sectionClassName(section.surface, undefined)}
       aria-labelledby={section.heading ? id : undefined}
     >
-      <SectionHeading heading={section.heading} lede={section.lede} id={id} />
+      <SectionHeading heading={section.heading} lede={section.lede} id={id} resolveLink={resolveLink} />
       <Grid columns={columnsClass(section.columns)} className="mt-6 list-none p-0">
         {section.items.map((item, index) => (
           <li key={index}>
@@ -30,7 +30,7 @@ export function FeaturesSection({ section, id }: SectionViewProps<"features">) {
               <PageImage image={{ src: item.icon, decorative: true }} className="mb-3 h-8 w-8" />
             ) : null}
             <ItemTitle>{item.title}</ItemTitle>
-            {item.body ? <MarkdownField text={item.body} className="mt-2 text-sm" /> : null}
+            {item.body ? <MarkdownField text={item.body} resolveLink={resolveLink} className="mt-2 text-sm" /> : null}
           </li>
         ))}
       </Grid>
@@ -39,7 +39,7 @@ export function FeaturesSection({ section, id }: SectionViewProps<"features">) {
 }
 
 /** `list`: labels, optionally with detail text and a destination. */
-export function ListSection({ section, locale, id }: SectionViewProps<"list">) {
+export function ListSection({ section, locale, id, resolveLink }: SectionViewProps<"list">) {
   const items = section.items.map((item) => (typeof item === "string" ? { label: item } : item));
   const Tag = section.ordered === true ? "ol" : "ul";
   return (
@@ -47,7 +47,7 @@ export function ListSection({ section, locale, id }: SectionViewProps<"list">) {
       className={sectionClassName(section.surface, undefined)}
       aria-labelledby={section.heading ? id : undefined}
     >
-      <SectionHeading heading={section.heading} lede={section.lede} id={id} />
+      <SectionHeading heading={section.heading} lede={section.lede} id={id} resolveLink={resolveLink} />
       <Tag
         className={[
           "mt-4 space-y-3 pl-5",
@@ -57,7 +57,7 @@ export function ListSection({ section, locale, id }: SectionViewProps<"list">) {
         {items.map((item, index) => (
           <li key={index}>
             <InlineOrLink item={item} locale={locale} />
-            {item.detail ? <MarkdownField text={item.detail} className="mt-1 text-sm" /> : null}
+            {item.detail ? <MarkdownField text={item.detail} resolveLink={resolveLink} className="mt-1 text-sm" /> : null}
           </li>
         ))}
       </Tag>
@@ -79,13 +79,13 @@ function InlineOrLink({
 }
 
 /** `steps`: an ordered sequence — the number comes from the list, never from text. */
-export function StepsSection({ section, id }: SectionViewProps<"steps">) {
+export function StepsSection({ section, id, resolveLink }: SectionViewProps<"steps">) {
   return (
     <section
       className={sectionClassName(section.surface, undefined)}
       aria-labelledby={section.heading ? id : undefined}
     >
-      <SectionHeading heading={section.heading} lede={section.lede} id={id} />
+      <SectionHeading heading={section.heading} lede={section.lede} id={id} resolveLink={resolveLink} />
       <ol className="mt-6 space-y-6">
         {section.items.map((item, index) => (
           <li key={index} className="flex gap-4">
@@ -94,7 +94,7 @@ export function StepsSection({ section, id }: SectionViewProps<"steps">) {
             </span>
             <div>
               <ItemTitle>{item.title}</ItemTitle>
-              {item.body ? <MarkdownField text={item.body} className="mt-1 text-sm" /> : null}
+              {item.body ? <MarkdownField text={item.body} resolveLink={resolveLink} className="mt-1 text-sm" /> : null}
             </div>
           </li>
         ))}
@@ -104,19 +104,19 @@ export function StepsSection({ section, id }: SectionViewProps<"steps">) {
 }
 
 /** `stats`: a few figures with their labels. */
-export function StatsSection({ section, id }: SectionViewProps<"stats">) {
+export function StatsSection({ section, id, resolveLink }: SectionViewProps<"stats">) {
   return (
     <section
       className={sectionClassName(section.surface, undefined)}
       aria-labelledby={section.heading ? id : undefined}
     >
-      <SectionHeading heading={section.heading} lede={section.lede} id={id} />
+      <SectionHeading heading={section.heading} lede={section.lede} id={id} resolveLink={resolveLink} />
       <ul className="mt-6 grid list-none gap-6 p-0 sm:grid-cols-2 lg:grid-cols-4">
         {section.items.map((item, index) => (
           <li key={index}>
             <p className="text-3xl font-bold tracking-tight">{item.value}</p>
             <p className="mt-1 text-sm font-medium">{item.label}</p>
-            {item.detail ? <MarkdownField text={item.detail} className="mt-1 text-sm" /> : null}
+            {item.detail ? <MarkdownField text={item.detail} resolveLink={resolveLink} className="mt-1 text-sm" /> : null}
           </li>
         ))}
       </ul>

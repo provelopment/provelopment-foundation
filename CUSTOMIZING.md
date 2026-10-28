@@ -49,6 +49,44 @@ deployment/efs/capsule/<entity>/<facet>/<site>/pages/services/de.json
 JSON is the higher-precedence format for the same representation. A declared representation with
 no source, an undeclared source, a duplicate Page ID/route or a malformed document is refused.
 
+### A link your application supplies
+
+A Page sometimes has to name a destination you do not want to write down — one an application behind the
+site owns and may change. Declare a **reference** and let that application answer it at render time:
+
+```json
+{
+  "schemaVersion": 1,
+  "title": "Request a quotation",
+  "links": { "quotation-email": { "reference": "applicationLink", "key": "public-contact-email" } },
+  "sections": [
+    { "type": "prose", "body": "Email **[us](#link:quotation-email)** with your requirements." }
+  ]
+}
+```
+
+| Part | What it is | Who decides it |
+| --- | --- | --- |
+| declaration id (`quotation-email`) | the name you use inside THIS document | you, in `links` |
+| `reference` | a closed kind — today exactly `applicationLink` | the platform |
+| `key` (`public-contact-email`) | an opaque name the application understands | the application |
+| the destination | produced when the page renders | the application |
+
+Three things follow, and they are the whole contract:
+
+- **An action still names one destination.** `href`, `route` and `link` are mutually exclusive; a card's
+  action and an actions section use the same rule.
+- **Words without a destination are normal.** If the application answers nothing — the link is not offered,
+  was revoked, or the site has no such application wired at all — the label is shown as text with no anchor.
+  Nothing is invented, and there is never a broken `#…` fragment in the page.
+- **A marker must name something.** `[label](#link:<id>)` whose id the document does not declare is refused
+  when the page is read, with the field and the id named: no host could resolve it.
+
+The `key` is deliberately opaque. Foundation validates its shape only, which is what lets the same document
+serve every site and lets the application rename its own side without re-authoring the page. If you need a
+link whose AUTHORITY is different (resolved from content, from configuration, or under another trust rule),
+that is a platform contract change, not a new string in this field.
+
 ### Configuration authority
 
 - `publication.host` (the binding) owns canonical URLs, `hreflang`, Open Graph URLs, assets and the

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { renderSafeMarkdown } from "@/adapters/markdown/safe-markdown";
 import { isHeadingAnchor } from "@/core/heading-anchor";
 import {
+  MARKDOWN_ALLOWED_SCHEMES,
   MARKDOWN_ALLOWED_TAGS,
   MARKDOWN_FORBIDDEN_ATTRIBUTES,
   MARKDOWN_FORBIDDEN_ELEMENTS,
@@ -334,3 +335,19 @@ describe("the safe Markdown renderer — an empty document", () => {
     expect(renderSafeMarkdown("")).toBe("");
   });
 });});
+
+describe("application-link references (A8 Phase F)", () => {
+  it("renders a reserved marker as words until a resolver answers", () => {
+    const marker = "[us](#link:contact)";
+    expect(renderSafeMarkdown(marker)).not.toContain("<a");
+    expect(renderSafeMarkdown(marker, () => null)).not.toContain("<a");
+    expect(renderSafeMarkdown(marker, () => "mailto:x@example.test")).toContain(
+      'href="mailto:x@example.test"',
+    );
+  });
+
+  it("never emits an unresolved marker, and never adds a scheme to the allowlist", () => {
+    expect(renderSafeMarkdown("[us](#link:contact)")).not.toContain("#link:");
+    expect([...MARKDOWN_ALLOWED_SCHEMES].sort()).toEqual(["http", "https", "mailto", "tel"]);
+  });
+});

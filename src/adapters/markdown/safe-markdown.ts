@@ -88,6 +88,7 @@ import {
   MARKDOWN_HEADING_TAGS,
   MARKDOWN_MAX_HEADING_LEVEL,
 } from "@/core/markdown-policy";
+import { parsePageLinkMarker } from "@/core/page-document";
 import { classifyAuthorUrl } from "@/core/safe-url";
 
 const TEXT_ESCAPES: Readonly<Record<string, string>> = {
@@ -135,8 +136,19 @@ function languageAttribute(info: string | null | undefined): string {
  * A heading additionally receives its generated fragment id, which is why the
  * renderer is a FACTORY: the anchors of one document are allocated together (see
  * `createHeadingAnchors`), so the allocator is created per rendered page.
+ *
+ * RESERVED APPLICATION LINKS (A8 Phase F)
+ * --------------------------------------
+ * A destination written as `#link:<declarationId>` is a RESERVED MARKER, not a fragment: it names a
+ * link the HOST APPLICATION resolves, and this renderer may emit an anchor for it only when the caller
+ * supplied a resolver that answers with an href the existing classifier accepts. Every other outcome —
+ * no resolver, no answer, a malformed or chained answer, an unsafe answer — leaves the author's words
+ * and no anchor. The resolver is an ARGUMENT threaded through the render (never module state, never a
+ * cache), so two concurrent renders cannot see each other's links.
  */
-const AUTHORING_RENDERER_METHODS = {
+export type MarkdownLinkResolver = (linkId: string) => string | null;
+
+const authoringRendererMethods = (resolveLink: MarkdownLinkResolver | undefined) => ({
   /** Raw HTML is not an authoring capability: show it as text, inertly. */
   html(this: Renderer, token: Tokens.HTML | Tokens.Tag): string {
     const text = escapeAuthorText(token.text ?? "");
@@ -181,7 +193,16 @@ const AUTHORING_RENDERER_METHODS = {
 
   link(this: Renderer, token: Tokens.Link): string {
     const label = this.parser.parseInline(token.tokens) as string;
-    const verdict = classifyAuthorUrl(token.href ?? "");
+    const destination = token.href ?? "";
+
+    // THE RESERVED MARKER (A8 Phase F). A declaration id, never a fragment: only a resolver's
+    // classified answer may become an anchor, and nothing else about ordinary links changes.
+    const linkId = parsePageLinkMarker(destination);
+    if (linkId !== null) {
+      return resolvedLink(label, linkId, resolveLink, optionalTitle(token.title));
+    }
+
+    const verdict = classifyAuthorUrl(destination);
     // Fail closed: the author's words survive, an unsafe destination does not.
     if (!verdict.ok) return label;
     return `<a href="${escapeAuthorText(verdict.href)}"${optionalTitle(token.title)}>${label}</a>`;
@@ -193,7 +214,40 @@ const AUTHORING_RENDERER_METHODS = {
     const alt = escapeAuthorText(token.text ?? "");
     return `<img src="${escapeAuthorText(verdict.href)}" alt="${alt}"${optionalTitle(token.title)}>`;
   },
-};
+});
+
+/**
+ * ONE reserved marker → an anchor, or the author's words and nothing else.
+ *
+ * The order is the contract, and it is deliberately the narrowest possible: a resolver must exist, it
+ * must answer, its answer must not itself be a reserved marker (no chained resolution), and the existing
+ * `@/core/safe-url` classifier must accept the answer. Only then is an `href` emitted — and the layer-2
+ * allowlist sanitiser still runs over the result, unchanged, so the marker path inherits exactly the
+ * scheme policy every other destination has. There is no fallback destination: the marker is useless
+ * without a resolver and meaningless without a declaration.
+ */
+function resolvedLink(
+  label: string,
+  linkId: string,
+  resolveLink: MarkdownLinkResolver | undefined,
+  title: string,
+): string {
+  if (resolveLink === undefined) return label;
+
+  let answer: string | null;
+  try {
+    answer = resolveLink(linkId);
+  } catch {
+    // A host resolver that fails offers nothing; it must never break the page render.
+    return label;
+  }
+  if (answer === null || answer.length === 0) return label;
+  if (parsePageLinkMarker(answer) !== null) return label;
+
+  const verdict = classifyAuthorUrl(answer);
+  if (!verdict.ok) return label;
+  return `<a href="${escapeAuthorText(verdict.href)}"${title}>${label}</a>`;
+}
 
 /** The words a heading contributes, with inline markup flattened to its own text. */
 function headingPlainText(tokens: readonly Token[] | undefined): string {
@@ -214,9 +268,12 @@ function headingPlainText(tokens: readonly Token[] | undefined): string {
  * The allocator is passed in rather than held as module state, so one document's
  * heading ids can never leak into another page (or into a concurrent render).
  */
-function createAuthoringRenderer(nextHeadingAnchor: HeadingAnchorAllocator) {
+function createAuthoringRenderer(
+  nextHeadingAnchor: HeadingAnchorAllocator,
+  resolveLink: MarkdownLinkResolver | undefined,
+) {
   return {
-    ...AUTHORING_RENDERER_METHODS,
+    ...authoringRendererMethods(resolveLink),
 
     /**
      * A heading keeps its ordinary semantics and gains a DETERMINISTIC fragment id:
@@ -279,14 +336,73 @@ const SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
  * Markdown → safe HTML. The returned string is already allowlisted, so a
  * component may render it through `dangerouslySetInnerHTML` without adding a
  * policy of its own.
+ *
+ * `resolveLink` is the OPTIONAL per-render answer for a reserved `#link:<id>` marker (A8 Phase F). It
+ * is a parameter rather than module state for the reason the heading allocator is: a page's links
+ * belong to that page's render. Two renders in flight with different resolvers cannot observe each
+ * other, and a resolver that was never supplied simply yields the author's words.
  */
-export function renderSafeMarkdown(markdown: string): string {
+export function renderSafeMarkdown(
+  markdown: string,
+  resolveLink?: MarkdownLinkResolver,
+): string {
   if (typeof markdown !== "string" || markdown.length === 0) return "";
   // ONE parser per document, so the heading-anchor allocator belongs to exactly this
   // render: ids are unique within the page and cannot leak into another page.
   const parser = new Marked({ async: false, gfm: true });
-  parser.use({ renderer: createAuthoringRenderer(createHeadingAnchors()) });
+  parser.use({ renderer: createAuthoringRenderer(createHeadingAnchors(), resolveLink) });
   const rendered = parser.parse(markdown, { async: false });
   const html = typeof rendered === "string" ? rendered : "";
   return html.length === 0 ? "" : sanitizeHtml(html, SANITIZE_OPTIONS);
+}
+
+/**
+ * EVERY reserved marker id a Markdown text actually contains — derived from the PARSER's own link
+ * tokens, never from a text scan (A8 Phase F, condition 6).
+ *
+ * This is what lets a reader report "you refer to `#link:x`, but nothing declares `x`" precisely: the
+ * tokens know where a link is, so a page that merely MENTIONS `#link:…` in prose is not flagged, while
+ * a marker inside emphasis, a list, a table cell or a nested label is. Duplicates are reported once, and
+ * a malformed marker (`#link:`, `#LINK:x`, `#link:a_b`) is not a marker at all, so it is never listed.
+ *
+ * It parses and discards: it resolves nothing, renders nothing and holds no state.
+ */
+export function reservedLinkIds(markdown: string): readonly string[] {
+  if (typeof markdown !== "string" || markdown.length === 0) return [];
+  const parser = new Marked({ async: false, gfm: true });
+  const ids = new Set<string>();
+  collectReservedLinkIds(parser.lexer(markdown), ids);
+  return [...ids];
+}
+
+/** Walk a token tree, collecting every `href` that names a reserved marker. */
+function collectReservedLinkIds(tokens: readonly Token[], ids: Set<string>): void {
+  for (const token of tokens) {
+    const record = token as {
+      href?: unknown;
+      tokens?: unknown;
+      items?: unknown;
+      header?: unknown;
+      rows?: unknown;
+    };
+
+    if (typeof record.href === "string") {
+      const linkId = parsePageLinkMarker(record.href);
+      if (linkId !== null) ids.add(linkId);
+    }
+
+    // Inline children (emphasis, strong, link labels, paragraph content) and list items.
+    for (const key of ["tokens", "items"] as const) {
+      const children = record[key];
+      if (Array.isArray(children)) collectReservedLinkIds(children as Token[], ids);
+    }
+
+    // A table carries its cells inside `header` and `rows` (rows are arrays of cells).
+    if (Array.isArray(record.header)) collectReservedLinkIds(record.header as Token[], ids);
+    if (Array.isArray(record.rows)) {
+      for (const row of record.rows as unknown[]) {
+        if (Array.isArray(row)) collectReservedLinkIds(row as Token[], ids);
+      }
+    }
+  }
 }

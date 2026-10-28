@@ -115,6 +115,44 @@ JSON wins over Markdown for the same Page and representation. JSON is validated 
 [Page-document schema](src/core/page-document.ts); malformed JSON is refused with the source and
 property named, never rendered as fallback prose.
 
+### A link your application supplies
+
+Sometimes a Page names a destination the platform must not know — an address an application owns and may
+change. A JSON Page declares it as a **reference**, and the application answers it when the page renders:
+
+```json
+{
+  "schemaVersion": 1,
+  "title": "Request a quotation",
+  "links": { "quotation-email": { "reference": "applicationLink", "key": "public-contact-email" } },
+  "sections": [
+    { "type": "prose", "body": "Email **[us](#link:quotation-email)** with your requirements." },
+    {
+      "type": "actions",
+      "actions": [
+        { "label": "Email us about a quotation", "link": "quotation-email", "variant": "primary" }
+      ]
+    }
+  ]
+}
+```
+
+- `links` maps a **declaration id** (lowercase words joined by single hyphens) to one reference:
+  `reference` is a closed set — today exactly `applicationLink` — and `key` is an **opaque** name your
+  application understands. The platform validates their shape and never their meaning, so the same Page
+  serves every host and survives a rename on the application side.
+- An action sets **exactly one** destination form: `href`, `route` or `link`. Two is refused, none is
+  refused.
+- In Markdown, `[label](#link:<declaration-id>)` is a reserved marker. It is a fragment, so no scheme,
+  allowlist or sanitiser rule was added for it.
+- Your application supplies the destination at render time. The marker and the `link` action render as an
+  **anchor** only when the application answers with a destination this platform classifies; otherwise the
+  author's words appear with **no anchor**, never as a broken fragment.
+- A marker naming a declaration the document does not carry is refused when the Page is read, naming the
+  field and the id: no host could ever resolve it.
+- Foundation ships no resolver. Without one, a declared link renders as its words alone — which is the
+  correct behaviour for a site that has no such application behind it.
+
 ### Public, unlisted and privacy
 
 Visibility is declared **per localized JSON representation**:

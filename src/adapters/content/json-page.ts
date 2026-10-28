@@ -27,10 +27,12 @@
  * never reinterpreted as something the author did not write.
  */
 import type { Locale } from "@/core/locale";
+import { reservedLinkIds } from "@/adapters/markdown/safe-markdown";
 import {
   PAGE_SECTION_TYPES,
   describePageDocumentIssues,
   pageDocumentSchema,
+  pageMarkdownFields,
   reservedHomeVisibilityIssue,
   type PageDocument,
 } from "@/core/page-document";
@@ -137,6 +139,32 @@ export function parseJsonPageFile(
     throw new Error(
       `Invalid page document "${file}":\n  - ${reservedIssue}\n` +
         "A page is never silently reinterpreted from what its author declared.",
+    );
+  }
+
+  // A8 PHASE F — A MARKER MUST NAME SOMETHING.
+  //
+  // At render time an unresolved marker is harmless (the author's words, no anchor), and that is the
+  // right behaviour for a link a HOST declines to offer. A marker whose id NOTHING declares is a
+  // different thing: no host could ever resolve it, so it is an author mistake, and only the reader can
+  // report it precisely. Detection runs over the Markdown PARSER's own link tokens
+  // (`reservedLinkIds`), never a text scan — so a page that merely mentions `#link:…` in prose is not
+  // flagged, while a marker inside emphasis, a list, a table cell or a nested label is.
+  const undeclared: string[] = [];
+  for (const field of pageMarkdownFields(document)) {
+    for (const linkId of reservedLinkIds(field.text)) {
+      if (document.links?.[linkId] !== undefined) continue;
+      undeclared.push(
+        `  - ${field.path}: "#link:${linkId}" is declared nowhere — add ` +
+          `"links": { "${linkId}": { "reference": "applicationLink", "key": "…" } } to the document`,
+      );
+    }
+  }
+  if (undeclared.length > 0) {
+    throw new Error(
+      `Invalid page document "${file}":\n${undeclared.join("\n")}\n` +
+        "A reserved \"#link:\" marker must name a link the document declares; it is never served as a " +
+        "fragment that can only ever fail.",
     );
   }
 

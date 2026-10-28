@@ -61,8 +61,8 @@ describe("the restricted-port authority", () => {
 describe("the harness's real offset inventory", () => {
   it("never asks for an offset outside the declared capacity", () => {
     const offsets: number[] = [];
-    for (const module of browserModules) {
-      const source = read(module);
+    for (const file of browserModules) {
+      const source = read(file);
       // Offset arrays the scenarios iterate (`PORT_OFFSETS`, `SOLO_PORT_OFFSETS`, …).
       for (const match of source.matchAll(/const\s+[A-Z_]*(?:OFFSETS)\s*=\s*\[([^\]]*)\]/g)) {
         for (const value of match[1].split(",")) {

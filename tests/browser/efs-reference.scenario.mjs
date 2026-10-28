@@ -32,7 +32,7 @@ function request(port, path, host) {
 async function start(harness) {
   let last = null;
   for (const offset of PORT_OFFSETS) {
-    const port = harness.basePort + offset;
+    const port = harness.port(offset);
     const server = harness.startDevServer(port, { synthetic: false });
     try {
       for (let attempt = 0; attempt < 120; attempt += 1) {

@@ -606,10 +606,10 @@ function assertArtDirection(harness, rows, tag, seen, variant) {
 }
 
 /** Start a dev server for a given installation, trying the next port when one is already taken. */
-async function startServer(harness, basePort, pathname, { deploymentRoot = null, host = "localhost" } = {}) {
+async function startServer(harness, pathname, { deploymentRoot = null, host = "localhost" } = {}) {
   let lastError = null;
   for (const offset of PORT_OFFSETS) {
-    const port = basePort + offset;
+    const port = harness.port(offset);
     const server =
       deploymentRoot === null
         ? harness.startDevServer(port)
@@ -1222,7 +1222,7 @@ export async function run(chrome, harness) {
     const navigationByWidth = new Map();
     for (const variant of VARIANTS) {
       await harness.writeFile(harness.configFile, configurationFor(original, variant), "utf8");
-      const { server, port } = await startServer(harness, harness.basePort, pathname);
+      const { server, port } = await startServer(harness, pathname);
       const url = `http://localhost:${port}${pathname}`;
       let cdp = null;
       try {
@@ -1536,7 +1536,7 @@ async function runHubIdentityPhase(harness, rows, chrome) {
       );
     }
 
-    const started = await startServer(harness, harness.basePort, "/ww/en", {
+    const started = await startServer(harness, "/ww/en", {
       deploymentRoot: installation.root,
       host: members[0].hostname,
     });

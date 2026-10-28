@@ -178,7 +178,7 @@ async function start(harness, installation) {
 
   let last = null;
   for (const offset of PORT_OFFSETS) {
-    const port = harness.basePort + offset;
+    const port = harness.port(offset);
     const server = harness.startDevServer(port, {
       synthetic: false,
       deploymentRoot: installation.root,

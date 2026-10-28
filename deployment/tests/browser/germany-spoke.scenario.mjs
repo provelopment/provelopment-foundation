@@ -54,7 +54,7 @@ const PORT_OFFSETS = [31, 32, 33];
 async function startServer(harness) {
   const last = PORT_OFFSETS.length - 1;
   for (const [index, offset] of PORT_OFFSETS.entries()) {
-    const port = harness.basePort + offset;
+    const port = harness.port(offset);
     const server = harness.startDevServer(port, { synthetic: false });
     try {
       await waitForHostReady(port, FOUNDATION_HOST, "/ww/en", server);

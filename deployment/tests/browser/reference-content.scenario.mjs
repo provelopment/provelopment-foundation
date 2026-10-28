@@ -326,7 +326,7 @@ export async function run(chrome, harness) {
   // deployment. Binding them to the names the body already used keeps this move mechanical: no
   // assertion, message, expectation or check order changes.
   const {
-    basePort: BASE_PORT,
+    port: portFor,
     viewports: VIEWPORTS,
     check,
     startDevServer,
@@ -337,7 +337,7 @@ export async function run(chrome, harness) {
   } = harness;
 
   const rows = [];
-  const port = BASE_PORT + 410;
+  const port = portFor(410);
   const url = `http://${FOUNDATION_HOST}:${port}/ww/en`;
   BASE_URL = `http://${FOUNDATION_HOST}:${port}`;
   // The SHIPPED configuration, READ ONLY: writing it here would prove a

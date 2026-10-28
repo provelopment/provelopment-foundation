@@ -278,7 +278,7 @@ async function waitForMember(port, timeoutMs = 240000) {
 async function startServer(harness, root) {
   let last = null;
   for (const offset of PORT_OFFSETS) {
-    const port = harness.basePort + offset;
+    const port = harness.port(offset);
     const server = harness.startDevServer(port, { deploymentRoot: root });
     try {
       await waitForMember(port);

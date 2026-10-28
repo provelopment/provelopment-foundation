@@ -1365,6 +1365,45 @@ export const communicationConfigSchema = z
     publicContact: z
       .record(z.string().min(1), communicationPublicContactSiteSchema)
       .optional(),
+    /**
+     * FOUNDATION-RELEASE-CANDIDATE (A2) — the OPTIONAL Connect SIMPLE contact form of ONE Site, keyed by EFS
+     * Site id.
+     *
+     * PUBLIC-SAFE BY CONSTRUCTION: it names NO recipient and NO sender. `site.config.json` is reachable from
+     * client components, so a private mailbox authored here could reach a browser bundle; and an authoring
+     * file must never be able to redirect a business's enquiries. The private half is server-only
+     * (`@/config/contact-form-policy`), read at submission time.
+     *
+     * Absent → this Site offers no form and the released `features.contact` behaviour is unchanged.
+     */
+    contactForms: z
+      .record(
+        z.string().min(1),
+        z
+          .object({
+            /** The form's authored identity; a submission must address the SAME form. */
+            formRef: z.string().min(1).max(96),
+            /** The owner's switch: a disabled record presents nothing and refuses submissions. */
+            enabled: z.boolean(),
+            mode: z.enum(["off", "simple", "advanced"]),
+            /** `offline` is the only transport Foundation ships; `none` authors an inactive record. */
+            transport: z.enum(["none", "offline"]),
+            /** Where the form belongs. Rendering and submission read this one value. */
+            placement: z.union([
+              z.object({ siteWide: z.literal(true) }).strict(),
+              z.object({ page: z.string().min(1).max(96) }).strict(),
+            ]),
+            /**
+             * The verified publication/binding ids that may expose this form — explicit, with no wildcard.
+             * Authoring an id here IS the act of authorizing that publication.
+             */
+            authorizationRefs: z
+              .array(z.string().min(1))
+              .min(1, "must name at least one authorized binding"),
+          })
+          .strict(),
+      )
+      .optional(),
   })
   .strict();
 

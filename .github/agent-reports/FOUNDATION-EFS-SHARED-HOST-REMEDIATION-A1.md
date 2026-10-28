@@ -1091,3 +1091,49 @@ measured asset bytes. The behavioural assertions remain UNEXECUTED and must not 
 **Housekeeping.** The smoke closes its log descriptor, kills the server process tree, removes its disposable
 Installation, restores `public/spokes/**` through the canonical synchroniser, and restores `.next` to the
 reference deployment build, removing the artefact if that rebuild fails.
+
+## A1 R12 - RUNNER DISCREPANCY RESOLVED; PRODUCTION REQUEST RESOLUTION DEFECT REMAINS
+
+**The runner discrepancy was a deterministic bug in the runner, not a flake.** The build child inherited a
+mutated NODE_ENV. The producer that validates the manifest loads it through a Vite SSR module runner, which
+mutates NODE_ENV in the calling process, so spawnSync handed next build a non-standard NODE_ENV. Next warned
+"You are using a non-standard NODE_ENV value" and compiled an inconsistent React build; a client component then
+SSR-rendered against a null dispatcher, which is exactly the reported useContext error on /_global-error.
+
+This explains every observation without a flake: standalone builds passed because those shells had no NODE_ENV
+to inherit, every build from inside the runner failed, and no publication shape was ever involved. Every child
+now receives { ...process.env, NODE_ENV: production } by construction. NO retry remains, the unused buildHandle
+descriptor is gone, .next is removed once (never immediately before the compiler), and the comments asserting
+the disproved root-publication cause are deleted.
+
+**Production build and server: PASS.**
+
+```text
+PASS  projection authorises exactly the two published Spokes   [status=projected claims=2]
+PASS  authored assets synchronise into the generated tree
+PASS  next build succeeds against the synthetic Installation  [exit=0]
+PASS  next start serves the shared host                        [port=4391 host=shared.example.test]
+PASS  the smoke restored the environment, Installation and generated assets
+TOTAL=17 FAILED=8
+```
+
+**Remaining material defect: production request resolution 404s for valid prefix-only coordinates.**
+
+```text
+FAIL  group-one/alpha serves its own Entity in production                   [404]
+FAIL  group-two/delta serves its own Entity in production                   [404]
+FAIL  presentationSiteCode selects the shared shell for alpha              [404]
+FAIL  alpha authorized logo-header returns 200 with its OWN bytes          [404]
+FAIL  delta authorized logo-header returns 200 with DISTINGUISHABLE bytes  [404]
+FAIL  alpha authorized favicon returns 200 with its OWN bytes              [404]
+```
+
+Every coordinate 404s under next start, including authorized presentation assets under
+/spokes/<namespace>/assets/, on a build that compiled with 2 valid claims. The dev server served these same
+coordinates. **The four refusal checks are therefore NOT evidence**: they pass because everything is 404. They
+must be re-proved once 200 responses exist.
+
+This is a production-only request-resolution question (manifest read at request time, hostname resolution or
+route table), NOT the publication boundary, which is green at build time and unchanged.
+
+**Not accepted.** Draft PR, unmerged, unreleased, undeployed; no downstream Installation touched.

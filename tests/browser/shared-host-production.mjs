@@ -151,6 +151,12 @@ async function waitForServer() {
   throw new Error("next start never answered: " + last);
 }
 
+// A production proof must run the PRODUCTION environment explicitly. The producer that validates the publication
+// manifest loads it through a Vite SSR module runner, which mutates `NODE_ENV` in THIS process; a child that merely
+// inherited `process.env` therefore compiled against an inconsistent React build, which is exactly what makes a
+// client component SSR against a null dispatcher and fail `/_global-error`. Every child is given the production
+// environment by construction instead of inheriting it.
+const productionEnv = { ...process.env, NODE_ENV: "production" };
 export async function run() {
   const previousEnv = {};
   for (const name of ENV_NAMES) previousEnv[name] = process.env[name];
@@ -207,58 +213,41 @@ export async function run() {
     const deltaNamespace = namespaceOf(installation.root, "delta");
 
     // 3 - a REAL production build through the normal Foundation build path.
-    // A CLEAN production build. A `.next` left behind by a killed build can fail the `/_global-error`
-    // prerender with a null-context error that has nothing to do with the deployment being built, so the smoke
-    // removes the generated output first rather than inheriting an unknown one.
+    // The generated output is removed ONCE, here, and never again immediately before the compiler. Deleting
+    // `.next` microseconds before `next build` starts writing it is what made the `/_global-error` prerender
+    // fail with a React null-context error on this host; the preflight steps below run in the gap, so the
+    // compiler always starts against a settled filesystem.
     rmSync(path.join(process.cwd(), ".next"), { recursive: true, force: true });
     const buildLog = path.join(scratchRoot(), "prod-build.log");
-    const buildHandle = openSync(buildLog, "w");
-    // Stream the child's output straight to a file: Next floods stderr with harmless React key warnings during
-    // prerender, and buffering it in-process both overflows the default buffer and can kill the child with no
-    // error reported at all - indistinguishable from a real build failure.
-    // THE CANONICAL BUILD LIFECYCLE, `pnpm build`: publication validation and the canonical asset
-    // synchronisation run before `next build`, so this proves the entry point an operator and CI use rather
-    // than a bare `next build` that could skip either.
-    // BOUNDED RETRY, and the count is REPORTED rather than hidden. The failing route is `/_global-error`, a
-    // SYNTHETIC page Next generates for an error boundary that nothing links to, and on this toolchain it
-    // fails intermittently with a React null-context error that is independent of the publication shape: a
-    // bare `next build` of this same Installation succeeds repeatedly while NOTHING publishes at `/`, which
-    // refutes the root-homepage hypothesis rather than confirming it. A production smoke must not turn an
-    // upstream prerender flake into a verdict on the publication boundary, so it builds at most twice.
-    // The canonical `pnpm build` chain, executed step by step so each step is attributable: publication
-    // validation and the canonical asset synchronisation run BEFORE the compiler, exactly as the package
-    // script does. Proven not to mutate the projection (its digest is unchanged across both steps), so a build
-    // disagreement can never be blamed on an altered manifest.
+    // The canonical `pnpm build` chain, step by step so each step is attributable: publication validation and the
+    // canonical asset synchronisation run BEFORE the compiler, exactly as the package script does. Proven not to
+    // mutate the projection (its digest is unchanged across both steps).
     for (const step of [
       ["exec", "node", "scripts/sync-runtime-assets.mjs"],
       ["exec", "node", "scripts/efs/validate-publications.mjs"],
     ]) {
       const stepHandle = openSync(path.join(scratchRoot(), "prod-preflight.log"), "a");
       const stepResult = spawnSync("pnpm", step, {
-        env: { ...process.env },
+        env: { ...productionEnv },
         stdio: ["ignore", stepHandle, stepHandle],
         shell: true,
       });
       closeSync(stepHandle);
       if (stepResult.status !== 0) throw new Error("canonical build step failed: " + step.join(" "));
     }
-    let build = { status: 1, attempts: 0 };
-    for (let attempt = 1; attempt <= 2; attempt += 1) {
-      rmSync(path.join(process.cwd(), ".next"), { recursive: true, force: true });
-      const handle = openSync(buildLog, "w");
-      const attemptResult = spawnSync("pnpm", ["exec", "next", "build"], {
-        env: { ...process.env },
-        stdio: ["ignore", handle, handle],
-        shell: true,
-      });
-      closeSync(handle);
-      build = { ...attemptResult, attempts: attempt };
-      if (attemptResult.status === 0) break;
-    }
+    // Stream the child output straight to a file: buffering it in-process overflowed the default buffer and
+    // killed the child with NO error reported at all, indistinguishable from a real build failure.
+    const handle = openSync(buildLog, "w");
+    const build = spawnSync("pnpm", ["exec", "next", "build"], {
+      env: { ...productionEnv },
+      stdio: ["ignore", handle, handle],
+      shell: true,
+    });
+    closeSync(handle);
     check(
       "next build succeeds against the synthetic Installation",
       build.status === 0,
-      "exit=" + build.status + " attempts=" + build.attempts,
+      "exit=" + build.status,
     );
     if (build.status !== 0) {
       throw new Error(
@@ -266,14 +255,13 @@ export async function run() {
           build.status +
           "): STDOUT tail:\n" +
           readFileSync(buildLog, "utf8").slice(-3000) +
-          "\nSTDERR tail:\n" +
-          "",
+          "\nThe build log tail above is the whole child output.",
       );
     }
 
     // 4 - a REAL production server.
     server = spawn("pnpm", ["exec", "next", "start", "-p", String(PORT)], {
-      env: { ...process.env },
+      env: { ...productionEnv },
       shell: true,
       stdio: "ignore",
     });
@@ -384,7 +372,7 @@ export async function run() {
     // where the installed deployment's build belongs. Re-establish the reference build, and if even that
     // fails, remove the artefact outright rather than leaving unidentifiable output behind.
     try {
-      const reference = spawnSync("pnpm", ["build"], { env: { ...process.env }, stdio: "ignore", shell: true });
+      const reference = spawnSync("pnpm", ["build"], { env: { ...productionEnv }, stdio: "ignore", shell: true });
       if (reference.status !== 0) {
         rmSync(path.join(process.cwd(), ".next"), { recursive: true, force: true });
         problems.push("reference rebuild failed (exit " + reference.status + "); .next removed");

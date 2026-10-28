@@ -1,0 +1,35 @@
+{
+  "format": 1,
+  "module": "connect",
+  "distribution": "git-source",
+  "repository": "https://github.com/provelopment/provelopment-module-connect",
+  "release": "v261027.1036",
+  "releaseAuthority": "CONNECT-DIRECT-SEND-A4-SIMPLE-FINALIZE-RELEASE-A1",
+  "ci": "https://github.com/provelopment/provelopment-module-connect/actions/runs/40486068349",
+  "source": {
+    "tagObject": "2d9dc7c397b2cf20f6af2e5a050bc43addf27ee5",
+    "commit": "7a5fb80f4f94af513909dbc38a1e6bb3b1159f3a",
+    "tree": "41dcc15a0fdabba820f036244c3c8c48cbdf467e",
+    "subtreePath": "src",
+    "subtree": "a0f1f14ae68aa79cd548e6fc8db5145407bbd3e8",
+    "fileCount": 49
+  },
+  "carried": {
+    "path": "modules/connect/src",
+    "verifiedBy": "scripts/connect/verify-pinned-source.mjs",
+    "materialisedFrom": "git cat-file blob (the object database, not a checkout)"
+  },
+  "license": {
+    "state": "RECORDED GRANT — Apache-2.0 for the Foundation-integrated copy, granted by the copyright holder",
+    "instrument": "Project Owner authority confirmation, 2026-10-28 (FOUNDATION-CONNECT-MODULE-INTEGRATION-A9): the Connect Module is the Project Owner's intellectual property; its incorporation into the open-source Provelopment Foundation is authorised; the integrated source is distributed under Foundation's Apache License 2.0; the separate Connect repository remains private; no real addresses, credentials, provider accounts or adopter-specific configuration may be copied.",
+    "grantor": "Provelopment (copyright holder, Project Owner)",
+    "upstreamDeclaration": "unchanged and intentionally so: the private Module's package.json still declares \"private\": true and \"license\": \"UNLICENSED\", and it ships no LICENSE file. Upstream metadata is not Foundation's to edit, and no separate Connect publication is authorised. The grant covers the Foundation-integrated copy recorded here, not a relicensing of the private repository.",
+    "grantRecorded": true,
+    "attributionPaths": [
+      "modules/connect/LICENSE-CONNECT.md",
+      "modules/connect/README.md",
+      "LICENSE"
+    ]
+  },
+  "note": "Pinned as a source revision, never as an npm package, registry artifact, archive or moving branch."
+}

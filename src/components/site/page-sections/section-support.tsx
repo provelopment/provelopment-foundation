@@ -1,6 +1,7 @@
 import { NavItem } from "@/components/ui/nav-item";
 import { SafeMarkdownContent } from "@/components/site/safe-markdown-content";
-import type { PageAction, PageImage } from "@/core/page-document";
+
+import type { PageAction, PageImage, PageLinkIdResolver } from "@/core/page-document";
 
 /**
  * THE SHARED PRESENTATION CONTRACT OF THE DECLARATIVE PAGE VOCABULARY
@@ -82,11 +83,14 @@ export function SectionHeading({
   heading,
   lede,
   id,
+  resolveLink,
 }: {
   readonly heading?: string;
   readonly lede?: string;
   /** The heading's id, so the section can be labelled by it. */
   readonly id?: string;
+  /** The per-render application-link resolver, forwarded to the lede (A8 Phase F). */
+  readonly resolveLink?: PageLinkIdResolver;
 }) {
   if (!heading && !lede) return null;
   return (
@@ -96,7 +100,9 @@ export function SectionHeading({
           {heading}
         </h2>
       ) : null}
-      {lede ? <MarkdownField text={lede} className="mt-3 text-muted-foreground" /> : null}
+      {lede ? (
+        <MarkdownField text={lede} className="mt-3 text-muted-foreground" resolveLink={resolveLink} />
+      ) : null}
     </>
   );
 }
@@ -105,11 +111,14 @@ export function SectionHeading({
 export function MarkdownField({
   text,
   className,
+  resolveLink,
 }: {
   readonly text: string;
   readonly className?: string;
+  /** The per-render application-link resolver (A8 Phase F), forwarded unchanged. */
+  readonly resolveLink?: PageLinkIdResolver;
 }) {
-  return <SafeMarkdownContent markdown={text} className={className} />;
+  return <SafeMarkdownContent markdown={text} className={className} resolveLink={resolveLink} />;
 }
 
 /** An item title (level 3): the outline is page title → section heading → item title. */
@@ -145,16 +154,24 @@ export function PageImage({
 }
 
 /**
- * The destination of one action, in the visitor's locale.
+ * The destination of one action, in the visitor's locale — or `null` when this render has none.
  *
- * `href` is the author's classified destination, used as written. `route` names another
- * PAGE of this site, so it is resolved against the locale of the URL being rendered — the
- * author never writes a locale prefix, and a translated site cannot link to the wrong
- * language.
+ * `href` is the author's classified destination, used as written. `route` names another PAGE of this
+ * site, so it is resolved against the locale of the URL being rendered — the author never writes a
+ * locale prefix, and a translated site cannot link to the wrong language. `link` names a DECLARED
+ * application link (A8 Phase F): the resolver supplied for this render answers with an href, or with
+ * nothing. `null` is a first-class answer, not an error — an action the host does not offer has no
+ * destination, and its label is shown as text rather than as a link to nowhere.
  */
-export function destinationHref(action: PageAction, locale: string): string {
+export function destinationHref(
+  action: PageAction,
+  locale: string,
+  resolveLink?: PageLinkIdResolver,
+): string | null {
   if (action.href !== undefined) return action.href;
-  return `/${locale}/${action.route as string}`;
+  if (action.route !== undefined) return `/${locale}/${action.route}`;
+  if (action.link === undefined || resolveLink === undefined) return null;
+  return resolveLink(action.link);
 }
 
 /** True for a destination that leaves the site (the platform's external-link treatment). */
@@ -172,22 +189,36 @@ export function ActionLinks({
   locale,
   className,
   defaultVariant = "primary",
+  resolveLink,
 }: {
   readonly actions: readonly PageAction[];
   readonly locale: string;
   readonly className?: string;
   /** The treatment used when an action declares none (a card action reads as a link). */
   readonly defaultVariant?: "primary" | "secondary" | "link";
+  /** The per-render application-link resolver (A8 Phase F). */
+  readonly resolveLink?: PageLinkIdResolver;
 }) {
   return (
     <ul className={["flex flex-wrap gap-3", className].filter(Boolean).join(" ")}>
       {actions.map((action, index) => {
-        const href = destinationHref(action, locale);
+        const href = destinationHref(action, locale, resolveLink);
+        const treatment = ACTION_CLASS[action.variant ?? defaultVariant];
+        // NO DESTINATION, STILL A CONTROL: the author's label keeps its variant and its place in the
+        // page, and only the anchor is absent — the same shape a Markdown marker takes when its
+        // application link does not resolve.
+        if (href === null) {
+          return (
+            <li key={`${action.label}:${index}`}>
+              <span className={treatment}>{action.label}</span>
+            </li>
+          );
+        }
         return (
           <NavItem
             key={`${href}:${index}`}
             item={{ label: action.label, href, external: isExternalHref(href) }}
-            className={ACTION_CLASS[action.variant ?? defaultVariant]}
+            className={treatment}
           />
         );
       })}

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+
+  "title": "Kontakt (Offline-Demonstration)",
+
+  "description": "Ein Demonstrations-Kontaktformular. Ihre Nachricht erreicht den Server dieser Website, wird einmal gegen die Website-Konfiguration geprüft und danach verworfen. Es wird keine E-Mail gesendet und nichts gespeichert.",
+
+  "sections": [
+
+    {
+      "type": "prose",
+
+      "heading": "Was diese Seite zeigt",
+
+      "body": "Diese Seite zeigt, wie eine Foundation-Website ein Kontaktformular hosten kann, das als Seiteninhalt verfasst und pro Website konfiguriert wird. Das folgende Formular ist bewusst **offline**: es durchläuft den vollständigen Übermittlungsweg - Browser, Server, verifizierte Website-Identität, der eigene Formulareintrag der Website und der Demonstrationstransport von Connect - ohne einen E-Mail-Anbieter zu kontaktieren.\n\nBitte verwenden Sie fiktive Angaben. Nichts, was Sie eingeben, wird zugestellt, gespeichert oder weitergeleitet."
+    },
+
+    {
+      "type": "contactForm",
+
+      "formRef": "foundation-contact"
+    }
+
+  ]
+}

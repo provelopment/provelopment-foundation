@@ -298,6 +298,15 @@ export const RELEASE_CONTENT_RULES = Object.freeze([
 
   // ── PLATFORM: directory surfaces ───────────────────────────────────────────────────────────────
   {
+    id: "platform-connect-module",
+    kind: "prefix",
+    match: "modules/connect/",
+    inclusion: RELEASE_INCLUSION.PLATFORM,
+    reason:
+      "the pinned Connect Module source, its provenance and its licence record — platform code a consumer builds and imports, not deployment state; `scripts/connect/verify-pinned-source.mjs` proves the carried bytes are the released bytes",
+  },
+
+  {
     id: "platform-application",
     kind: "prefix",
     match: "src/",

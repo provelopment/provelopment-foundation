@@ -139,6 +139,8 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
     "One bounded PRODUCTION smoke, writing only state the run created or state it puts back: OS temp (its disposable Installation, the producer's projection cache and the build's own streamed log), `public/spokes/**` through the canonical asset synchroniser and restored by re-running it for the installed deployment, and the IGNORED `.next` build output — which it removes before building, re-establishes for THIS Installation to be served, and restores to the reference deployment's own build before it returns, so synthetic output is never left masquerading as the installed deployment's (A1 R11 B)",
   "tests/integration/efs-publication-projection.test.ts":
     "OS temp (the disposable synthetic Installations it materialises, through `tests/support/shared-host-installation.mjs`) and the repository's IGNORED projection cache `<repo>/node_modules/.cache/foundation/efs-publications/**`, which it writes only by invoking the production producer; it mutates its own fixtures' manifests to prove staleness, never a committed deployment (R08)",
+  "tests/integration/efs-application-link-integrity.test.tsx":
+    "OS temp only — a disposable capsule it materialises under the OS temp directory to prove the EFS runtime reader refuses malformed and undeclared application links, and removes in `afterAll`. It never writes a committed fixture, a deployment or a generated namespace (A8 Phase F)",
   "tests/browser/scratch.mjs": "the guard: OS temp + `tests/browser/.report/` + the generated Spoke namespaces, refusing every other target",
   "tests/browser/matrix.mjs": "the synthetic deployment copy, `.report/`, OS temp and the generated Spoke namespaces a multi-Spoke scenario materialises — all via scratch.mjs",
   "tests/browser/cdp.mjs": "the headless-Chrome profile directory it created, under OS temp",
@@ -168,6 +170,10 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
     "logo's schema, build-time and cross-Spoke isolation proofs, every one of them removed when the file's tests " +
     "finish. The committed fixtures, the selected deployment, the canonical deployment and the repository's " +
     "generated platform namespace are only ever READ (FOUNDATION-UI-R1F)",
+  "tests/unit/contact-form-identity-policy.test.ts":
+    "OS temp only: disposable Spoke roots it authors to prove the private contact-form policy loader - one valid " +
+    "file, one missing, one malformed, one wrongly shaped, one for an unlisted Site and one for ANOTHER Spoke - " +
+    "each removed afterwards. No deployment, committed fixture or runtime namespace is touched (A6)",
   "tests/unit/spoke-host-aliases.test.ts":
     "OS temp only: disposable Installation roots (manifest + one site.config.json per Spoke) it creates for the " +
     "additional-hostname-claim proofs and removes afterwards — no deployment or committed fixture is touched (R1)",

@@ -1,5 +1,6 @@
 import { ActionLinks, MarkdownField, SectionHeading, sectionClassName } from "./section-support";
-import type { PageSection } from "@/core/page-document";
+
+import type { PageLinkIdResolver, PageSection } from "@/core/page-document";
 
 /** One section of a validated document, as this renderer needs it. */
 export interface SectionViewProps<T extends PageSection["type"]> {
@@ -8,6 +9,12 @@ export interface SectionViewProps<T extends PageSection["type"]> {
   readonly locale: string;
   /** A page-unique id for this section's heading (the label it is announced by). */
   readonly id: string;
+  /**
+   * The per-render application-link resolver (A8 Phase F): an ARGUMENT threaded from the composer,
+   * through every section, to every Markdown field and action — never module state, never a cache, never
+   * a React context. A section that renders no Markdown and no action simply ignores it.
+   */
+  readonly resolveLink?: PageLinkIdResolver;
 }
 
 /**
@@ -21,11 +28,11 @@ export interface SectionViewProps<T extends PageSection["type"]> {
  */
 
 /** `prose`: the body of a page, in safe Markdown. */
-export function ProseSection({ section, id }: SectionViewProps<"prose">) {
+export function ProseSection({ section, id, resolveLink }: SectionViewProps<"prose">) {
   return (
     <section className={sectionClassName(section.surface, section.align)} aria-labelledby={section.heading ? id : undefined}>
-      <SectionHeading heading={section.heading} lede={section.lede} id={id} />
-      <MarkdownField text={section.body} className="mt-4" />
+      <SectionHeading heading={section.heading} lede={section.lede} id={id} resolveLink={resolveLink} />
+      <MarkdownField text={section.body} resolveLink={resolveLink} className="mt-4" />
     </section>
   );
 }
@@ -34,7 +41,7 @@ export function ProseSection({ section, id }: SectionViewProps<"prose">) {
  * `callout`: a note the reader should not miss. `tone` selects the emphasis, and it is a
  * declared value rather than a colour (an author cannot invent one).
  */
-export function CalloutSection({ section, id }: SectionViewProps<"callout">) {
+export function CalloutSection({ section, id, resolveLink }: SectionViewProps<"callout">) {
   const tone = section.tone ?? "note";
   const accent =
     tone === "warning"
@@ -45,20 +52,20 @@ export function CalloutSection({ section, id }: SectionViewProps<"callout">) {
   return (
     <section className={sectionClassName(section.surface, section.align)} aria-labelledby={section.heading ? id : undefined}>
       <div className={accent}>
-        <SectionHeading heading={section.heading} lede={section.lede} id={id} />
-        <MarkdownField text={section.body} className="mt-2" />
+        <SectionHeading heading={section.heading} lede={section.lede} id={id} resolveLink={resolveLink} />
+        <MarkdownField text={section.body} resolveLink={resolveLink} className="mt-2" />
       </div>
     </section>
   );
 }
 
 /** `quote`: a quotation with optional attribution — `<figure>` + `<blockquote>`. */
-export function QuoteSection({ section }: SectionViewProps<"quote">) {
+export function QuoteSection({ section, resolveLink }: SectionViewProps<"quote">) {
   return (
     <section className={sectionClassName(section.surface, section.align)}>
       <figure className="mt-2">
         <blockquote className="border-l-4 border-border pl-4 text-lg">
-          <MarkdownField text={section.body} />
+          <MarkdownField text={section.body} resolveLink={resolveLink} />
         </blockquote>
         {section.attribution ? (
           <figcaption className="mt-3 text-sm text-muted-foreground">
@@ -72,11 +79,16 @@ export function QuoteSection({ section }: SectionViewProps<"quote">) {
 }
 
 /** `actions`: a group of links, presented as the primary action(s) of a page. */
-export function ActionsSection({ section, locale, id }: SectionViewProps<"actions">) {
+export function ActionsSection({ section, locale, id, resolveLink }: SectionViewProps<"actions">) {
   return (
     <section className={sectionClassName(section.surface, section.align)} aria-labelledby={section.heading ? id : undefined}>
-      <SectionHeading heading={section.heading} lede={section.lede} id={id} />
-      <ActionLinks actions={section.actions} locale={locale} className="mt-4" />
+      <SectionHeading heading={section.heading} lede={section.lede} id={id} resolveLink={resolveLink} />
+      <ActionLinks
+        actions={section.actions}
+        locale={locale}
+        resolveLink={resolveLink}
+        className="mt-4"
+      />
     </section>
   );
 }

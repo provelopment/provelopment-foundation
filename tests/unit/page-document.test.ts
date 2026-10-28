@@ -118,7 +118,7 @@ describe("the page document envelope", () => {
   });
 });
 describe("the section vocabulary", () => {
-  it("declares exactly the sixteen supported types", () => {
+  it("declares exactly the seventeen supported types", () => {
     expect(PAGE_SECTION_TYPES).toEqual([
       "hero",
       "prose",
@@ -136,6 +136,7 @@ describe("the section vocabulary", () => {
       "faq",
       "list",
       "divider",
+    "contactForm",
     ]);
   });
 
@@ -157,6 +158,7 @@ describe("the section vocabulary", () => {
       faq: { items: [{ question: "Is it?", answer: "It is." }] },
       list: { items: ["One", "Two"] },
       divider: {},
+    contactForm: { formRef: "foundation-contact" },
     };
 
     for (const [type, section] of Object.entries(samples)) {
@@ -494,5 +496,24 @@ describe("the reserved root document's visibility", () => {
       expect(reservedHomeVisibilityIssue(unlisted, routePath), routePath).toBeNull();
     }
     expect(HOME_CONTENT_SLUG).toBe("home");
+  });
+});
+
+describe("application-link references (A8 Phase F)", () => {
+  it("accepts the optional declaration and a link action without moving the envelope version", () => {
+    const result = pageDocumentSchema.safeParse(
+      document({
+        links: { contact: { reference: "applicationLink", key: "public-contact-email" } },
+        sections: [{ type: "actions", actions: [{ label: "Email us", link: "contact" }] }],
+      }),
+    );
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.schemaVersion).toBe(PAGE_DOCUMENT_SCHEMA_VERSION);
+  });
+
+  it("refuses the reserved marker in a destination position, so resolution cannot be bypassed", () => {
+    expect(
+      issues(document({ sections: [{ type: "actions", actions: [{ label: "A", href: "#link:contact" }] }] })),
+    ).toContain("reserved");
   });
 });

@@ -14,6 +14,7 @@ import {
   entryRedirectPath,
   matchBinding,
   parseContentRoute,
+  type EfsContentRoute,
   publicationForBinding,
   type EfsBinding,
 } from "@/core/efs/publication";
@@ -316,11 +317,52 @@ export function efsRuntimeDeclared(): boolean {
  *
  * A missing trusted path is fail-closed rather than guessed from the host alone.
  */
+/**
+ * THE PAGE THAT HOSTS A FORM, RESOLVED FROM THE SAME DECLARATIONS RENDERING USES (A5).
+ *
+ * Given the ALREADY-VERIFIED route, this answers "which declared Page is this, and which `contactForm` section
+ * does its representation author?". It is deliberately built from the manifest and the authored source — never
+ * from a form field, a header, a query parameter or a page id parsed out of an arbitrary URL string.
+ *
+ * `null` means no page hosts a form here, which the Server Action treats as "no Connect form": the released
+ * legacy path is then the only contact behaviour this request has.
+ */
+function pageHostingContactForm(
+  runtimeValue: LoadedRuntime,
+  binding: EfsBinding,
+  route: EfsContentRoute,
+): { readonly pageId: string; readonly formRef: string } | null {
+  const found = findSite(runtimeValue.manifest, binding.entityId, binding.facetId, route.siteId);
+  if (!found) return null;
+  const page = pageForRoute(found.site, route.pageRoute);
+  if (!page) return null;
+  const source = loadRepresentationSource({
+    capsule: runtimeValue.capsule,
+    entityId: binding.entityId,
+    facetId: binding.facetId,
+    siteId: route.siteId,
+    page,
+    locale: route.locale,
+  });
+  const section = source.document?.sections.find((candidate) => candidate.type === "contactForm");
+  if (section === undefined) return null;
+  return { pageId: page.id, formRef: section.formRef };
+}
+
 export interface EfsContactContext {
   readonly context: SpokeRuntimeContext;
   readonly origin: ContactInquiryOrigin;
   /** Every published owner in this manifest, so receiver-key ambiguity can be detected. */
   readonly owners: readonly ContactOwnerIdentity[];
+  /**
+   * The verified Page hosting a `contactForm`, and the authored form it declares (A5).
+   *
+   * Present only when the verified route resolves to a declared Page whose representation authors that
+   * section. This is the ONE identity rendering and submission share: the renderer decides whether to draw a
+   * form from these same declarations, and the Server Action refuses a submission when they are absent.
+   */
+  readonly pageId?: string;
+  readonly formRef?: string;
 }
 
 export async function efsContactContextForCurrentRequest(): Promise<EfsContactContext | null> {
@@ -341,6 +383,8 @@ export async function efsContactContextForCurrentRequest(): Promise<EfsContactCo
 
   const route = parseContentRoute(matched.canonicalBinding, matched.remaining);
   const parsed = route.kind === "route" ? route.route : null;
+  const hosting =
+    parsed === null ? null : pageHostingContactForm(runtimeValue, matched.canonicalBinding, parsed);
   return {
     context: owner.context,
     origin: {
@@ -353,6 +397,7 @@ export async function efsContactContextForCurrentRequest(): Promise<EfsContactCo
       host: host.toLowerCase(),
       path: pathname,
     },
+    ...(hosting === null ? {} : { pageId: hosting.pageId, formRef: hosting.formRef }),
     owners: runtimeValue.manifest.publications.map((candidate) => ({
       id: candidate.spokeId,
       ...(candidate.spokeHubId === undefined ? {} : { spokeHubId: candidate.spokeHubId }),

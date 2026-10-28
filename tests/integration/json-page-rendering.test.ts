@@ -120,6 +120,7 @@ const SECTIONS: readonly Record<string, unknown>[] = [
     items: ["Plain item", { label: "Linked item", detail: "With **detail**.", route: "about" }],
   },
   { type: "divider" },
+  { type: "contactForm", formRef: "foundation-contact" },
 ];
 
 describe("the declarative page vocabulary, through the real route", () => {

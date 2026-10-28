@@ -53,6 +53,48 @@ deployment/efs/capsule/<entity>/<facet>/<site>/pages/services/de.json
 JSON is the higher-precedence format for the same representation. A declared representation with
 no source, an undeclared source, a duplicate Page ID/route or a malformed document is refused.
 
+### A link your application supplies
+
+A Page sometimes has to name a destination you do not want to write down — one an application behind the
+site owns and may change. Declare a **reference** and let that application answer it at render time:
+
+```json
+{
+  "schemaVersion": 1,
+  "title": "Request a quotation",
+  "links": { "quotation-email": { "reference": "applicationLink", "key": "public-contact-email" } },
+  "sections": [
+    { "type": "prose", "body": "Email **[us](#link:quotation-email)** with your requirements." }
+  ]
+}
+```
+
+| Part | What it is | Who decides it |
+| --- | --- | --- |
+| declaration id (`quotation-email`) | the name you use inside THIS document | you, in `links` |
+| `reference` | a closed kind — today exactly `applicationLink` | the platform |
+| `key` (`public-contact-email`) | an opaque name the application understands | the application |
+| the destination | produced when the page renders | the application |
+
+Three things follow, and they are the whole contract:
+
+- **A control names one destination.** `href`, `route` and `link` are mutually exclusive for an action
+  (exactly one is required) and for a list item (at most one; a plain label is still a list item). The
+  actions section, a card's action, a hero's actions and a list all obey the same rule.
+- **Words without a destination are normal.** If the application answers nothing — the link is not offered,
+  was revoked, or the site has no such application wired at all — the label is shown as text with no anchor.
+  Nothing is invented, and there is never a broken `#…` fragment in the page.
+- **A marker must name something.** The whole `#link:` namespace belongs to this contract: `[label](#link:<id>)`
+  that is malformed (`#link:`, `#link:a_b`, `#LINK:x`), or whose id the document does not declare, is refused
+  when the page is read — with the field and the marker named — and it is never rendered as a clickable
+  fragment. The same contract runs when published content is read at serve time, so authoring and serving
+  cannot disagree.
+
+The `key` is deliberately opaque. Foundation validates its shape only, which is what lets the same document
+serve every site and lets the application rename its own side without re-authoring the page. If you need a
+link whose AUTHORITY is different (resolved from content, from configuration, or under another trust rule),
+that is a platform contract change, not a new string in this field.
+
 ### Configuration authority
 
 - `publication.host` (the binding) owns canonical URLs, `hreflang`, Open Graph URLs, assets and the
@@ -125,6 +167,102 @@ field and contains no filesystem path, credential or visitor telemetry; existing
 > `src/components`) should not need modification for rebranding.
 
 ---
+
+### A contact form your Site owns (`contactForm`)
+
+A contact form is **three authored pieces**, never one:
+
+| Piece | Where | What it says |
+| --- | --- | --- |
+| The section | a JSON Page, `schemaVersion: 1` | "this Page hosts the form authored as `formRef`" |
+| The Site record | `communication.contactForms` in that Spoke's `site.config.json` | what the Site offers, where, and to which publications |
+| The private policy | `<spoke root>/config/contact-form-policy.json` | who receives it and who it is sent from — server-only |
+
+**1. The Page section.** In a declarative (JSON) Page:
+
+```json
+{
+  "type": "contactForm",
+  "formRef": "your-form-key"
+}
+```
+
+`formRef` is an opaque, lowercase, hyphenated key. The section carries **no** recipient, sender, transport or
+authorization — page content must never be able to describe a mailbox.
+
+**2. The Site record.** Keyed by the Site's **EFS Site id** (the id the verified route resolves — for the reference
+Site, `main`), *not* by its presentation Site code (`sites[].code`, e.g. `ww`). Presentation codes are not
+authorization identities:
+
+```json
+"communication": {
+  "contactForms": {
+    "main": {
+      "formRef": "your-form-key",
+      "enabled": true,
+      "mode": "simple",
+      "transport": "offline",
+      "placement": { "page": "contact" },
+      "authorizationRefs": ["your-canonical-binding-id"]
+    }
+  }
+}
+```
+
+- `mode` — `off` (inactive), `simple` (one step; the only mode with a shipped presentation), `advanced` (authored,
+  no presentation shipped).
+- `transport` — `none` (inactive) or `offline` (Foundation's demonstration transport).
+- `placement` — `{ "page": "<page id>" }` or `{ "siteWide": true }`. Rendering and submission read this one value.
+- `authorizationRefs` — the canonical binding ids allowed to expose this form. Authoring an id here **is** the act
+  of authorizing that publication; there is no wildcard.
+
+**3. The private policy** — server-only, read at submission time from
+`<spoke root>/config/contact-form-policy.json` (one fixed path; no request value selects it):
+
+```json
+{
+  "schemaVersion": 1,
+  "sites": {
+    "main": {
+      "recipients": [{ "address": "someone@example.com", "kind": "to" }],
+      "sender": { "fromAddress": "website@example.com", "fromDisplayName": "Your site", "replyTo": "visitor" }
+    }
+  }
+}
+```
+
+It is keyed by EFS Site id **inside the owning Spoke's own file**, which is what keeps two Spokes that both declare
+a Site `main` apart. Never put these values in `site.config.json`: client components import it.
+
+**The demonstration is offline, on purpose.** The shipped transport transmits nothing, stores nothing and needs no
+credential. A visitor is told so *before* entering anything, and the outcome says only that the message reached
+this server and was discarded. Keep these four states distinct when you talk about it:
+
+| State | Meaning here |
+| --- | --- |
+| HTTP submission | the browser posted to a real Server Action |
+| Offline processing | Foundation validated, authorized and drove the pinned Connect use case |
+| Provider acceptance | **not** claimed — no provider is contacted |
+| Actual delivery | **not** claimed, and not observable here at all |
+
+**It fails closed.** No form renders, and no submission sends, when: the Page authors no section; the Site authors
+no record; the record is disabled, names a mode Foundation cannot present, or selects **no transport** (`transport: "none"`); the section and the record name
+different forms; the record does not place the form on this Page; the verified publication is not in
+`authorizationRefs`; or the Spoke authors no valid private policy. A missing, unreadable, malformed or wrongly
+shaped policy file answers "no policy" — never "inherit someone else's", never "fall back to the default Site".
+
+**If you want real delivery**, that is yours to add: supply your own `MailTransportPort` and your own policy
+source in *your* application, plus the abuse controls a public form needs (rate limiting, spam defence, size
+limits, a privacy notice, retention rules). Do not repoint the demonstration transport at a real mailbox, and do
+not ship your credentials in a page, a record or a client bundle.
+
+**In a clean-room Installation** established from a release there is no policy file and no record, so the
+capability is simply absent until its owner authors all three pieces.
+
+**Public contact details** are separate and unaffected: the public `mailto:`/contact link is a configured value
+projected through the page-document `applicationLink` mechanism, and `public-contact` never reads the private
+policy.
+
 
 ## What is the Provelopment Foundation?
 

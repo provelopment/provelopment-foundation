@@ -6,6 +6,7 @@ import type { AuthoredLocationSelection } from "@/core/location-selection";
 import type { OperationalRegion, PageRegionBinding } from "@/core/region";
 import type { ResolvedSite } from "@/core/site";
 import type { Hub } from "@/core/spoke";
+import type { CommunicationConfiguration } from "./schema";
 import type {
   ContentWidth,
   CtaAction,
@@ -435,6 +436,16 @@ export interface SiteConfig {
   readonly footerNavigation?: FooterNavGroup;
   /** Phase M — configuration-driven connection modes for the Connect page. */
   readonly connect?: ConnectConfig;
+  /**
+   * FOUNDATION-CONNECT-MODULE-INTEGRATION-A9 — the Connect-Module-backed communication capabilities of
+   * this Spoke, keyed by **EFS Site id** (never by a configuration Site code: `main` and `ww` are
+   * different naming contracts). Absent → this Spoke offers no public address and renders no form.
+   *
+   * Carried through `parseSiteConfig` like every other block: a validated field that the normalizer
+   * forgets is a field the runtime silently cannot see, which is exactly the defect this member's
+   * regression test exists to prevent.
+   */
+  readonly communication?: CommunicationConfiguration;
   /**
    * UI system configuration (UI-01). Intent-level contract namespace
    * (roadmap §11); validated by `uiConfigSchema`. Not consumed by rendering

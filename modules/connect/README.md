@@ -99,6 +99,7 @@ It contains no credentials, no provider account, no recipient address and no liv
 destination. Supplying those is an **adopter activation step**, and until an adopter supplies them the
 capabilities report themselves as unavailable rather than pretending to send.
 
-The carried source currently carries **no licence grant** — see `LICENSE-CONNECT.md`. The integration
-is reviewable and testable today; a public immutable release built from it requires the recorded
-grant described there.
+The carried source is distributed under Foundation's Apache-2.0 by a recorded grant from the
+copyright holder — see `LICENSE-CONNECT.md` for the instrument, its scope and what it deliberately
+does not cover. It contains no credentials, recipient address or live delivery destination of any
+kind.

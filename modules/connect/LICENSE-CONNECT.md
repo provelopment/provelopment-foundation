@@ -21,44 +21,40 @@ Module's own passing CI run for the commit, is in `connect-release.json`.
 
 ## The licence problem, stated plainly
 
-**Copying files does not relicense them.** The carried source does not arrive under Apache-2.0 or any
-other grant:
+**Copying files does not relicense them** — which is why the terms here are recorded rather than
+inferred. The carried source did not arrive under any grant: the Module's `package.json` declares
+`"private": true` and `"license": "UNLICENSED"`, its repository ships **no `LICENSE` file** anywhere,
+and its `README.md` says nothing about redistribution.
 
-- the Module's `package.json` declares `"private": true` and `"license": "UNLICENSED"`;
-- the Module's repository ships **no `LICENSE` file** anywhere;
-- its `README.md` says nothing about copyright, licensing or redistribution.
+The grant exists, and it comes from the holder of the rights, not from the act of copying:
 
-A vendored tree keeps the terms it arrived with. Foundation is a **public** repository offered under
-Apache-2.0, so including this subtree in a published release is a redistribution of material that
-currently carries no grant. That is why `connect-release.json` records
-`license.state: BLOCKED` rather than claiming a licence it does not have.
+| | |
+| --- | --- |
+| Grantor | Provelopment — copyright holder and Project Owner |
+| Instrument | Project Owner authority confirmation, 2026-10-28 |
+| Scope | the Foundation-integrated copy pinned above |
+| Licence | Apache-2.0, matching Foundation's `LICENSE` |
+| Constraints | the private Connect repository stays private; no real addresses, credentials, provider accounts or adopter-specific configuration may be copied into Foundation |
 
-## What the Project Owner has directed
+The confirmation states that the Connect Module is the Project Owner's intellectual property, that
+its incorporation into the open-source Foundation is authorised, and that the integrated source is
+distributed under Foundation's Apache License 2.0. `connect-release.json` records it verbatim in
+`license.instrument`.
 
-The Project Owner's revised directive of 2026-10-28 directs that the Foundation-integrated Connect
-source be distributed as part of the open-source Foundation under Foundation's applicable licence,
-and instructs that the authority to grant those rights be **verified and recorded** first. The
-direction is the owner's; the verification is not something this repository can perform on its own
-behalf.
+### What the grant does not do
 
-## What has to happen before an immutable release is built from it
+It does not relicense the private Connect repository, and it does not publish it. That repository
+still declares `UNLICENSED`, still ships no `LICENSE`, and remains private — deliberately, because no
+separate Connect publication is authorised. Upstream metadata is not Foundation's to edit, so this
+notice explains the relationship instead of pretending the two agree by accident:
 
-Both items are the same act seen from two sides — a grant from the copyright holder, and a record
-that does not contradict itself:
+```text
+private Connect repository  →  remains private, metadata unchanged, never published
+Foundation-integrated copy  →  Apache-2.0 by recorded grant, published with Foundation
+```
 
-1. **A recorded grant.** The copyright holder (Provelopment) executes the licence for the
-   Foundation-integrated copy of Connect — Apache-2.0, matching Foundation's `LICENSE` — naming the
-   released revision this file pins. A countersigned statement held with the release records, or an
-   upstream `LICENSE` in the Connect repository, both satisfy this. Either way the artefact must
-   exist and be referenced here.
-2. **Reconciled upstream metadata.** The Module's `package.json` still declares `UNLICENSED` and the
-   repository still has no `LICENSE`. Upstream alignment is the owner's decision — this repository
-   may not modify the private Module — but a public release should not ship a notice that flatly
-   contradicts the manifest sitting next to it. When both items exist, set
-   `connect-release.json`'s `license.state` to the recorded grant and name the instrument.
-
-Until then this integration is **reviewable and testable but not publishable**: the carried source
-can be exercised locally, and no Foundation release may be constructed or published from it.
+The architecture suite enforces the shape of this record: it fails if a grant is claimed without an
+instrument naming it, and it fails if the record stops acknowledging the upstream declaration.
 
 ## Attribution
 

@@ -20,10 +20,11 @@
     "materialisedFrom": "git cat-file blob (the object database, not a checkout)"
   },
   "license": {
-    "state": "BLOCKED — release publication requires the recorded grant described in modules/connect/LICENSE-CONNECT.md",
-    "upstreamDeclaration": "the Module's own package.json declares \"private\": true and \"license\": \"UNLICENSED\", and the repository ships no LICENSE file",
-    "whyThisBlocks": "Foundation is a PUBLIC repository offered under Apache-2.0. Carrying this subtree in a published release redistributes it, so the grant has to be recorded before an immutable release is built from it.",
-    "grantRecorded": false,
+    "state": "RECORDED GRANT — Apache-2.0 for the Foundation-integrated copy, granted by the copyright holder",
+    "instrument": "Project Owner authority confirmation, 2026-10-28 (FOUNDATION-CONNECT-MODULE-INTEGRATION-A9): the Connect Module is the Project Owner's intellectual property; its incorporation into the open-source Provelopment Foundation is authorised; the integrated source is distributed under Foundation's Apache License 2.0; the separate Connect repository remains private; no real addresses, credentials, provider accounts or adopter-specific configuration may be copied.",
+    "grantor": "Provelopment (copyright holder, Project Owner)",
+    "upstreamDeclaration": "unchanged and intentionally so: the private Module's package.json still declares \"private\": true and \"license\": \"UNLICENSED\", and it ships no LICENSE file. Upstream metadata is not Foundation's to edit, and no separate Connect publication is authorised. The grant covers the Foundation-integrated copy recorded here, not a relicensing of the private repository.",
+    "grantRecorded": true,
     "attributionPaths": ["modules/connect/LICENSE-CONNECT.md", "NOTICE"]
   },
   "note": "Pinned as a source revision, never as an npm package, registry artifact, archive or moving branch."

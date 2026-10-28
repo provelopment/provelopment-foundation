@@ -47,7 +47,7 @@ const PROVENANCE = JSON.parse(
     fileCount: number;
   };
   carried: { path: string; verifiedBy: string };
-  license: { state: string; grantRecorded: boolean };
+  license: { state: string; instrument?: string; grantRecorded: boolean };
 };
 
 describe("the pinned Connect source", () => {
@@ -132,8 +132,10 @@ describe("Foundation's use of the Module", () => {
     expect(record.toLowerCase()).toContain("unlicensed");
 
     if (PROVENANCE.license.grantRecorded) {
-      // Claiming a grant is only allowed when the record names the instrument that established it.
+      // A grant is only claimed with an instrument that names the grantor and the licence granted.
       expect(PROVENANCE.license.state).not.toMatch(/BLOCKED/);
+      expect(PROVENANCE.license.instrument).toMatch(/Project Owner/);
+      expect(PROVENANCE.license.instrument).toMatch(/Apache.+2\.0/);
       expect(record).toMatch(/grant/i);
     } else {
       expect(PROVENANCE.license.state).toMatch(/BLOCKED/);

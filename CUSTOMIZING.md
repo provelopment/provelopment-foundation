@@ -253,11 +253,21 @@ different forms; the record does not place the form on this Page; the verified p
 `authorizationRefs`; or the Spoke authors no valid private policy. A missing, unreadable, malformed or wrongly
 shaped policy file answers "no policy" — never "inherit someone else's", never "fall back to the default Site".
 
-**Presentation and submission are ONE decision.** Both consult the same server-side predicate, so a Page can
-never show a form that its own submission would refuse. A verified publication that is not named in
-`authorizationRefs`, a private policy that is absent or invalid, and `transport: "none"` are refusals of the same
-standing as a missing record: the Page renders **no form at all** — not an empty shell, not a disabled field set,
-and never an apparently working form that fails only after a visitor has typed into it.
+**Presentation and submission are two checks, not one predicate.** Rendering asks
+`contactFormPresentsOnPublication` about a record it has already resolved for this Site: is SIMPLE offered
+(`enabled`, `mode`, and a transport other than `none`), is this Page the record's own Page or the record
+site-wide, does the **verified canonical binding** appear in `authorizationRefs`, and is a private policy
+available. A submission re-runs the question in the Server Action, which resolves the same verified EFS context
+again and asks `contactFormAuthorizationProblems` (mode, `enabled`, `formRef`, placement, `authorizationRef`,
+transport), then reads the policy itself and hands the enquiry to pinned Connect. The two enforce
+**corresponding** fail-closed conditions at their own boundary rather than sharing one call, because a render may
+not do the work a send must. Neither path ever hands a sender address or a recipient to the browser: the renderer
+is told only that a policy exists.
+
+A policy can therefore change between a page being rendered and a visitor pressing send: a form that was
+legitimately shown can legitimately answer `unavailable`, and it never claims a delivery it did not make. Every
+refusal listed above refuses on **both** sides — a Page never shows an empty shell, a disabled field set, or an
+apparently working form that would fail only after a visitor has typed into it.
 
 **If you want real delivery**, that is a code change in *your own application boundary* — beside this template,
 never inside it: this template's platform files are not yours to edit, which is what makes an Update possible

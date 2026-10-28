@@ -98,7 +98,21 @@ export function directSendPolicyCandidate(
           : [{ kind: "page", pageRef: record.placement.page }],
       forms: [facts.formRef],
       publisherRefs: [facts.publisherRef],
-      authorizationRefs: [facts.authorizationRef],
+      /**
+       * THE RECORD'S OWN AUTHORED LIST — not the current request's resolved authorization.
+       *
+       * A2 mirrored `[facts.authorizationRef]` here, which meant the policy could only ever restate the
+       * authorization the request had already resolved: Connect was asked to confirm its own input, so a
+       * request that resolved the WRONG binding could not be refused by Connect at all, only by Foundation's
+       * pre-check. Passing the authored list keeps Connect an INDEPENDENT authority — a request whose verified
+       * authorization reference is not among the authored ones is refused inside the Module, with no transport
+       * call, even if the consumer's pre-check were removed.
+       *
+       * Alias and canonical-binding semantics are unchanged: EFS resolves an alias binding to its canonical
+       * binding BEFORE this call, so `facts.authorizationRef` is already the canonical binding id that an
+       * authored `authorizationRefs` entry names.
+       */
+      authorizationRefs: [...record.authorizationRefs],
     },
     recipients: policy.recipients.map((recipient) => ({
       address: recipient.address,
@@ -181,6 +195,12 @@ export function createContactDirectSender(options: {
   readonly policy: ContactFormPolicySource;
   /** Test seam and adopter extension point. Absent → Foundation's offline transport. */
   readonly transport?: MailTransportPort;
+  /**
+   * Whether the SUPPLIED transport really transmits. Fail-safe by default: absent or `false` means the sender
+   * is treated as non-transmitting, so an acceptance is presented as a demonstration. Supplying a transport
+   * cannot, on its own, upgrade a visitor-facing claim to delivery.
+   */
+  readonly transmits?: boolean;
   readonly telemetry?: TelemetryPort;
   readonly log?: (message: string) => void;
 }): ContactFormSender | null {
@@ -219,6 +239,9 @@ export function createContactDirectSender(options: {
   };
 
   return {
+    // Fail-safe: only an explicit `transmits: true` from the trusted composition boundary can make an accepted
+    // handoff a delivery claim. Foundation's offline transport never sets it.
+    transmits: options.transmits === true,
     async send(content: Record<string, unknown>): Promise<ContactFormSendResult> {
       const payloadBytes = Buffer.byteLength(JSON.stringify(content), "utf8");
       const outcome = await useCase.execute({ policy, context, content, payloadBytes });
@@ -226,4 +249,3 @@ export function createContactDirectSender(options: {
     },
   };
 }
-

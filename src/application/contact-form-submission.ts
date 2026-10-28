@@ -33,8 +33,15 @@ export type ContactFormSendResult =
       readonly fieldErrors: readonly ContactFormSendField[];
     };
 
-/** The port the framework boundary implements with the Connect adapter. */
+/**
+ * The port the framework boundary implements with the Connect adapter.
+ *
+ * `transmits` is part of the PORT, not of the caller's options: the component that composes a sender is the
+ * only thing that knows whether a real outbound path exists, and the orchestrator derives the visitor's state
+ * from it. A submission cannot talk its way into a delivery claim.
+ */
 export interface ContactFormSender {
+  readonly transmits: boolean;
   send(content: Record<string, unknown>): Promise<ContactFormSendResult>;
 }
 
@@ -65,8 +72,6 @@ export interface HandleContactFormSubmissionOptions {
   readonly authorizationProblems: readonly string[];
   /** Composes the concrete sender, or `null` when this Installation cannot drive one. */
   readonly createSender: () => ContactFormSender | null;
-  /** Whether an accepted handoff represents real transmission. Foundation ships `false`. */
-  readonly transmits: boolean;
   readonly log?: (message: string) => void;
 }
 
@@ -153,9 +158,9 @@ export async function handleContactFormSubmission(
 
   switch (result.kind) {
     case "providerAccepted":
-      // An accepted OFFLINE handoff is a demonstration, never delivery: the two states are deliberately
-      // distinct so no caller can present one as the other.
-      return options.transmits ? { status: "success" } : { status: "demoAccepted" };
+      // DERIVED FROM THE SENDER'S OWN CAPABILITY, never from a caller-supplied flag: an offline acceptance can
+      // never be presented as a real send, and a transmitting sender can never be presented as a demonstration.
+      return sender.transmits ? { status: "success" } : { status: "demoAccepted" };
     case "ambiguous":
       return { status: "ambiguous" };
     case "notSent":
@@ -167,4 +172,3 @@ export async function handleContactFormSubmission(
     }
   }
 }
-

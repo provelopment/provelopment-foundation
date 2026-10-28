@@ -172,4 +172,3 @@ export type ContactFormRefusalState = "validationError" | "unavailable";
 export function contactFormRefusalState(category: ContactRefusalCategory): ContactFormRefusalState {
   return category === "rejected_invalid" ? "validationError" : "unavailable";
 }
-

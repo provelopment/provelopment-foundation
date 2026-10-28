@@ -125,6 +125,22 @@ describe("one direct send through the pinned use case", () => {
     expect(send).not.toHaveBeenCalled();
   });
 
+  it("is refused INSIDE Connect when the authored authorization list does not cover the request", async () => {
+    // A3 — the pre-check is bypassed entirely: the record authorizes a DIFFERENT binding than the one the
+    // request verified. Connect must reach the same conclusion on its own, with no transport call.
+    const send = vi.fn();
+    const sender = createContactDirectSender({
+      record: { ...record, authorizationRefs: ["binding-other"] },
+      facts,
+      policy,
+      transport: { send },
+      log: () => {},
+    });
+    const result = await sender!.send(visitor);
+    expect(result.kind).toBe("refused");
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it("is inactive when the Site selects no transport Foundation can drive", () => {
     const log = vi.fn();
     expect(
@@ -139,7 +155,6 @@ describe("the submission orchestrator", () => {
     mode: "simple" as const,
     values: visitor,
     authorizationProblems: [] as readonly string[],
-    transmits: false,
   };
 
   it("answers a demonstration, never a delivery claim, for an offline acceptance", async () => {
@@ -153,10 +168,21 @@ describe("the submission orchestrator", () => {
   it("reports success only when the transport actually transmits", async () => {
     const state = await handleContactFormSubmission({
       ...base,
-      transmits: true,
-      createSender: () => ({ send: async () => ({ kind: "providerAccepted" }) }),
+      createSender: () => ({ transmits: true, send: async () => ({ kind: "providerAccepted" }) }),
     });
     expect(state).toEqual({ status: "success" });
+  });
+
+  it("cannot be talked into a delivery claim by a caller-supplied flag", async () => {
+    // A3 — the retired `transmits` OPTION is gone. An extra property is ignored, and the state still follows
+    // the sender's own declaration, so an offline acceptance stays a demonstration.
+    const state = await handleContactFormSubmission({
+      ...base,
+      values: visitor,
+      createSender: () => createContactDirectSender({ record, facts, policy }),
+      ...({ transmits: true } as Record<string, unknown>),
+    } as unknown as Parameters<typeof handleContactFormSubmission>[0]);
+    expect(state).toEqual({ status: "demoAccepted" });
   });
 
   it("keeps an ambiguous send ambiguous and never retries", async () => {
@@ -165,7 +191,7 @@ describe("the submission orchestrator", () => {
     });
     const state = await handleContactFormSubmission({
       ...base,
-      createSender: () => ({ send }),
+      createSender: () => ({ transmits: false, send }),
     });
     expect(state).toEqual({ status: "ambiguous" });
     expect(send).toHaveBeenCalledTimes(1);
@@ -206,7 +232,7 @@ describe("the submission orchestrator", () => {
       await handleContactFormSubmission({
         ...base,
         values: { ...visitor, transactionalConsentAck: false },
-        createSender: () => ({ send }),
+        createSender: () => ({ transmits: false, send }),
       }),
     ).toEqual({ status: "validationError", fieldErrors: { acknowledgement: true } });
 

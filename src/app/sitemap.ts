@@ -19,21 +19,6 @@ import { sitemapForContext } from "./sitemap-context";
  * A host NO Spoke answers publishes an EMPTY sitemap: refusing is the only honest answer, because the
  * alternative would advertise another Spoke's URLs under a hostname that Spoke does not own.
  */
-/**
- * HOST-DEPENDENT, SO NEVER PRERENDERED (A9-R03)
- * =============================================
- *
- * Everything above says this boundary answers PER HOST, and that is exactly what static generation
- * cannot do: a prerendered `/sitemap.xml` is one artefact served to every hostname, so Beta would be
- * handed Alpha's inventory — the precise failure the empty-sitemap rule above exists to prevent. It also
- * cannot be prerendered at all in a multi-Spoke capsule, because the Installation root (and therefore the
- * EFS manifest) is resolved from the request; a build-time render has no request to resolve.
- *
- * Declaring the dependency explicitly makes the rendering mode match the documented contract instead of
- * inheriting whatever the bundler happens to infer.
- */
-export const dynamic = "force-dynamic";
-
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const efs = await efsSitemapForCurrentRequest();
   if (efs) return efs;

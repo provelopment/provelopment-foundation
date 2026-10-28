@@ -238,4 +238,3 @@ if (isMain) {
   console.log(describeVerification(result));
   process.exitCode = result.ok ? 0 : 1;
 }
-

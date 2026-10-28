@@ -4,7 +4,11 @@ This guide is for users who cloned the Provelopment Foundation template and
 want to turn it into their own website. The core idea:
 
 > **You customize configuration, content, and assets only.**
-> Platform code (`src/core`, `src/application`, `src/adapters`,
+> Platform code (`src/core`, `src/application`, `src/adapters` and the components under
+> `src/components`) is the platform itself: a website expresses its preferences through
+> configuration, content and assets, never by editing that code. A change that genuinely
+> needs code belongs upstream in the platform, where every Installation can adopt it.
+
 ## CURRENT EFS CUSTOMIZATION MODEL
 
 This section is authoritative for the production runtime. Later sections that describe
@@ -2006,7 +2010,6 @@ itself — an ordinary Markdown image (`![description](/assets/photo.png)`) in a
 body. It is distinct from the global site-asset registry above; an adopter supplies page
 imagery in the same `content/**` files that hold the words, and it is served from
 `public/assets/` like any other runtime graphic (see §1.1 in `BRAND_ASSETS.md`).
-the text.
 
 User-facing interface strings (nav labels, hero copy, section headings, 404
 copy, the language-selector label) live in one JSON file per locale under

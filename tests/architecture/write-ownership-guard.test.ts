@@ -170,6 +170,10 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
     "logo's schema, build-time and cross-Spoke isolation proofs, every one of them removed when the file's tests " +
     "finish. The committed fixtures, the selected deployment, the canonical deployment and the repository's " +
     "generated platform namespace are only ever READ (FOUNDATION-UI-R1F)",
+  "tests/unit/contact-form-identity-policy.test.ts":
+    "OS temp only: disposable Spoke roots it authors to prove the private contact-form policy loader - one valid " +
+    "file, one missing, one malformed, one wrongly shaped, one for an unlisted Site and one for ANOTHER Spoke - " +
+    "each removed afterwards. No deployment, committed fixture or runtime namespace is touched (A6)",
   "tests/unit/spoke-host-aliases.test.ts":
     "OS temp only: disposable Installation roots (manifest + one site.config.json per Spoke) it creates for the " +
     "additional-hostname-claim proofs and removes afterwards — no deployment or committed fixture is touched (R1)",

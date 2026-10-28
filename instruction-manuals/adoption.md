@@ -73,7 +73,7 @@ installation-owned list above (`validation.md`).
 - An **authored capsule** — the material that makes the installation *yours*: configuration,
   content, artwork, dictionaries (`site.config.json`, `config/`, `content/`). An existing
   installation's capsule is a perfectly good seed.
-- Node.js 22+, pnpm 11, Git if you want the installation version-controlled (establishment creates
+- Node.js 24.x, pnpm 11.6.0, Git if you want the installation version-controlled (establishment creates
   no repository and makes no commit for you), and provider access if you are deploying.
 
 ### What establishment writes — and what it refuses
@@ -165,7 +165,7 @@ foundation   → provelopment/provelopment-foundation
   grandfathered `v2026.09.30-foundation-release-initial` — and its commit. The checkpoint tags of
   the form `v<YYYY.MM.DD>-foundation-<slug>` in the product's history are **HISTORY**: evidence of
   past checkpoints, never an identity to supply to current tooling.
-- Git, Node.js 22+, pnpm 11, GitHub CLI (`gh`) with `repo` scope.
+- Git, Node.js 24.x, pnpm 11.6.0, GitHub CLI (`gh`) with `repo` scope.
 - Provider access for deployment (owner-managed).
 - `foundation-upgrade.md` describes the same mechanics for an **existing** project, and states
   plainly which parts of it are historical.

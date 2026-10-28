@@ -88,8 +88,8 @@ describe("controlled reference Installation conversion (R02)", () => {
     }
 
     expect(declared.sort()).toEqual(authored.sort());
-    expect(loaded.manifest?.entities.flatMap((entity) => entity.facets.flatMap((facet) => facet.sites.flatMap((site) => site.pages)))).toHaveLength(6);
-    expect(declared).toHaveLength(12);
+    expect(loaded.manifest?.entities.flatMap((entity) => entity.facets.flatMap((facet) => facet.sites.flatMap((site) => site.pages)))).toHaveLength(7);
+    expect(declared).toHaveLength(14);
   });
 
   it("keeps the reference brand assets inside each owning Entity capsule", () => {

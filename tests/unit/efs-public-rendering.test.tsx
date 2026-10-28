@@ -92,6 +92,10 @@ function viewWith(logo: string, pageLabelPublic: boolean): EfsView {
       },
     ],
     home: false,
+    // A9 — a render ALWAYS has a verified Spoke context: it is the only supplier of the Site's own
+    // configuration. This fixture declares none, so it offers no public address and no link resolves,
+    // which is exactly what these rendering boundaries assert.
+    context: { runtimeSegment: "spoke-foundation", siteConfig: {} },
   } as unknown as EfsView;
 }
 

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+
+  "title": "Contact (offline demonstration)",
+
+  "description": "A demonstration contact form. Your message reaches this website own server, is checked once against the site configuration and is then discarded. No email is sent and nothing is stored.",
+
+  "sections": [
+
+    {
+      "type": "prose",
+
+      "heading": "What this page demonstrates",
+
+      "body": "This page shows how a Foundation website can host a contact form that is authored as page content and configured per website. The form below is deliberately **offline**: it exercises the complete submission path - browser, server, verified site identity, the site own form record and the Connect demonstration transport - without contacting any mail provider.\n\nPlease use fictional details. Nothing you type is delivered, stored or forwarded."
+    },
+
+    {
+      "type": "contactForm",
+
+      "formRef": "foundation-contact"
+    }
+
+  ]
+}

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Heading } from "@/components/ui/heading";
 
 import {
@@ -67,6 +68,19 @@ export interface PageDocumentContentProps {
    * from the authored tree (a preview, a test), and it is never a second source of authoring truth.
    */
   readonly links?: PageLinks;
+  /**
+   * THE PER-RENDER CONTACT-FORM SEAM (A5).
+   *
+   * A `contactForm` section declares intent; whether a working form may appear is a decision only the
+   * composition that verified THIS request can make — it needs the verified Site, Page, publication, the
+   * Site's own record and the owning Spoke's private policy. That composition supplies this function, and it
+   * is the same seam style as `resolveLink`: created per render, never stored, never a registry, and absent
+   * means "this render has no authorized form", in which case the section renders nothing at all.
+   *
+   * Foundation's generic composer stays independent of Connect: it passes the authored `formRef` through and
+   * knows nothing about records, policies, transports or mailboxes.
+   */
+  readonly renderContactForm?: (formRef: string) => ReactNode;
 }
 
 /** One section → one presentation. The id is unique per page (used as the label id). */
@@ -110,6 +124,10 @@ function renderSection(
       return <ListSection key={id} section={section} locale={locale} id={id} resolveLink={resolveLink} />;
     case "divider":
       return <DividerSection key={id} />;
+    case "contactForm":
+      // Rendered by the caller, which owns the authorization decision (see `renderContactForm`). A section
+      // whose form this render may not present must draw NOTHING — not an empty shell and not a broken form.
+      return null;
     default: {
       // Unreachable: every declared type is handled above. If a type is ever added to
       // the vocabulary without a presentation, this stops the build instead of silently
@@ -126,6 +144,7 @@ export function PageDocumentContent({
   withTitle = true,
   resolveLink,
   links,
+  renderContactForm,
 }: PageDocumentContentProps) {
   // THE ONE COMPOSITION (A8 Phase F): a marker or a `link` action names a DECLARATION ID, and the
   // resolver answers the REFERENCE. Both halves are bound HERE, per render, so `@/core` stays a pure
@@ -145,7 +164,9 @@ export function PageDocumentContent({
         </Heading>
       ) : null}
       {document.sections.map((section, index) =>
-        renderSection(section, locale, index, resolveLinkId),
+        section.type === "contactForm"
+          ? renderContactForm?.(section.formRef) ?? null
+          : renderSection(section, locale, index, resolveLinkId),
       )}
     </>
   );

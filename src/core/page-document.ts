@@ -116,6 +116,7 @@ export const PAGE_SECTION_TYPES = [
   "faq",
   "list",
   "divider",
+  "contactForm",
 ] as const;
 
 export type PageSectionType = (typeof PAGE_SECTION_TYPES)[number];
@@ -785,6 +786,9 @@ const listSectionSchema = z.strictObject({
 /** A divider is a pure structural break: it carries nothing but its own type. */
 const dividerSectionSchema = z.strictObject({ type: z.literal("divider") });
 
+/** A CONTACT FORM DECLARED BY ITS PAGE (A5): authored INTENT only, never policy. */
+const contactFormSectionSchema = z.strictObject({ type: z.literal("contactForm"), formRef: z.string().trim().min(1).max(64).regex(/^[a-z0-9][a-z0-9-]*$/) });
+
 export const pageSectionSchema = z.discriminatedUnion("type", [
   heroSectionSchema,
   proseSectionSchema,
@@ -802,6 +806,7 @@ export const pageSectionSchema = z.discriminatedUnion("type", [
   faqSectionSchema,
   listSectionSchema,
   dividerSectionSchema,
+  contactFormSectionSchema,
 ]);
 
 export type PageSection = z.infer<typeof pageSectionSchema>;

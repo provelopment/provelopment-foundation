@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 
+import path from "node:path";
+
 import { deploymentEnvironment, resolveDeploymentForBuild } from "./src/config/deployment-build.mjs";
 
 /**
@@ -27,6 +29,31 @@ const nextConfig: NextConfig = {
    * has no production effect.
    */
   devIndicators: false,
+  /**
+   * THE PINNED MODULE'S NODENEXT SPECIFIERS (FOUNDATION-RELEASE-CANDIDATE-A1)
+   * =======================================================================
+   *
+   * `modules/connect/src/**` is the released Connect source carried byte-for-byte (Git subtree
+   * `a0f1f14a…`, proven by `pnpm connect:verify`). It is authored for Node ESM, so its relative imports
+   * use an explicit `.js` extension — the emitted name of a file that ships as `.ts`. TypeScript and Vite
+   * map that; Turbopack has no extension-aliasing option, so the build must be taught the mapping.
+   *
+   * One rule, scoped to that ONE tree, applies a two-expression build-time rewrite to the extensionless
+   * form Turbopack already resolves (see `scripts/connect/nodenext-specifier-adapter.cjs`). No other file
+   * is touched, no artifact is generated, and the source bytes on disk are unchanged — so `next dev` and
+   * `next build` resolve the Module identically, and the integration needs no second bundler.
+   */
+  turbopack: {
+    rules: {
+      "./modules/connect/src/**/*.ts": {
+        loaders: [
+          {
+            loader: path.resolve(process.cwd(), "scripts/connect/nodenext-specifier-adapter.cjs"),
+          },
+        ],
+      },
+    },
+  },
 };
 
 export default nextConfig;

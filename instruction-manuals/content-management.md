@@ -314,6 +314,20 @@ One file describes one page.
 - **`sections`** is required, ordered, may be empty (a title-only page), and is bounded
   (40 sections).
 
+- **`links`** is optional and declares a link your **application** supplies when the page renders. Each entry
+  maps a declaration id (lowercase words joined by single hyphens) to one reference:
+  `{ "reference": "applicationLink", "key": "<opaque name your application understands>" }`. `reference` is a
+  closed set - today exactly `applicationLink` - and `key` is opaque to the platform, which validates its shape
+  and never its meaning, so a page survives a rename on the application side.
+
+  Use a declared link from Markdown as `[label](#link:<declaration-id>)`, or from an action as
+  `"link": "<declaration-id>"`. An action sets **exactly one** destination: `href`, `route` or `link`.
+
+  The destination appears only when the application answers with one the platform accepts. When it answers
+  nothing - the link is not offered, was revoked, or no application is wired at all - the label is shown as text
+  with no anchor, never as a broken `#...` fragment. A `#link:` marker naming a declaration the page does not
+  carry is refused when the page is read, naming the field and the id.
+
 **The delivered section vocabulary.** A section is an object with a `type` and only the
 properties that type declares:
 
@@ -335,6 +349,7 @@ properties that type declares:
 | `faq` | an expandable question-and-answer group |
 | `list` | labels, optionally with detail and a link |
 | `divider` | a horizontal break |
+| `contactForm` | an authored contact form the site's own configuration may present (declares `formRef`; rendering and submission are decided by the site) |
 
 **Presentation is a finite vocabulary too.** A section chooses from a small set of named
 options — surface, text alignment, items per row, media position, column ratio, ordered

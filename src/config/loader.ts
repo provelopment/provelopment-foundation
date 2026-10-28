@@ -105,6 +105,11 @@ export function parseSiteConfig(raw: unknown): SiteConfig {
     navigation: json.navigation,
     footerNavigation: json.footerNavigation,
     connect: json.connect,
+    // A9 — the Connect-Module communication declarations must survive normalization UNCHANGED. They are
+    // keyed by EFS Site id, and they are read from `view.context.siteConfig.communication`, so dropping
+    // them here would disable both capabilities with no error anywhere: the schema would accept an
+    // author's block, and the runtime simply would not see it.
+    communication: json.communication,
     ui: json.ui,
     business,
     regions,

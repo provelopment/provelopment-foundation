@@ -1,6 +1,8 @@
 import { PageDocumentContent } from "@/components/site/page-document-content";
 import { SafeMarkdownContent } from "@/components/site/safe-markdown-content";
 import { Heading } from "@/components/ui/heading";
+import { publicContactLinkResolver } from "@/adapters/connect/public-contact";
+import { EfsContactForm } from "@/components/efs/efs-contact-form";
 import { assetUrl } from "@/core/efs/publication";
 
 import type { EfsView } from "@/app/[[...segments]]/efs-request";
@@ -32,6 +34,37 @@ export function EfsPageView({
       ? (view.source.body ?? "").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "")
       : undefined;
   const document = view.source.document;
+
+  /**
+   * THE APPLICATION LINK CONTEXT FOR THIS ONE RENDER (A9).
+   *
+   * Built here, from the request's OWN verified context, and passed down as an argument — never stored,
+   * never cached, never module-global. Everything it reads was already proved by Foundation's
+   * resolution of this request:
+   *
+   *  - `runtimeSegment` — the collision-free runtime identity of the OWNING Spoke;
+   *  - `entity.id` / `site.id` — the verified EFS Entity and Site being rendered;
+   *  - `binding.aliasOf ?? binding.id` — the CANONICAL binding, so an alias serves exactly the
+   *    authorization its canonical route holds (rendering and submission therefore agree);
+   *  - `siteConfig.communication` — the Spoke's own validated configuration, carried through
+   *    `parseSiteConfig`, keyed by EFS Site id.
+   *
+   * The publisher identity is supplied only when this Installation identifies its Hubs: then a Spoke is
+   * a distinguishable publisher and an author can name it. Without Hub identification there is one
+   * publisher and nothing to disambiguate, so no identity is invented to fill the field.
+   */
+  const resolveLink = publicContactLinkResolver({
+    authority: {
+      deploymentId: view.context.runtimeSegment,
+      ownerId: view.entity.id,
+      siteId: view.site.id,
+      authorizationRef: view.binding.aliasOf ?? view.binding.id,
+      ...(view.context.spokeHubId === undefined
+        ? {}
+        : { publisherRef: view.context.runtimeSegment }),
+    },
+    configuration: view.context.siteConfig.communication,
+  });
 
   const navItems = view.navigation ?? [];
 
@@ -68,7 +101,12 @@ export function EfsPageView({
       <main className="mx-auto max-w-3xl px-6 py-16">
         <article>
           {document !== undefined ? (
-            <PageDocumentContent document={document} locale={view.locale} />
+            <PageDocumentContent
+              document={document}
+              locale={view.locale}
+              resolveLink={resolveLink}
+              renderContactForm={(formRef) => <EfsContactForm view={view} formRef={formRef} />}
+            />
           ) : (
             <>
               <Heading level={1} tone="title">

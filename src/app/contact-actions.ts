@@ -218,7 +218,12 @@ export async function submitContactForm(
       email: formData.get("email"),
       subject: formData.get("subject"),
       message: formData.get("message"),
-      acknowledgement: formData.get("acknowledgement"),
+      // THE CONSENT CONTRACT KEY (A6). `contactFormContent` reads `transactionalConsentAck`, and Connect
+      // validates that same field. The DOM control is named `acknowledgement` because that is what a visitor
+      // sees; the mapping between the two belongs HERE, once, at the boundary. A5 passed the DOM name straight
+      // through, so the orchestrator never saw consent and refused every correctly-acknowledged submission -
+      // found by the A6 browser proof, not by the type checker.
+      transactionalConsentAck: formData.get("acknowledgement"),
       locale: formData.get("locale"),
       website: formData.get("website"),
     },

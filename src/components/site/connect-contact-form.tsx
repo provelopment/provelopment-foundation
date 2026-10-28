@@ -167,7 +167,11 @@ export function ConnectContactForm({ locale, dict, formRef }: ConnectContactForm
             id="connect-contact-acknowledgement"
             name="acknowledgement"
             type="checkbox"
-            value="yes"
+            // THE CONSENT CONTRACT: `@/application/contact-form-submission` accepts an affirmative
+            // `true | "on" | "true"`. "on" is the HTML checkbox default, and it is stated here explicitly so
+            // the authored control and the orchestrator cannot drift apart again (A5 shipped "yes", which the
+            // orchestrator refused as unacknowledged - found by the A6 browser proof).
+            value="on"
             required
             aria-invalid={failed.has("acknowledgement")}
             aria-describedby={
@@ -207,7 +211,6 @@ export function ConnectContactForm({ locale, dict, formRef }: ConnectContactForm
           {state.status === "ambiguous" ? dict.ambiguous : null}
           {state.status === "unavailable" ? dict.unavailable : null}
           {state.status === "formDisabled" ? dict.formDisabled : null}
-          {state.status === "validationError" ? dict.errors.message : null}
           {isPending ? <span aria-busy="true">{dict.sending}</span> : null}
         </p>
 

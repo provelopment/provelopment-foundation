@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "sites": {
+    "main": {
+      "recipients": [
+        { "address": "contact-form-demonstration@example.com", "kind": "to" }
+      ],
+      "sender": {
+        "fromAddress": "website-demonstration@example.com",
+        "fromDisplayName": "Foundation contact-form demonstration",
+        "replyTo": "visitor"
+      }
+    }
+  }
+}

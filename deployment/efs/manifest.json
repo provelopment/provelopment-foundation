@@ -106,6 +106,30 @@
                       "locale": "de"
                     }
                   ]
+                },
+                {
+                  "id": "contact",
+                  "route": [
+                    "contact"
+                  ],
+                  "properties": {
+                    "nav.label": {
+                      "value": "Contact",
+                      "public": true
+                    },
+                    "internal.pageNotes": {
+                      "value": "conversion:foundation/contact",
+                      "public": false
+                    }
+                  },
+                  "representations": [
+                    {
+                      "locale": "en"
+                    },
+                    {
+                      "locale": "de"
+                    }
+                  ]
                 }
               ]
             }

@@ -130,6 +130,23 @@ export const dictionarySchema = z.object({
     unconfigured: z.string(),
     configError: z.string(),
     sendError: z.string(),
+    /**
+     * A5 — the authored SIMPLE form's OFFLINE-DEMONSTRATION vocabulary.
+     *
+     * `demoTitle` / `demoBody` / `demoFictionHint` are shown BEFORE any data is entered, because a visitor must
+     * know what the form really does before typing anything into it. `demoAccepted` is the truthful acceptance:
+     * the submission reached this server and was discarded — it must never imply delivery or storage.
+     */
+    demoTitle: z.string().optional(),
+    demoBody: z.string().optional(),
+    demoFictionHint: z.string().optional(),
+    acknowledgementLabel: z.string().optional(),
+    acknowledgementError: z.string().optional(),
+    submitDemo: z.string().optional(),
+    demoAccepted: z.string().optional(),
+    ambiguous: z.string().optional(),
+    unavailable: z.string().optional(),
+    formDisabled: z.string().optional(),
     errors: z.object({
       name: z.string(),
       email: z.string(),

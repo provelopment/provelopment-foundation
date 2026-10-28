@@ -83,5 +83,22 @@
       "enabled": true,
       "default": "sidebar"
     }
+  },
+  "communication": {
+    "contactForms": {
+      "main": {
+        "formRef": "foundation-contact",
+        "enabled": true,
+        "mode": "simple",
+        "transport": "offline",
+        "placement": {
+          "page": "contact"
+        },
+        "authorizationRefs": [
+          "foundation-web",
+          "foundation-inspection"
+        ]
+      }
+    }
   }
 }

@@ -15,11 +15,23 @@ import type { SiteConfig } from "./site-config";
 
 export function contactFormRecordForSite(
   config: SiteConfig,
-  siteId: string,
+  efsSiteId: string,
 ): AuthoredContactFormConfiguration | undefined {
-  const declared = config.sites.some((entry) => entry.code === siteId);
-  if (!declared) return undefined;
-  return config.communication?.contactForms?.[siteId];
+  // FOUNDATION-RELEASE-CANDIDATE (A5) — THE IDENTITY IS THE VERIFIED EFS SITE ID.
+  //
+  // `sites[].code` is a PRESENTATION Site code (the reference Site's is `ww`), not an authorization
+  // identity. A5 received the reference Site's EFS id (`main`) from the verified route while this lookup
+  // compared it with `ww`, so a correctly authored record was unreachable and the Site kept presenting the
+  // legacy state. The guard is gone, and it was deliberately NOT replaced with a permissive one:
+  //
+  //  - the request is verified BEFORE this call — EFS resolved the publication, binding, Entity, Facet,
+  //    Site and Page, and refused anything it does not declare, so an unverified Site id never arrives;
+  //  - the Site id is the one EFS proved, never a form field, header or query parameter;
+  //  - the key space is the record itself, so an EFS Site that authors no record answers `undefined`
+  //    (inactive), never "inherit another Site's";
+  //  - `config` is the OWNING Spoke's validation of its own file, so another Spoke's `main` Site cannot
+  //    reach this record even though both declare a Site with that id.
+  return config.communication?.contactForms?.[efsSiteId];
 }
 
 /**

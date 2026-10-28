@@ -2,6 +2,7 @@ import { PageDocumentContent } from "@/components/site/page-document-content";
 import { SafeMarkdownContent } from "@/components/site/safe-markdown-content";
 import { Heading } from "@/components/ui/heading";
 import { publicContactLinkResolver } from "@/adapters/connect/public-contact";
+import { EfsContactForm } from "@/components/efs/efs-contact-form";
 import { assetUrl } from "@/core/efs/publication";
 
 import type { EfsView } from "@/app/[[...segments]]/efs-request";
@@ -104,6 +105,7 @@ export function EfsPageView({
               document={document}
               locale={view.locale}
               resolveLink={resolveLink}
+              renderContactForm={(formRef) => <EfsContactForm view={view} formRef={formRef} />}
             />
           ) : (
             <>

@@ -118,7 +118,7 @@ describe("the page document envelope", () => {
   });
 });
 describe("the section vocabulary", () => {
-  it("declares exactly the sixteen supported types", () => {
+  it("declares exactly the seventeen supported types", () => {
     expect(PAGE_SECTION_TYPES).toEqual([
       "hero",
       "prose",
@@ -136,6 +136,7 @@ describe("the section vocabulary", () => {
       "faq",
       "list",
       "divider",
+    "contactForm",
     ]);
   });
 
@@ -157,6 +158,7 @@ describe("the section vocabulary", () => {
       faq: { items: [{ question: "Is it?", answer: "It is." }] },
       list: { items: ["One", "Two"] },
       divider: {},
+    contactForm: { formRef: "foundation-contact" },
     };
 
     for (const [type, section] of Object.entries(samples)) {

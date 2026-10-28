@@ -118,6 +118,12 @@ Run these checks against the actual public host:
       dictionaries, navigation, footer, branding and accessibility contract.
 - [ ] The contact action reaches the configured receiver for the same owning Spoke, including on an
       EFS-only host absent from the legacy host-routing table.
+- [ ] A Page that authors a `contactForm` section and is offered the form by its Site renders it, and one that
+      authors none — or whose Site has not authorized this publication, disabled the record, placed it elsewhere,
+      selected `transport: "none"`, or has no private policy on the server — renders **nothing at all**. This is
+      the `contactForm` Server-Action form documented in `CUSTOMIZING.md`, distinct from the `features.contact`
+      inquiry action: the shipped demonstration transmits nothing, so it needs no provider, DNS record,
+      credential or environment variable, and the submission's own outcome must claim no delivery.
 - [ ] No cross-Entity or cross-Spoke content, dictionary or asset is exposed.
 - [ ] Dark mode, responsive layouts and horizontal-overflow checks pass.
 - [ ] A malformed JSON Page is refused rather than rendered as generic fallback content.

@@ -216,8 +216,10 @@ authorization identities:
 - `authorizationRefs` — the canonical binding ids allowed to expose this form. Authoring an id here **is** the act
   of authorizing that publication; there is no wildcard.
 
-**3. The private policy** — server-only, read at submission time from
-`<spoke root>/config/contact-form-policy.json` (one fixed path; no request value selects it):
+**3. The private policy** — server-only. It is read on the server from
+`<spoke root>/config/contact-form-policy.json` (one fixed path; no request value selects it). Rendering asks
+only *whether* a valid policy exists — the Server Component receives a boolean, never an address — and a
+submission re-reads the file in full:
 
 ```json
 {
@@ -251,10 +253,18 @@ different forms; the record does not place the form on this Page; the verified p
 `authorizationRefs`; or the Spoke authors no valid private policy. A missing, unreadable, malformed or wrongly
 shaped policy file answers "no policy" — never "inherit someone else's", never "fall back to the default Site".
 
-**If you want real delivery**, that is yours to add: supply your own `MailTransportPort` and your own policy
-source in *your* application, plus the abuse controls a public form needs (rate limiting, spam defence, size
-limits, a privacy notice, retention rules). Do not repoint the demonstration transport at a real mailbox, and do
-not ship your credentials in a page, a record or a client bundle.
+**Presentation and submission are ONE decision.** Both consult the same server-side predicate, so a Page can
+never show a form that its own submission would refuse. A verified publication that is not named in
+`authorizationRefs`, a private policy that is absent or invalid, and `transport: "none"` are refusals of the same
+standing as a missing record: the Page renders **no form at all** — not an empty shell, not a disabled field set,
+and never an apparently working form that fails only after a visitor has typed into it.
+
+**If you want real delivery**, that is a code change in *your own application boundary* — beside this template,
+never inside it: this template's platform files are not yours to edit, which is what makes an Update possible
+(see *Customization ownership boundary*). Supply your own `MailTransportPort` and your own policy source there,
+plus the abuse controls a public form needs (rate limiting, spam defence, size limits, a privacy notice, retention
+rules). Do not repoint the demonstration transport at a real mailbox, and do not ship your credentials in a page,
+a record or a client bundle.
 
 **In a clean-room Installation** established from a release there is no policy file and no record, so the
 capability is simply absent until its owner authors all three pieces.

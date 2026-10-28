@@ -190,6 +190,20 @@ Its `continuity.*` siblings in `matrix.mjs` run the equivalent rows against the 
 browser gate, so the invariant is covered continuously; this script is the production-mode confirmation the
 owner-visible defect requires.
 
+
+
+```js
+export const id = "reference-content";           // the report's `presentation` label
+export async function run(chrome, harness) { … }  // returns the same check rows as a scenario here
+```
+
+The `harness` argument carries the generic pieces a scenario needs — its port, its viewports, its
+assertion collector, its dev server (`startDevServer`/`stopServer`/`waitForServer`/`waitReady`), its
+layout helper, and `configFile`: the deployment's configuration path, resolved exactly as the build
+resolves it (a capsule at `<repo>/deployment` when one exists, otherwise the
+repository root). A deployment scenario therefore names no repository path of its own, and a
+repository without a capsule discovers nothing.
+
 ### The shared-host production smoke (`shared-host-production.mjs`)
 
 Continuity in production mode is proved by the script above, but it cannot prove the EFS shared-host
@@ -214,19 +228,30 @@ node tests/browser/shared-host-production.mjs
 It ends with `TOTAL=<rows> FAILED=<failures>`; a non-zero failure count names the exact coordinate and
 the server's own output tail.
 
+### The contact-form production proof (`contact-form-production.mjs`)
 
+The contact form is the one capability whose correctness depends on the SERVER half as much as on the
+page, so its dev-server scenario is confirmed again in the mode an owner actually runs.
+`tests/browser/contact-form-production.mjs` builds, starts `next start`, and drives the real public
+hostnames through the harness's test-only host mapping, asserting the whole path in one observation:
 
-```js
-export const id = "reference-content";           // the report's `presentation` label
-export async function run(chrome, harness) { … }  // returns the same check rows as a scenario here
+```text
+browser → Server Action → verified EFS Page/Site/publication → the owning Spoke's server-only policy →
+pinned Connect `SendDirectEnquiry` → offline `MailTransportPort` → truthful demonstration outcome
 ```
 
-The `harness` argument carries the generic pieces a scenario needs — its port, its viewports, its
-assertion collector, its dev server (`startDevServer`/`stopServer`/`waitForServer`/`waitReady`), its
-layout helper, and `configFile`: the deployment's configuration path, resolved exactly as the build
-resolves it (a capsule at `<repo>/deployment` when one exists, otherwise the
-repository root). A deployment scenario therefore names no repository path of its own, and a
-repository without a capsule discovers nothing.
+It drives the SAME flow module the matrix scenario uses (`contact-form-flow.mjs`), so a development
+result and a production result describe one behaviour rather than two plausible ones. Like the proofs
+above it is **owned by this directory** and **NOT wired into any CI route**; run it explicitly:
+
+```sh
+node tests/browser/contact-form-production.mjs
+```
+
+It prints `[contact-form-production] <passed>/<total> checks passed`. The rows observe the page rather
+than the markup: the form was there before anything was typed, the offline disclosure was VISIBLE,
+consent started genuinely unchecked and an unticked submission performed no POST at all, the outcome
+claimed no delivery, and no private address appeared in the rendered HTML or in a client bundle.
 
 ### Readiness: two layers, and the one a client transition needs
 

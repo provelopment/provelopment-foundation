@@ -45,6 +45,31 @@ pnpm build
 pnpm test:browser:deployment
 ```
 
+## Publication validation and the build lifecycle
+
+`pnpm build` runs three steps in a fixed order, and the middle one is what makes ownership knowable:
+
+```text
+asset synchronization → validated publication projection → Next.js build
+```
+
+1. `node scripts/sync-runtime-assets.mjs` materializes the owning Spoke's `public/spokes/**`
+   namespace from the assets authored in its capsule.
+2. `node scripts/efs/validate-publications.mjs` validates the selected EFS manifest and writes the
+   verified publication projection that the request boundary reads.
+3. `next build` compiles the application against that projection.
+
+A manifest that is selected but invalid, or selected and missing, is a **loud failure**: the build
+stops rather than publishing a deployment whose permissions nobody can state, and any stale
+projection from an earlier build is removed so it can never outlive the state it described. Neither
+case degrades to legacy hostname authorization — that released host-only rule stands only for a
+genuine non-EFS Installation that declares no manifest at all.
+
+`declared` is not `published`. A Spoke declared in `deployment/spokes.json` has a namespace on disk,
+but its presentation assets are served only to a caller that an explicit EFS publication **on this
+host** names; on a shared host with no publication for a Spoke, both its pages and its presentation
+assets are refused.
+
 ## Provider setup
 
 1. Import the Installation repository into the provider.
@@ -69,8 +94,15 @@ pnpm test:browser:deployment
 
 Run these checks against the actual public host:
 
-- [ ] The host is claimed by exactly one publication binding, or by bindings that agree on the
-      owning Spoke.
+- [ ] Every binding that claims the host is authorized and unambiguous — not necessarily exclusive.
+      One hostname may carry more than one Spoke, which is the supported shared-host case, provided
+      the bindings' EFS path prefixes do not collide.
+- [ ] On a shared host every published Spoke answers its canonical `/<prefix>/<locale>/<route>`, and
+      a path that names only a prefix is refused rather than guessed, because the host then names no
+      single owner.
+- [ ] A duplicate or ambiguous claim, an unknown prefix, a declared-but-unpublished Spoke and an
+      unauthored `/` all fail closed: none of them falls back to another Spoke, another Entity or the
+      released host-only rule.
 - [ ] A bare binding entry redirects to a real localized Home representation.
 - [ ] Every public Page returns HTTP 200 at its authored binding URL.
 - [ ] A path outside the binding returns 404; it never falls through to another Spoke or Entity.
@@ -86,6 +118,12 @@ Run these checks against the actual public host:
       dictionaries, navigation, footer, branding and accessibility contract.
 - [ ] The contact action reaches the configured receiver for the same owning Spoke, including on an
       EFS-only host absent from the legacy host-routing table.
+- [ ] A Page that authors a `contactForm` section and is offered the form by its Site renders it, and one that
+      authors none — or whose Site has not authorized this publication, disabled the record, placed it elsewhere,
+      selected `transport: "none"`, or has no private policy on the server — renders **nothing at all**. This is
+      the `contactForm` Server-Action form documented in `CUSTOMIZING.md`, distinct from the `features.contact`
+      inquiry action: the shipped demonstration transmits nothing, so it needs no provider, DNS record,
+      credential or environment variable, and the submission's own outcome must claim no delivery.
 - [ ] No cross-Entity or cross-Spoke content, dictionary or asset is exposed.
 - [ ] Dark mode, responsive layouts and horizontal-overflow checks pass.
 - [ ] A malformed JSON Page is refused rather than rendered as generic fallback content.

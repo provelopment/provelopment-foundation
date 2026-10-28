@@ -191,6 +191,7 @@ browser gate, so the invariant is covered continuously; this script is the produ
 owner-visible defect requires.
 
 
+
 ```js
 export const id = "reference-content";           // the report's `presentation` label
 export async function run(chrome, harness) { … }  // returns the same check rows as a scenario here
@@ -202,6 +203,55 @@ layout helper, and `configFile`: the deployment's configuration path, resolved e
 resolves it (a capsule at `<repo>/deployment` when one exists, otherwise the
 repository root). A deployment scenario therefore names no repository path of its own, and a
 repository without a capsule discovers nothing.
+
+### The shared-host production smoke (`shared-host-production.mjs`)
+
+Continuity in production mode is proved by the script above, but it cannot prove the EFS shared-host
+contract, which needs more than one Spoke published on one hostname with independent path bindings.
+`tests/browser/shared-host-production.mjs` is that bounded smoke: it materializes one disposable
+shared-host Installation, builds and serves it in production mode, refuses to compile or to serve
+unless the resolved deployment root, manifest, capsule and publication projection all agree, and then
+asserts what only a real server can show — the runtime context each publication selects
+(`presentationSiteCode`), the canonical `/<prefix>/<locale>/<route>` coordinate of each published Hub,
+each owner's own asset bytes, and the refusals that must stay refusals: an unknown prefix, an
+unauthorized owner namespace, a declared-but-unpublished Spoke, and a prefix-only path on a host that
+names two owners. The authorized and refused rows run in the SAME session, so a refusal cannot be an
+artefact of a build that serves nothing. Like the continuity proof it is **owned by this directory**,
+**NOT wired into any CI route** (it performs a production build of the synthetic Installation and
+restores a reference build afterwards), and it deletes the Installation, projection and assets it
+created, restoring the environment it was given:
+
+```sh
+node tests/browser/shared-host-production.mjs
+```
+
+It ends with `TOTAL=<rows> FAILED=<failures>`; a non-zero failure count names the exact coordinate and
+the server's own output tail.
+
+### The contact-form production proof (`contact-form-production.mjs`)
+
+The contact form is the one capability whose correctness depends on the SERVER half as much as on the
+page, so its dev-server scenario is confirmed again in the mode an owner actually runs.
+`tests/browser/contact-form-production.mjs` builds, starts `next start`, and drives the real public
+hostnames through the harness's test-only host mapping, asserting the whole path in one observation:
+
+```text
+browser → Server Action → verified EFS Page/Site/publication → the owning Spoke's server-only policy →
+pinned Connect `SendDirectEnquiry` → offline `MailTransportPort` → truthful demonstration outcome
+```
+
+It drives the SAME flow module the matrix scenario uses (`contact-form-flow.mjs`), so a development
+result and a production result describe one behaviour rather than two plausible ones. Like the proofs
+above it is **owned by this directory** and **NOT wired into any CI route**; run it explicitly:
+
+```sh
+node tests/browser/contact-form-production.mjs
+```
+
+It prints `[contact-form-production] <passed>/<total> checks passed`. The rows observe the page rather
+than the markup: the form was there before anything was typed, the offline disclosure was VISIBLE,
+consent started genuinely unchecked and an unticked submission performed no POST at all, the outcome
+claimed no delivery, and no private address appeared in the rendered HTML or in a client bundle.
 
 ### Readiness: two layers, and the one a client transition needs
 

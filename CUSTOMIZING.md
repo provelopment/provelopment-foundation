@@ -4,7 +4,11 @@ This guide is for users who cloned the Provelopment Foundation template and
 want to turn it into their own website. The core idea:
 
 > **You customize configuration, content, and assets only.**
-> Platform code (`src/core`, `src/application`, `src/adapters`,
+> Platform code (`src/core`, `src/application`, `src/adapters` and the components under
+> `src/components`) is the platform itself: a website expresses its preferences through
+> configuration, content and assets, never by editing that code. A change that genuinely
+> needs code belongs upstream in the platform, where every Installation can adopt it.
+
 ## CURRENT EFS CUSTOMIZATION MODEL
 
 This section is authoritative for the production runtime. Later sections that describe
@@ -212,8 +216,10 @@ authorization identities:
 - `authorizationRefs` — the canonical binding ids allowed to expose this form. Authoring an id here **is** the act
   of authorizing that publication; there is no wildcard.
 
-**3. The private policy** — server-only, read at submission time from
-`<spoke root>/config/contact-form-policy.json` (one fixed path; no request value selects it):
+**3. The private policy** — server-only. It is read on the server from
+`<spoke root>/config/contact-form-policy.json` (one fixed path; no request value selects it). Rendering asks
+only *whether* a valid policy exists — the Server Component receives a boolean, never an address — and a
+submission re-reads the file in full:
 
 ```json
 {
@@ -247,10 +253,28 @@ different forms; the record does not place the form on this Page; the verified p
 `authorizationRefs`; or the Spoke authors no valid private policy. A missing, unreadable, malformed or wrongly
 shaped policy file answers "no policy" — never "inherit someone else's", never "fall back to the default Site".
 
-**If you want real delivery**, that is yours to add: supply your own `MailTransportPort` and your own policy
-source in *your* application, plus the abuse controls a public form needs (rate limiting, spam defence, size
-limits, a privacy notice, retention rules). Do not repoint the demonstration transport at a real mailbox, and do
-not ship your credentials in a page, a record or a client bundle.
+**Presentation and submission are two checks, not one predicate.** Rendering asks
+`contactFormPresentsOnPublication` about a record it has already resolved for this Site: is SIMPLE offered
+(`enabled`, `mode`, and a transport other than `none`), is this Page the record's own Page or the record
+site-wide, does the **verified canonical binding** appear in `authorizationRefs`, and is a private policy
+available. A submission re-runs the question in the Server Action, which resolves the same verified EFS context
+again and asks `contactFormAuthorizationProblems` (mode, `enabled`, `formRef`, placement, `authorizationRef`,
+transport), then reads the policy itself and hands the enquiry to pinned Connect. The two enforce
+**corresponding** fail-closed conditions at their own boundary rather than sharing one call, because a render may
+not do the work a send must. Neither path ever hands a sender address or a recipient to the browser: the renderer
+is told only that a policy exists.
+
+A policy can therefore change between a page being rendered and a visitor pressing send: a form that was
+legitimately shown can legitimately answer `unavailable`, and it never claims a delivery it did not make. Every
+refusal listed above refuses on **both** sides — a Page never shows an empty shell, a disabled field set, or an
+apparently working form that would fail only after a visitor has typed into it.
+
+**If you want real delivery**, that is a code change in *your own application boundary* — beside this template,
+never inside it: this template's platform files are not yours to edit, which is what makes an Update possible
+(see *Customization ownership boundary*). Supply your own `MailTransportPort` and your own policy source there,
+plus the abuse controls a public form needs (rate limiting, spam defence, size limits, a privacy notice, retention
+rules). Do not repoint the demonstration transport at a real mailbox, and do not ship your credentials in a page,
+a record or a client bundle.
 
 **In a clean-room Installation** established from a release there is no policy file and no record, so the
 capability is simply absent until its owner authors all three pieces.
@@ -2144,7 +2168,6 @@ itself — an ordinary Markdown image (`![description](/assets/photo.png)`) in a
 body. It is distinct from the global site-asset registry above; an adopter supplies page
 imagery in the same `content/**` files that hold the words, and it is served from
 `public/assets/` like any other runtime graphic (see §1.1 in `BRAND_ASSETS.md`).
-the text.
 
 User-facing interface strings (nav labels, hero copy, section headings, 404
 copy, the language-selector label) live in one JSON file per locale under

@@ -2,6 +2,7 @@
   "name": "provelopment-foundation",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "scripts": {
     "dev": "node scripts/sync-runtime-assets.mjs && node scripts/efs/validate-publications.mjs && next dev",
     "build": "node scripts/sync-runtime-assets.mjs && node scripts/efs/validate-publications.mjs && next build",
@@ -14,6 +15,7 @@
     "test:browser:foundation": "node tests/browser/matrix.mjs --scope foundation",
     "test:browser:deployment": "node tests/browser/matrix.mjs --scope deployment",
     "assets:sync": "node scripts/sync-runtime-assets.mjs",
+    "connect:verify": "node scripts/connect/verify-pinned-source.mjs",
     "assets:check": "node scripts/sync-runtime-assets.mjs --check",
     "country-codes:sync": "node scripts/generate-country-code-reference.mjs",
     "country-codes:check": "node scripts/generate-country-code-reference.mjs --check",

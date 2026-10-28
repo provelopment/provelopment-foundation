@@ -51,7 +51,23 @@ deployment/spokes/*/content/assets/** -text
 public/assets/** -text
 public/spokes/*/assets/** -text
 
-# `LICENSE` is the CANONICAL Apache License 2.0 text, installed byte-for-byte
+# THE PINNED CONNECT SOURCE TREE IS VERIFIED BYTE-FOR-BYTE
+# (FOUNDATION-CONNECT-MODULE-INTEGRATION-A9).
+#
+# `modules/connect/src/**` is the released Connect source, carried verbatim: Connect is a Git-SOURCE
+# Module, so there is no package, no registry artifact and no archive to depend on.
+# `scripts/connect/verify-pinned-source.mjs` recomputes the Git tree object id of that tree and
+# compares it with the id recorded in `modules/connect/connect-release.json`.
+#
+# Automatic line-ending conversion would rewrite the bytes and break that proof — and it has already
+# happened once: Connect publishes no `.gitattributes` of its own, so the upstream CLONE on a
+# `core.autocrlf=true` machine arrives as CRLF, and `git archive` converts as well. A vendor step that
+# copies a working tree therefore carries bytes the release never published. Store and check out
+# verbatim, exactly like `instruction-manuals/**` and `LICENSE`, and materialise from
+# `git cat-file blob` when re-vendoring.
+modules/connect/src/** -text
+
+
 # from <https://www.apache.org/licenses/LICENSE-2.0.txt> and never paraphrased,
 # reformatted or extended (no copyright-holder name is filled in — the canonical
 # appendix placeholders stay as published). It is legal evidence as well as

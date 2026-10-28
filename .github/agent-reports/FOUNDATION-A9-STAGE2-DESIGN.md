@@ -29,7 +29,13 @@ projectPublicContact({ authority, configuration }): PublicContactProjection
   authorizationRefs: string[],        // authority.authorizationRef must appear here
   publisherRefs?: string[],           // when present, authority.publisherRef must appear
   status: "enabled" | "disabled" | "revoked",
-  methods?: { id, label, kind: "email", address, status? }[]
+  methods?: {
+    methodRef: string;                 // NOT `id`; ≤ 64 (MAX_PUBLIC_METHOD_REF_LENGTH)
+    label: string;                     // ≤ 64
+    kind: "email";
+    address: string;                   // ≤ 254; the Module owns address validity
+    status: "enabled" | "disabled" | "revoked";   // REQUIRED, not optional
+  }[]                                  // ≤ 20 (MAX_PUBLIC_METHODS)
 }
 ```
 
@@ -85,33 +91,43 @@ Proposed mapping (**needs confirmation — §4**):
 | `authorizationRef` | `binding.id` — the verified publication authorization |
 | `publisherRef` | the publishing Hub, **only** when a Hub publishes a Spoke's Site |
 
-## 4. THE OPEN DECISION — where is Site configuration authoritative at render time?
+## 4. RESOLVED BY THE CHIEF ARCHITECT — configuration authority
 
-Two pathways exist in this repository and they are not interchangeable:
+**This section previously asked a question that the codebase had already answered. That was wrong, and
+the error is recorded rather than deleted, because the cause is instructive.**
 
-1. **`site.config.json`** (`deployment/spokes/<spoke>/site.config.json`), read through the validated
-   loader in `src/config` — `src/config/loader.ts` already owns `contact.email` / `contact.phone`, and
-   §25 makes configuration the single source of truth for site settings.
-2. **The EFS property cascade**, authored in `deployment/efs/manifest.json` and surfaced at render as
-   `view.properties.publicEntries()`, which `efs-page.tsx` reads for `brand.name`, `contact.address`,
-   `contact.phone` and `openingHours`. `contact.address` and `contact.phone` appear **nowhere** as
-   literals under `src/**`, which is what proves pathway 2 is real and separate from the loader.
+`EfsView` (line 74 of `src/app/[[...segments]]/efs-request.ts`) carries
+`readonly context: SpokeRuntimeContext`, and `SpokeRuntimeContext`
+(`src/config/installation-runtime.ts:108`) already holds `siteConfig`, `runtimeSegment`, `id`,
+`canonicalHostname`, `resources`, `runtimeAssetNamespaces`, and the optional composite identity
+`spokeHubId` / `spokeRef`. The page view therefore always had the owning Spoke's verified configuration.
 
-The instruction reads as pathway 1 for configuration ("Wire **Site configuration**, verified EFS
-publication authority, `projectPublicContact`"). Making that work needs one thing that has not been
-established:
+**Why it was missed:** the first search used `Select-String -Path 'src\app\[[...segments]]\efs-request.ts'`.
+In PowerShell `[` starts a character class, so `[[...segments]]` was a wildcard that matched no file and
+the search returned *nothing* — which read as "the member does not exist". The same class of mistake as
+the CRLF vendor bug in Stage 1: **an absence of output was mistaken for evidence of absence.** Every
+later search used `-LiteralPath`.
 
-> **At `efs-page.tsx`, how does a render know WHICH Spoke's `site.config.json` applies?**
+**Ruling:** `view.context.siteConfig` is the Spoke's authoritative configuration. Connect policy is
+NOT authored in the EFS property cascade, and no alternative configuration system is created.
 
-`EfsView` exposes `binding`, `facet`, `locale`, `page`, `properties`, `navigation`, `alternates`,
-`source` and `canonical` — but no Spoke configuration. Either the view must carry the resolved Spoke
-identity (with the loader consulted server-side), or public-contact configuration belongs in the
-property cascade after all.
+Consequences now implemented:
 
-**This is a decision for the Chief Architect, not a guess for the implementer.** Choosing wrongly
-produces one of the two failures the directive forbids: configuration read through the wrong pathway,
-so an author's file is silently ignored; or a second configuration source invented to work around it,
-which §25 forbids.
+- the authored block is `communication.publicContact`, **keyed by EFS Site id**, added to
+  `siteConfigFileSchema` and kept independent of `contact.*`, `connect.methods[]` and
+  `features.contact`;
+- a missing Site entry is `absent` — there is **no default-Site fallback**, because that would be one
+  Site borrowing another Site's publication authorization;
+- `authorizationRefs` is explicitly authored (min 1, no wildcard), so adding a binding cannot silently
+  start publishing an address nobody approved for it;
+- identity is **never authored**: the adapter composes Connect's document from verified runtime values,
+  and brands them through the Module's own `identifier` factories after bounding them at
+  `MAX_IDENTIFIER_LENGTH` (the factories validate nothing and must never see visitor input);
+- the `mailto:` href is the Module's own `method.href`, never rebuilt in Foundation.
+
+The two pathways that appeared to compete are in fact complementary, and each keeps its own job:
+`site.config.json` decides *what a Site offers and to which publications* (via `context.siteConfig`),
+while the EFS manifest decides *where a Site is published* (`binding`, and therefore `authorizationRef`).
 
 ## 5. Form contract (`modules/connect/src/application/send-direct-enquiry.ts`)
 

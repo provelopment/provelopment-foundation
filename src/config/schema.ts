@@ -1313,6 +1313,63 @@ const siteConfigEntrySchema = z
   })
   .strict();
 
+/* ────────────────────────────── Connect-Module communication (A9) ────────────────────────────── */
+
+/**
+ * FOUNDATION-CONNECT-MODULE-INTEGRATION-A9 — the Connect-Module-backed communication capabilities of ONE
+ * Site, keyed by **EFS Site id**.
+ *
+ * Deliberately independent of the two older contracts, which keep their exact behaviour:
+ *
+ *  - `contact.email` / `contact.phone` — the business's displayed contact details;
+ *  - `connect.methods[]`              — connection methods PRESENTED on the Connect page;
+ *  - `features.contact`              — whether the legacy contact surface exists at all.
+ *
+ * A public email address that may be offered as a `mailto:` destination is a PUBLICATION AUTHORIZATION,
+ * not a display detail: it says which verified publications may expose which address. Hiding it inside
+ * the display block would let a cosmetic edit change who can reach the business.
+ *
+ * Keyed by Site id so that a Site speaks only for itself: an absent entry means "this Site offers no
+ * public address", never "inherit the default Site's".
+ *
+ * Foundation validates the SHAPE here; the semantics — is this address usable, is this method enabled,
+ * does this authorization cover this publication — belong to the pinned Module
+ * (`projectPublicContact`), and are never duplicated in this file.
+ */
+export const communicationPublicContactMethodSchema = z.object({
+  /** The Module's method identifier (bounded at 64 by `MAX_PUBLIC_METHOD_REF_LENGTH`). */
+  methodRef: z.string().min(1).max(64),
+  /** The label the visitor sees; authored per locale by the Site, never hard-coded by the platform. */
+  label: z.string().min(1).max(64),
+  /** The public address itself. No `.email()` here: the Module owns address validity, once. */
+  address: z.string().min(1).max(254),
+  status: z.enum(["enabled", "disabled", "revoked"]),
+});
+
+export const communicationPublicContactSiteSchema = z
+  .object({
+    status: z.enum(["enabled", "disabled", "revoked"]),
+    /**
+     * The verified binding ids that may expose this Site's public address. Explicit, with no wildcard:
+     * authoring an id here IS the act of authorizing that publication, so a newly added binding cannot
+     * silently start publishing an address nobody approved for it.
+     */
+    authorizationRefs: z.array(z.string().min(1)).min(1, "must name at least one authorized binding"),
+    publisherRefs: z.array(z.string().min(1)).optional(),
+    methods: z.array(communicationPublicContactMethodSchema).max(20),
+  })
+  .strict();
+
+export const communicationConfigSchema = z
+  .object({
+    publicContact: z
+      .record(z.string().min(1), communicationPublicContactSiteSchema)
+      .optional(),
+  })
+  .strict();
+
+export type CommunicationConfiguration = z.infer<typeof communicationConfigSchema>;
+
 export const siteConfigFileSchema = z
   .object({
     site: siteSettingsSchema,
@@ -1342,6 +1399,12 @@ export const siteConfigFileSchema = z
   features: featuresConfigSchema.optional(),
   /** Phase M — configurable connection modes exposed on the Connect page. */
   connect: connectConfigSchema.optional(),
+  /**
+   * FOUNDATION-CONNECT-MODULE-INTEGRATION-A9 — Connect-Module-backed communication capabilities, per EFS
+   * Site. Absent → the Site offers no public address and renders no contact form: non-delivering by
+   * default, which is the shipped state of every Foundation reference site.
+   */
+  communication: communicationConfigSchema.optional(),
   /**
    * Optional legal documents (Phase D). Each entry must have canonical content
    * under `content/legal/<defaultLocale>/<slug>.md` to be exposed; content

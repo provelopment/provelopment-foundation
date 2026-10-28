@@ -41,9 +41,38 @@ No identity is inferred from a host, prefix, folder name, Site name or locale sp
 - each binding's host, prefix, Site set/mode, locales, default locale and canonical/alias role.
 
 `deployment/spokes.json` declares the real Spoke hierarchy. A publication owner is resolved from
-those two declarations only. A host the legacy host-routing table claims for another Spoke is a
-conflict and is refused. A host introduced only by an EFS binding is legitimate; its publication
-owner is the authority.
+those two declarations only.
+
+A hostname is not an exclusive Spoke property. `site.url` is a Spoke's canonical ORIGIN — informational —
+and the authority for a public address is the explicit binding. So a hostname is classified for the purpose
+of LEGACY HOST-ONLY DISPATCH:
+
+- **exclusive** — claimed by exactly one declared Spoke. Hostname dispatch selects it.
+- **shared** — claimed by more than one declared Spoke. Several Spokes then publish disjoint path
+  prefixes of it, and hostname dispatch selects **nothing**.
+- **unknown** — claimed by nobody. A binding may introduce it.
+
+That classification decides only which Spoke a host with no matching binding may fall back to. It is **not**
+an ownership input for an EFS publication: an informational `site.url` cannot veto a publication whose
+binding names its own owner. A publication is refused only when its declaration is unusable — an undeclared
+Spoke, the wrong Spoke Hub, an ambiguous owner, a flat/legacy Installation with no explicit hierarchy, or two
+publications claiming the same host and prefix (`bindingIssues`, the explicit collision check).
+
+Presentation-asset authorization follows the same authority, never the classification. A Spoke's namespace
+(`/spokes/<segment>/assets/**`) is served on a host only when an explicit publication binding on that host
+names that Spoke; being DECLARED in an Installation is not publication. The request boundary cannot read
+`efs/manifest.json`, so the build projects the manifest's bindings for it (`FOUNDATION_DEPLOYMENT_EFS_PUBLICATIONS`,
+alongside the routing description).
+
+That projection has THREE distinct outcomes, and they must not be collapsed (`presentationAssetAuthority`):
+**EFS absent** (the build projected `null`) keeps the released host-only rule; **EFS present with an empty
+set** means EFS controls the deployment and publishes nothing on that host, which is REFUSED; **EFS present
+with segments** authorizes exactly those. A malformed projection refuses everything. An informational
+`site.url` therefore never substitutes for a publication in an EFS-controlled deployment.
+
+`GET /` on a host whose bindings are all prefix-scoped names no publication and is refused. A deterministic
+root entry would require an explicit authored policy; there is no "whichever binding came first", and no
+such capability is implemented.
 
 There is one production request path. Legacy Page/locale composition is reachable only through a
 non-production test utility gated by `FOUNDATION_ENABLE_LEGACY_TEST_RUNTIME`; it is never a fallback
@@ -779,8 +808,10 @@ today is narrower than the approved target. These two lists are not each other:
 - SEVERAL independently identified Spoke Hubs per installation: an Installation may author `spokeHubs[]`,
   each Hub carrying its id, its members and its OWN Hub-scoped switcher. Its members are addressed by the
   COMPOSITE `(SpokeHubId, SpokeId)`, so a local id may repeat across Hubs.
-- Spoke ids scoped to their owning Spoke Hub — while an exact hostname claim stays UNIQUE Installation-wide,
-  because a request carries one host and must select exactly one Spoke in exactly one Hub.
+- Spoke ids scoped to their owning Spoke Hub — while an EXCLUSIVE hostname claim (one Spoke only) still
+  selects that Spoke on its own. A hostname claimed by more than one Spoke is a SHARED host: it selects
+  nothing by hostname, and only an explicit EFS binding (host + whole-segment prefix) may answer a
+  request there.
 - Managed-mode composite Site ownership and resolution: `(BusinessId, SiteId)` carried through membership and
   lookup. **This remains unimplemented** (and is not part of this work).
 - The identity-safe addressing, content, dictionary and asset isolation the composite identity implies —

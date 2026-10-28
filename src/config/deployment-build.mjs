@@ -63,7 +63,8 @@
  * implementation this seam and the TypeScript authority both consume, so a manifest this seam selects can
  * never be one the configuration/domain layer would refuse.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 
 import {
@@ -147,6 +148,30 @@ export const DEPLOYMENT_SPOKE_SEGMENT_ENV = "FOUNDATION_DEPLOYMENT_SPOKE_SEGMENT
  * Spoke root or restates an identity rule: the build resolved the table from the accepted authorities.
  */
 export const DEPLOYMENT_HOST_ROUTING_ENV = "FOUNDATION_DEPLOYMENT_HOST_ROUTING";
+
+/**
+ * THE PUBLICATION RIGHTS THE EDGE MAY ASSERT, PROJECTED AT BUILD TIME
+ * ==================================================================
+ *
+ * The request boundary runs where the filesystem and the validated manifest are both unavailable, so it
+ * cannot decide whether a Spoke is *published* on a host — only whether a Spoke is *declared*. Those are not
+ * the same question, and treating "declared" as "published" let an unpublished Spoke claim a public asset
+ * URL on a shared host.
+ *
+ * This projection answers exactly the question the boundary is allowed to ask:
+ *
+ *     for THIS public host, which Spokes have an explicit EFS publication binding?
+ *
+ * It is a DERIVED READ-MODEL of `efs/manifest.json`, never an independent registry: nothing here is authored
+ * by hand, and nothing here can GRANT a right the manifest does not declare. It can only be NARROWER than
+ * the manifest — a binding that is unparseable, or that names no host, projects nothing — so a projection
+ * defect fails closed. The authoritative validation still happens at request time (`@/config/efs/manifest`),
+ * which refuses an invalid manifest outright rather than serving a subset of it.
+ *
+ * Ownership is never taken from `site.url` here: a Spoke's informational origin says which host it is SERVED
+ * FROM, not which host it may publish on.
+ */
+export const DEPLOYMENT_EFS_PUBLICATIONS_ENV = "FOUNDATION_DEPLOYMENT_EFS_PUBLICATIONS";
 
 /**
  * The capsule directory the selector probes: `<repositoryRoot>/deployment`.
@@ -240,6 +265,180 @@ export function installationSpokes(installationRoot) {
 }
 
 
+/** The manifest override the runtime reads (`@/app/[[...segments]]/efs-request.ts`). Mirrored, not moved. */
+const EFS_MANIFEST_ENV = "FOUNDATION_EFS_MANIFEST";
+
+/**
+ * WHERE A VALIDATED PROJECTION LIVES (R07)
+ * ========================================
+ *
+ * `next.config.ts` is SYNCHRONOUS (`env: deploymentEnvironment(resolveDeploymentForBuild())`), while the
+ * authoritative validator is TypeScript and can only run through Vite's module runner, which is async. The
+ * two facts are reconciled by producing the projection in a PREBUILD step
+ * (`scripts/efs/validate-publications.mjs`) and reading it here, synchronously.
+ *
+ * The cache is keyed by the Installation root's absolute path and stamped with the manifest digest, so a
+ * projection can never describe a different Installation or an older manifest. It is deliberately OUTSIDE
+ * every deployment root: a build must not write into an installation it is reading.
+ */
+export const EFS_PROJECTION_DIRECTORY = path.join(
+  "node_modules",
+  ".cache",
+  "foundation",
+  "efs-publications",
+);
+
+/**
+ * The manifest this deployment reads, AND whether the selection was EXPLICIT.
+ *
+ * `explicit` matters because an explicitly selected manifest that does not exist is a CONFIGURATION ERROR,
+ * not an EFS-absent Installation: treating it as absent would silently reactivate the legacy host-only rule
+ * and grant presentation-asset rights to `site.url`.
+ */
+export function efsManifestSelection(root, environment = process.env) {
+  const override = environment[EFS_MANIFEST_ENV]?.trim();
+  const explicit = override !== undefined && override !== "";
+  return {
+    path: explicit ? override : path.join(root, "efs", "manifest.json"),
+    explicit,
+  };
+}
+
+/** The manifest path alone, for callers that do not need to know how it was selected. */
+export function efsManifestPath(root, environment = process.env) {
+  return efsManifestSelection(root, environment).path;
+}
+
+/** Digest of the manifest's bytes, so a projection can never outlive the document it describes. */
+export function efsManifestDigest(manifestPath) {
+  return createHash("sha256").update(readFileSync(manifestPath)).digest("hex");
+}
+
+/**
+ * The projection file for one Installation root.
+ *
+ * The key is a digest of the root's CANONICAL path, because the producer and the reader must name the SAME
+ * file for the same Installation (R11 §5). Two spellings of one directory — a temporary root reached through
+ * a short alias, a case variant, a trailing separator — are one Installation, and a key that disagreed would
+ * let a producer's refusal delete one file while the boundary kept reading another: the exact "an old
+ * projection must not survive the failure" defect. Canonicalization happens HERE, once, for both sides.
+ */
+export function efsProjectionPath(root, repositoryRoot = process.cwd()) {
+  const resolved = (() => {
+    try {
+      return realpathSync(root);
+    } catch {
+      // A root that does not exist yet is still keyable; `path.resolve` keeps the function total.
+      return path.resolve(root);
+    }
+  })();
+  const key = createHash("sha256").update(resolved).digest("hex").slice(0, 32);
+  return path.join(repositoryRoot, EFS_PROJECTION_DIRECTORY, `${key}.json`);
+}
+
+/**
+ * The sentinel an UNRESOLVABLE Installation hierarchy yields (R11 §5)
+ * ==================================================================
+ *
+ * `installationSpokes(root)` throwing means the question "which Spokes does this Installation declare?"
+ * has NO answer — not that it declares none. Such a state must never establish ownership provenance, so
+ * the digest is a value no recorded digest can equal and the reader grants nothing for it.
+ *
+ * It is exported because BOTH sides of the contract have to name it: the reader compares against it, and
+ * the producer must REFUSE instead of recording it (§5). Two string literals would let one side drift.
+ */
+export const EFS_HIERARCHY_UNRESOLVED = "unresolvable-installation";
+
+/**
+ * Digest of the Installation's OWN Spoke hierarchy declaration (R09 §2)
+ * ================================================================
+ *
+ * A projection states which composite Spoke owners it verified. That statement is only true for the
+ * hierarchy it was verified AGAINST, so the projection records this digest and a reader refuses a projection
+ * whose digest no longer matches. Re-adding one Spoke, renaming one, or moving it between Hubs therefore
+ * invalidates every permission derived from the old hierarchy instead of silently preserving it.
+ *
+ * The declaration is located through the ONE authority (`installationSpokes`), never by composing a path to
+ * it. A declaration the authority cannot resolve yields a sentinel no recorded digest can equal: an
+ * unreadable hierarchy is INDISTINGUISHABLE FROM A STALE PROJECTION, and grants nothing.
+ */
+export function efsInstallationDigest(root) {
+  let manifestFile;
+  try {
+    manifestFile = installationSpokes(root).manifestFile;
+  } catch {
+    return EFS_HIERARCHY_UNRESOLVED;
+  }
+  return typeof manifestFile === "string" && existsSync(manifestFile)
+    ? createHash("sha256").update(readFileSync(manifestFile)).digest("hex")
+    : "no-installation-declaration";
+}
+
+/**
+ * Project the VALIDATED publication facts the request boundary may assert.
+ *
+ * FOUR states of the world, and the caller must NOT collapse them:
+ *
+ *   1. genuine NON-EFS Installation (no authored, no explicitly selected manifest) -> `null`
+ *      the released host-only rule still applies;
+ *   2/3. EFS CONTROLS the deployment — a valid or an invalid manifest -> rights come ONLY from a current,
+ *      verified projection, so `[...]` or `[]`;
+ *   4. an EXPLICITLY SELECTED but MISSING manifest -> `[]`
+ *      a configuration error grants nothing. It must never be mistaken for state 1.
+ *
+ * FAIL CLOSED: any projection that is absent, unreadable, malformed, or that describes another Installation,
+ * another manifest, or a superseded Spoke hierarchy yields `[]`, never `null`.
+ *
+ * @param {string} root the installation root whose manifest is projected
+ * @param {Record<string, string | undefined>} environment the build environment (manifest override)
+ * @returns {{ host: string, spokeId: string, spokeHubId?: string }[] | null}
+ */
+function efsPublicationClaims(root, environment) {
+  const selection = efsManifestSelection(root, environment);
+
+  // 1. GENUINE NON-EFS INSTALLATION: nothing authors, nothing selects. The legacy rule stands.
+  //    (A read must not mutate, so nothing is deleted here; a stale projection is ignored by digest.)
+  if (!existsSync(selection.path) && !selection.explicit) return null;
+
+  // 4. EXPLICITLY SELECTED BUT MISSING: a configuration error. EFS controls, and it authorizes nothing.
+  if (!existsSync(selection.path)) return [];
+
+  const projectionPath = efsProjectionPath(root);
+  if (!existsSync(projectionPath)) return [];
+
+  /** @type {unknown} */
+  let projection;
+  try {
+    projection = JSON.parse(readFileSync(projectionPath, "utf8"));
+  } catch {
+    return [];
+  }
+  if (projection === null || typeof projection !== "object" || Array.isArray(projection)) return [];
+
+  const { manifestPath: recorded, manifestDigest, installationDigest, claims } =
+    /** @type {Record<string, unknown>} */ (projection);
+
+  // The projection must describe THIS Installation and THIS manifest selection with THIS content, verified
+  // against THIS Spoke hierarchy. Any disagreement makes the whole projection unusable, not partly usable.
+  if (recorded !== selection.path) return [];
+  if (manifestDigest !== efsManifestDigest(selection.path)) return [];
+  if (installationDigest !== efsInstallationDigest(root)) return [];
+  if (!Array.isArray(claims)) return [];
+
+  /** @type {{ host: string, spokeId: string, spokeHubId?: string }[]} */
+  const verified = [];
+  for (const claim of claims) {
+    if (claim === null || typeof claim !== "object" || Array.isArray(claim)) return [];
+    const { host, spokeId, spokeHubId } = /** @type {Record<string, unknown>} */ (claim);
+    if (typeof host !== "string" || host === "") return [];
+    if (typeof spokeId !== "string" || spokeId === "") return [];
+    if (spokeHubId !== undefined && (typeof spokeHubId !== "string" || spokeHubId === "")) return [];
+    verified.push(spokeHubId === undefined ? { host, spokeId } : { host, spokeId, spokeHubId });
+  }
+  return verified;
+}
+
+
 /**
  * Resolves the deployment this build serves.
  *
@@ -261,7 +460,10 @@ export function installationSpokes(installationRoot) {
  * @param {string} [repositoryRoot] the repository the deployment is resolved inside
  * @returns {ResolvedDeployment}
  */
-export function resolveDeploymentForBuild(environment = process.env, repositoryRoot = process.cwd()) {
+export function resolveDeploymentForBuild(
+  environment = /** @type {Record<string, string | undefined>} */ (process.env),
+  repositoryRoot = process.cwd(),
+) {
   const override = environment[DEPLOYMENT_ROOT_ENV]?.trim();
   const capsuleRoot = capsuleDirectory(repositoryRoot);
   const capsuleAuthored =
@@ -289,6 +491,9 @@ export function resolveDeploymentForBuild(environment = process.env, repositoryR
   // M16 — the request boundary's routing description, resolved HERE from the same authorities this seam
   // already consumes (never composed by hand and never re-derived from a directory name).
   const hostRouting = hostRoutingForInstallation(root);
+  // The request boundary cannot read the filesystem or the manifest, so the build projects the ONE fact it
+  // may assert there: which Spokes have an explicit publication binding for a host.
+  const efsPublications = efsPublicationClaims(root, environment);
 
   if (authoring.mode === "legacy") {
     const siteConfigFile = path.join(root, DEPLOYMENT_CONFIG_FILE_NAME);
@@ -301,6 +506,7 @@ export function resolveDeploymentForBuild(environment = process.env, repositoryR
       config: readFileSync(siteConfigFile, "utf8"),
       spoke: null,
       hostRouting,
+      efsPublications,
     };
   }
 
@@ -323,6 +529,7 @@ export function resolveDeploymentForBuild(environment = process.env, repositoryR
       config: "",
       spoke: null,
       hostRouting,
+      efsPublications,
     };
   }
 
@@ -340,6 +547,7 @@ export function resolveDeploymentForBuild(environment = process.env, repositoryR
       config: readFileSync(siteConfigFile, "utf8"),
       spoke,
       hostRouting,
+      efsPublications,
     };
   }
 
@@ -356,6 +564,7 @@ export function resolveDeploymentForBuild(environment = process.env, repositoryR
     config: "",
     spoke: null,
     hostRouting,
+    efsPublications,
   };
 }
 
@@ -379,5 +588,6 @@ export function deploymentEnvironment(resolved) {
     [DEPLOYMENT_SPOKE_ROOT_ENV]: resolved.spoke?.relativeRoot ?? "",
     [DEPLOYMENT_SPOKE_SEGMENT_ENV]: resolved.spoke?.segment ?? "",
     [DEPLOYMENT_HOST_ROUTING_ENV]: JSON.stringify(resolved.hostRouting),
+    [DEPLOYMENT_EFS_PUBLICATIONS_ENV]: JSON.stringify(resolved.efsPublications),
   };
 }

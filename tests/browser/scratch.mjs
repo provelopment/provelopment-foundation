@@ -52,9 +52,32 @@ const REPORT_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), ".re
  * different directory to be refused from. Only `public/spokes/**` is added — never the shared platform
  * namespace — and the scenario removes exactly the segments it created.
  */
+/**
+ * WHERE A LOCAL RUN PUTS ITS DISPOSABLE STATE (R08 §8)
+ * ===================================================
+ *
+ * The harness writes disposable installations, browser profiles and its report into a TEMPORARY root, and a
+ * local run must be able to keep that inside a directory the operator has approved — without the repository
+ * ever naming one machine's path.
+ *
+ * Two supported mechanisms, in order:
+ *
+ *   1. `FOUNDATION_TEST_SCRATCH_ROOT` — the explicit, generic knob. Nothing else in Foundation reads it, and
+ *      unset (the CI case) behaviour is exactly what it was.
+ *   2. the platform's own temporary directory (`os.tmpdir()`), which already honours `TMPDIR` / `TEMP` / `TMP`.
+ *
+ * A scenario that creates its own installation with `mkdtempSync(path.join(os.tmpdir(), …))` therefore
+ * follows (2) automatically; this resolver exists so the WRITE GUARD and the report agree with wherever that
+ * actually lands.
+ */
+export function scratchRoot() {
+  const configured = process.env.FOUNDATION_TEST_SCRATCH_ROOT?.trim();
+  return configured !== undefined && configured !== "" ? path.resolve(configured) : os.tmpdir();
+}
+
 export function harnessWriteRoots() {
   return {
-    allowed: [os.tmpdir(), REPORT_ROOT, path.join(ROOT, "public", "spokes")],
+    allowed: [scratchRoot(), REPORT_ROOT, path.join(ROOT, "public", "spokes")],
     protected: protectedRoots(),
   };
 }

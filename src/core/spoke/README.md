@@ -28,6 +28,13 @@ aliases (`www.example.com` and `example.com` may both belong to one Spoke), and 
 `example.com` never claims `foundation.example.com` or any other name beneath it — there is no
 wildcard, no suffix rule and no implicit subdomain ownership.
 
+**A hostname may be SHARED, and a shared host dispatches nothing.** `D31` makes an explicit EFS
+publication binding — a `host` plus a whole-segment `prefix` — the authority for a public URL, so
+several Spokes of one Installation may publish different prefixes of the SAME hostname. Such a
+hostname is not a declaration defect: it is a SHARED host (`sharedHostnames`), hostname dispatch
+answers `null` for it, and only a binding may answer a request there. A hostname claimed by exactly
+one Spoke is EXCLUSIVE and keeps the accepted dispatch behaviour.
+
 **A Site code belongs to one Hub in its Spoke.** A public URL is `/<site>/<locale>/<route>` with no
 Hub segment, so after the hostname has chosen the Spoke the Site code alone must identify the Site;
 the same code in two *different* Spokes is valid, because the hostname already separates them.
@@ -71,12 +78,13 @@ The outer layer now has an IDENTITY, and the hierarchy it names is
 | `InstallationSpokeHubCollection` | an Installation's identified Hubs, in AUTHORED order (never sorted, never a directory listing) |
 | `IdentifiedSpokeRef` | the COMPOSITE reference `(SpokeHubId, SpokeId)` — the only way to name one Spoke unambiguously, because a local id may repeat in another Hub |
 | `IMPLICIT_SPOKE_HUB_ID` | the reserved id of the ONE Spoke Hub the runtime composes today. It is NOT authorable, and it is declared independently of `IMPLICIT_SPOKE_ID` and `IMPLICIT_HUB_ID` — three markers, three declarations, three rule sets, one spelling |
-| `identifiedSpokeHubCollectionIssues` | the collection's coherence: nonempty Hubs, unique Hub ids, nonempty Spoke membership, unique Spoke ids *within* a Hub, a local id reused in a different Hub ACCEPTED, and one Spoke in one Hub per exact hostname |
+| `identifiedSpokeHubCollectionIssues` | the collection's coherence: nonempty Hubs, unique Hub ids, nonempty Spoke membership, unique Spoke ids *within* a Hub, a local id reused in a different Hub ACCEPTED, and a hostname shared across Hubs ACCEPTED as a SHARED host (`sharedHostnamesAcrossHubs`) that dispatches nothing |
 | `spokeByRef(collection, ref)` | the composite lookup: an undeclared Hub or id answers `null` — never a fallback, never a default |
 
 **A Spoke id is Hub-local; a hostname is Installation-wide.** That asymmetry is the whole reason the
 composite reference exists: two Hubs may each own a Spoke called `global`, while a request carries ONE
-host and must select exactly ONE Spoke in exactly ONE Hub.
+host. A hostname claimed by one Spoke in one Hub selects that Spoke; a hostname claimed by members of
+TWO Hubs is a SHARED host, which is legitimate under `D31` and on which dispatch selects nothing.
 
 **Reuse, not restatement.** The collection's coherence is COMPOSED from the existing authorities — the
 hub-id rules (`spoke-hub-id.mjs`) and the per-`SpokeHub` rules (`coherence.ts`) — and adds only the two

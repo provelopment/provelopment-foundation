@@ -97,6 +97,24 @@ and the repository's own files are read directly, exactly as before.
 `tests/architecture/write-ownership-guard.test.ts` proves both the guard's answers and that no mutating
 call bypasses it.
 
+#### Choosing where scratch state lands (R08 §8)
+
+The temporary domain is not fixed to one machine's directory. A local run can keep every disposable
+installation, browser profile and report inside a directory it has approved, using either supported
+mechanism — both are generic, and neither is a path hard-coded into Foundation:
+
+```text
+FOUNDATION_TEST_SCRATCH_ROOT=<approved directory>   the explicit knob; `tests/browser/scratch.mjs` resolves
+                                                    the guard and the report against it
+TMPDIR / TEMP / TMP                                 the platform's own mechanism, which `os.tmpdir()`
+                                                    honours — and therefore every scenario that creates its
+                                                    installation with `mkdtempSync(path.join(os.tmpdir(), …))`
+```
+
+Verified rather than assumed: with `TEMP`, `TMP` and `TMPDIR` all set to an approved directory,
+`os.tmpdir()` reported that directory and `mkdtempSync` created `…/probe-XXXX` inside it. Unset — the CI
+case — behaviour is exactly what it always was.
+
 ### Generated asset state: one contract, two contexts
 
 The artwork the scenarios FETCH is generated output, not authored state: `pnpm assets:sync` derives

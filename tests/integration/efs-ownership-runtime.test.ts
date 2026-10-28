@@ -126,12 +126,16 @@ describe("one EFS ownership rule across every public surface (R05)", () => {
     expect((await robots()).sitemap).toBeUndefined();
   });
 
-  it("refuses a host that the routing table claims for a different Spoke", async () => {
+  it("serves a binding on a host another Spoke's informational site.url also names (R02)", async () => {
+    // The host is claimed by `other-spoke` through its INFORMATIONAL `site.url`. The publication names its
+    // own owner explicitly, and D31 makes the binding the authority for the public address, so `site.url`
+    // cannot veto it. This replaces the superseded expectation that such a host was refused.
     at("other-spoke.fixture.test");
-    await expect(efs.efsViewForCurrentRequest(["conflict", "en-001", "about"])).rejects.toThrow(
-      "NOT_FOUND",
-    );
-    expect(await sitemap()).toEqual([]);
-    expect((await robots()).sitemap).toBeUndefined();
+    const view = await efs.efsViewForCurrentRequest(["conflict", "en-001", "about"]);
+    expect(view?.context.id).toBe("shared-spoke");
+    expect(view?.publication.spokeId).toBe("shared-spoke");
+    // Discovery follows the same owner, and the host advertises the publication it really serves.
+    expect((await sitemap()).some((entry) => String(entry.url).includes("/conflict/en-001"))).toBe(true);
+    expect((await robots()).sitemap).toBe("https://other-spoke.fixture.test/sitemap.xml");
   });
 });

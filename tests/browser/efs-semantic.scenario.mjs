@@ -55,7 +55,8 @@ async function start(harness) {
     }
   }
   rmSync(installation, { recursive: true, force: true });
-  process.env.FOUNDATION_EFS_MANIFEST = previous.manifest;
+  if (previous.manifest === undefined) delete process.env.FOUNDATION_EFS_MANIFEST;
+  else process.env.FOUNDATION_EFS_MANIFEST = previous.manifest;
   process.env.FOUNDATION_EFS_CAPSULE = previous.capsule;
   throw last ?? new Error("no EFS semantic port answered");
 }
@@ -132,7 +133,8 @@ export async function run(_chrome, harness) {
   } finally {
     if (started) {
       await harness.stopServer(started.server);
-      process.env.FOUNDATION_EFS_MANIFEST = started.previous.manifest;
+      if (started.previous.manifest === undefined) delete process.env.FOUNDATION_EFS_MANIFEST;
+  else process.env.FOUNDATION_EFS_MANIFEST = started.previous.manifest;
       process.env.FOUNDATION_EFS_CAPSULE = started.previous.capsule;
       rmSync(started.installation, { recursive: true, force: true });
     }

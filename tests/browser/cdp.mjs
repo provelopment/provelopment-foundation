@@ -37,9 +37,20 @@ export function findChrome() {
   return null;
 }
 
-async function waitForDevToolsPort(userDataDir, timeoutMs = 20000) {
+async function waitForDevToolsPort(userDataDir, timeoutMs = 60000, proc = null) {
   const end = Date.now() + timeoutMs;
+  // A process that has ALREADY exited can never write DevToolsActivePort, so waiting the full budget for it
+  // only delays the real diagnosis. Fail fast and say what happened (R11 A).
+  let exited = null;
+  proc?.once("exit", (code, signal) => {
+    exited = { code, signal };
+  });
   while (Date.now() < end) {
+    if (exited !== null) {
+      throw new Error(
+        "Chrome exited before its CDP debug port became ready (code=" + String(exited.code) + ", signal=" + String(exited.signal) + ")",
+      );
+    }
     try {
       const content = await readFile(join(userDataDir, "DevToolsActivePort"), "utf8");
       const port = Number(content.split(/\r?\n/)[0].trim());
@@ -49,7 +60,7 @@ async function waitForDevToolsPort(userDataDir, timeoutMs = 20000) {
     }
     await sleep(100);
   }
-  throw new Error("Chrome CDP debug port did not become ready");
+  throw new Error("Chrome CDP debug port did not become ready within " + timeoutMs + "ms");
 }
 
 async function launchChrome(binary, { hostResolverRules } = {}) {
@@ -76,7 +87,7 @@ async function launchChrome(binary, { hostResolverRules } = {}) {
   ];
   const proc = spawn(binary, args, { stdio: "ignore", windowsHide: true });
   try {
-    const port = await waitForDevToolsPort(userDataDir);
+    const port = await waitForDevToolsPort(userDataDir, undefined, proc);
     // Connect to a PAGE target (not the browser endpoint): Page/Emulation/Runtime/
     // Input domains only exist on a page-target session.
     const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
@@ -145,7 +156,7 @@ export class Cdp {
     });
   }
 
-  waitEvent(method, timeoutMs = 20000) {
+  waitEvent(method, timeoutMs = 60000, proc = null) {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error(`timeout waiting for ${method}`)), timeoutMs);
       this._waiters.push({

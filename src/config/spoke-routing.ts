@@ -24,6 +24,7 @@ import {
   normalizeHostname,
   resolveSpokeFromHost,
   resolveSpokeRefFromHost,
+  sharedHostnamesIn,
   type Hostname,
   type IdentifiedSpokeRef,
   type Spoke,
@@ -424,6 +425,136 @@ function hubSwitchersOf(raw: unknown): readonly SpokeHubSwitcherConfig[] | undef
  * repository that has not been built: `single` with no entries, which resolves no host at all. Nothing is
  * guessed from the absence.
  */
+/**
+ * THE PUBLICATION RIGHTS THE REQUEST BOUNDARY MAY ASSERT (R03)
+ * ===========================================================
+ *
+ * The boundary must answer a question it cannot compute: *is this Spoke PUBLISHED on this host?* It has no
+ * filesystem and no validated manifest, so it can only know what the build told it. The build projects the
+ * manifest's explicit bindings into this description, exactly as it projects hostname routing — one
+ * projection of one authority, never a second registry.
+ *
+ * The distinction this module exists to enforce:
+ *
+ *     DECLARED  a Spoke in `spokes.json`                 — necessary, NOT sufficient
+ *     PUBLISHED an explicit EFS binding for THIS host     — sufficient
+ *
+ * `site.url` is not an input. It is informational (`D31`), so a host appearing in zero, one or several
+ * informational origins changes nothing here.
+ *
+ * An EMPTY result is meaningful and is NOT "deny everything": it means no EFS publication claims this host
+ * at all, and the caller must apply the released host-only rule instead.
+ */
+const DEPLOYMENT_EFS_PUBLICATIONS_ENV = "FOUNDATION_DEPLOYMENT_EFS_PUBLICATIONS";
+
+/** One projected publication fact: which Spoke a host's binding names. */
+interface EfsPublicationClaim {
+  readonly host: string;
+  readonly spokeId: string;
+  readonly spokeHubId?: string;
+}
+
+const NO_PUBLISHED_SEGMENTS: ReadonlySet<string> = Object.freeze(new Set<string>());
+
+/**
+ * Whether an Installation's presentation-asset rights come from EFS at all — and, when they do, which
+ * namespaces are authorized. The THREE outcomes R04 §3 requires to stay distinct:
+ *
+ *   `efs-absent`  no EFS runtime is configured: the released host-only rule applies (legacy compatibility);
+ *   `efs` + set   EFS controls this deployment: ONLY these namespaces are authorized, and an EMPTY set means
+ *                 "EFS controls it and publishes nothing here" — refused, never quietly handed to the
+ *                 host-only rule;
+ *   throw         the projection is malformed: every asset request fails closed.
+ *
+ * Collapsing `efs-absent` into `efs` (or the empty set into legacy) is what let a declared Spoke or an
+ * informational `site.url` decide a public asset URL. That conflation is the defect this type removes.
+ */
+export type PresentationAssetAuthority =
+  | { readonly kind: "efs-absent" }
+  | { readonly kind: "efs"; readonly segments: ReadonlySet<string> };
+
+/** `undefined` = not read yet; `null` = this build has no EFS runtime (manifest absent). */
+let publicationClaimsCache: readonly EfsPublicationClaim[] | null | undefined;
+
+const EFS_ABSENT: PresentationAssetAuthority = Object.freeze({ kind: "efs-absent" });
+
+/** The build's projected publication claims, normalized once. `null` means "no EFS runtime". */
+function publicationClaimsForBuild(): readonly EfsPublicationClaim[] | null {
+  if (publicationClaimsCache !== undefined) return publicationClaimsCache;
+
+  const raw = process.env[DEPLOYMENT_EFS_PUBLICATIONS_ENV]?.trim() ?? "";
+  // Absent, or the build's explicit "no manifest" sentinel: an EFS-absent deployment.
+  if (raw === "" || raw === "null") {
+    publicationClaimsCache = null;
+    return publicationClaimsCache;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(
+      `FOUNDATION-EFS-PUBLICATION-RIGHTS: the build's publication projection is not valid JSON: ` +
+        `${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (!Array.isArray(parsed)) {
+    // A projection that is neither the sentinel nor an array cannot be interpreted, so it authorizes nothing
+    // and refuses everything rather than falling back to a weaker rule.
+    throw new Error(
+      "FOUNDATION-EFS-PUBLICATION-RIGHTS: the build's publication projection must be an array or null.",
+    );
+  }
+
+  const claims: EfsPublicationClaim[] = [];
+  for (const entry of parsed) {
+    if (entry === null || typeof entry !== "object") continue;
+    const record = entry as Record<string, unknown>;
+    const host = typeof record.host === "string" ? normalizeHostname(record.host) : null;
+    const spokeId = typeof record.spokeId === "string" && record.spokeId !== "" ? record.spokeId : null;
+    // A malformed claim grants nothing: the projection can only ever be narrower than the manifest.
+    if (host === null || spokeId === null) continue;
+    const spokeHubId = typeof record.spokeHubId === "string" && record.spokeHubId !== ""
+      ? record.spokeHubId
+      : undefined;
+    claims.push(spokeHubId === undefined ? { host, spokeId } : { host, spokeId, spokeHubId });
+  }
+
+  publicationClaimsCache = Object.freeze(claims);
+  return publicationClaimsCache;
+}
+
+/**
+ * The presentation-asset authority for one public host.
+ *
+ * A binding that names a Spoke this build does not declare grants NOTHING — composite identity is matched on
+ * both halves, so a Hub cannot borrow its namesake's rights and an undeclared name cannot claim a namespace.
+ */
+export function presentationAssetAuthority(
+  routing: InstallationHostRouting,
+  host: string | null,
+): PresentationAssetAuthority {
+  const claims = publicationClaimsForBuild();
+  // NO EFS in this build at all: the released host-only rule remains available.
+  if (claims === null) return EFS_ABSENT;
+
+  // EFS controls this deployment. From here, `site.url` and declaration grant NOTHING.
+  const normalized = normalizeHostname(host);
+  if (normalized === null) return { kind: "efs", segments: NO_PUBLISHED_SEGMENTS };
+
+  const segments = new Set<string>();
+  for (const claim of claims) {
+    if (claim.host !== normalized) continue;
+    const entry = routing.spokes.find(
+      (candidate) => candidate.id === claim.spokeId && candidate.spokeHubId === claim.spokeHubId,
+    );
+    if (entry !== undefined) segments.add(entry.runtimeSegment);
+  }
+  return segments.size === 0
+    ? { kind: "efs", segments: NO_PUBLISHED_SEGMENTS }
+    : { kind: "efs", segments };
+}
+
 export function hostRoutingForBuild(): InstallationHostRouting {
   if (cached !== null) return cached;
 
@@ -704,6 +835,34 @@ export function routingEntryForSelection(
         : spoke.spokeHubId === selection.spokeHubId && spoke.id === selection.spokeId,
     ) ?? null
   );
+}
+
+/**
+ * THE ENTRIES CLAIMING `host` EXACTLY, and whether one of them is enough to answer a request.
+ *
+ * `0` entries: no Spoke claims this host (EFS may still own it, and an unclaimed host is refused here).
+ * `1` entry: an EXCLUSIVE claim — hostname dispatch answers with it, exactly as it always has.
+ * `2+` entries: a SHARED host. Several Spokes publish different path prefixes of it (`D31`), so no
+ * hostname rule may name an owner and dispatch answers NOTHING. The classification itself is the domain's
+ * (`@/core/spoke`'s `sharedHostnamesIn`), so the boundary cannot form a second opinion.
+ */
+export function routingClaimantsForHost(
+  routing: InstallationHostRouting,
+  host: string | null | undefined,
+): readonly SpokeHostRoutingEntry[] {
+  const normalized = normalizeHostname(host);
+  if (normalized === null) return [];
+  return routing.spokes.filter((entry) => entry.hostnameClaims.includes(normalized));
+}
+
+/** Whether this Installation's Spokes SHARE `host` — the one question a path-named asset needs. */
+export function isSharedHostInRouting(
+  routing: InstallationHostRouting,
+  host: string | null | undefined,
+): boolean {
+  const normalized = normalizeHostname(host);
+  if (normalized === null) return false;
+  return sharedHostnamesIn(routing.spokes.map((entry) => entry.hostnameClaims)).has(normalized);
 }
 
 /**

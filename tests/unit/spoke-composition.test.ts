@@ -12,7 +12,7 @@ import {
   SPOKE_ROOTS_DIRECTORY_NAME,
   resolveInstallationSpokeRoots,
 } from "@/config/spoke-roots";
-import { IMPLICIT_HUB_ID, IMPLICIT_SPOKE_ID, spokeHubIssues } from "@/core/spoke";
+import { IMPLICIT_HUB_ID, IMPLICIT_SPOKE_ID, resolveSpokeFromHost, sharedHostnames, spokeHubIssues } from "@/core/spoke";
 
 /**
  * PER-SPOKE CONFIGURATION -> DOMAIN SPOKE COMPOSITION (FOUNDATION-MULTISITE-S3D1A)
@@ -303,7 +303,7 @@ describe("canonical hostname derivation", () => {
 });
 
 describe("cross-Spoke coherence belongs to the PURE contract, never to the loader", () => {
-  it("refuses two Spokes whose derived canonical hostname is the SAME", () => {
+  it("COMPOSES two Spokes whose derived canonical hostname is the SAME — a SHARED host", () => {
     const root = explicitInstallation([
       {
         id: "foundation",
@@ -313,18 +313,27 @@ describe("cross-Spoke coherence belongs to the PURE contract, never to the loade
       { id: "demo", locator: spokeLocator("demo"), config: siteConfigJson({ url: "https://example.com" }) },
     ]);
 
-    expect(captureFailure(() => compose(root))).toMatch(/claimed by more than one Spoke/);
+    // The loader reads, derives and composes; it does not invent an ownership rule of its own. Two Spokes
+    // authoring one public origin is a legitimate SHARED host under `D31`, so composition SUCCEEDS.
+    const spokeHub = compose(root);
+    expect(spokeHub.spokes.map((spoke) => spoke.identity.id)).toEqual(["foundation", "demo"]);
+    expect(spokeHub.spokes.map((spoke) => spoke.identity.canonicalHostname)).toEqual([
+      "example.com",
+      "example.com",
+    ]);
   });
 
-  it("states that rule in spokeHubIssues itself (the same message, composed by hand)", () => {
+  it("states that classification in the PURE contract, not in the loader", () => {
     const config = parseSiteConfig(siteConfigJson({ url: "https://example.com" }));
     const a = configureSpoke({ id: "foundation", root: "a" }, config);
     const b = configureSpoke({ id: "demo", root: "b" }, config);
+    const spokeHub = { spokes: [a, b] };
 
-    expect(spokeHubIssues({ spokes: [a, b] })).toEqual([
-      'hostname "example.com" is claimed by more than one Spoke (foundation, demo): one host can belong ' +
-        "to only one Spoke",
-    ]);
+    // No declaration defect: the hostname is shared, not ambiguous-by-mistake.
+    expect(spokeHubIssues(spokeHub)).toEqual([]);
+    expect([...sharedHostnames(spokeHub.spokes)]).toEqual(["example.com"]);
+    // And the consequence is dispatch's, stated once: a shared host names no owner.
+    expect(resolveSpokeFromHost(spokeHub, "example.com")).toBeNull();
   });
 });
 

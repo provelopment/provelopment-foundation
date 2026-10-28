@@ -30,11 +30,24 @@
  * filesystem error. It is a defect only in the RESOLVED model, which is exactly what these checks
  * describe.
  *
- * ONE EXACT HOSTNAME BELONGS TO ONE SPOKE
- * ---------------------------------------
- * Ownership is exact, so a conflict is simple: the SAME hostname named by two different Spokes. No
- * match-space reasoning is needed — a claim for `example.com` never reaches `sub.example.com` — so the
- * only ambiguity two Spokes can create is naming the identical hostname.
+ * ONE EXACT HOSTNAME MAY BE SHARED, AND A SHARED HOSTNAME DISPATCHES NOTHING
+ * ------------------------------------------------------------------------
+ * A hostname authored in `site.url` is that Spoke's CANONICAL ORIGIN. It is not, by itself, an exclusive
+ * ownership claim over a public address: `D31` makes an explicit EFS publication binding — `host` plus a
+ * whole-segment `prefix` — the authority for a public URL, and several Spokes of one Installation may
+ * therefore publish different prefixes of the SAME hostname.
+ *
+ * So this module no longer refuses a hostname claimed by several Spokes. It CLASSIFIES it:
+ *
+ *   · a hostname claimed by exactly one Spoke is EXCLUSIVE — hostname dispatch may select that Spoke;
+ *   · a hostname claimed by more than one Spoke is SHARED — hostname dispatch selects NOTHING, because
+ *     "which Spoke answers this host" has no answer, and the only authority that may answer a request on
+ *     that host is an explicit publication binding.
+ *
+ * The refusal moved from `coherence` to `resolve`: ambiguity is not a malformed declaration, it is a
+ * question that must be answered by the binding rather than by the host. What remains a defect is a
+ * declaration that cannot be read at all — a Spoke that states the same claim twice, a claim that is not a
+ * normalized hostname, or a Spoke that claims no hostname.
  *
  * EVERY ISSUE IS REPORTED, IN ORDER
  * ---------------------------------
@@ -155,7 +168,8 @@ function spokeIssues(spoke: Spoke): readonly string[] {
  *
  * The rules are: the Spoke Hub coordinates at least one Spoke; Spoke ids are unique; every Spoke
  * claims at least one hostname, its canonical host among them, and in the normalized spelling; every
- * Spoke owns at least one Hub with a unique id; no hostname is claimed by more than one Spoke; every
+ * Spoke owns at least one Hub with a unique id; no Spoke states the same hostname claim twice (while two
+ * DIFFERENT Spokes may legitimately share one hostname — see `sharedHostnames`); every
  * Hub owns at least one Site; no Site code occurs twice within one Spoke (while the same code in
  * two DIFFERENT Spokes is allowed); and exactly ONE of a Spoke's Sites is its default (the
  * designation is Spoke-wide, and each Spoke has its own).
@@ -186,22 +200,58 @@ export function spokeHubIssues(spokeHub: SpokeHub): readonly string[] {
     }
   }
 
+  // A hostname claimed by SEVERAL Spokes is a SHARED host, not a defect: `sharedHostnames` is the ONE
+  // classifier, and `./resolve` is what refuses to dispatch such a host. Only a Spoke that states the SAME
+  // claim twice has produced a declaration that cannot be read.
   for (const [hostname, claimants] of claimantsByHostname) {
-    if (claimants.length === 1) continue;
-    const distinct = [...new Set(claimants)];
-    if (distinct.length === 1) {
-      issues.push(
-        `Spoke "${distinct[0]}": the hostname claim "${hostname}" is stated more than once`,
-      );
-      continue;
-    }
-    issues.push(
-      `hostname "${hostname}" is claimed by more than one Spoke (${distinct.join(", ")}): ` +
-        "one host can belong to only one Spoke",
-    );
+    if (new Set(claimants).size === claimants.length) continue;
+    issues.push(`Spoke "${claimants[0]}": the hostname claim "${hostname}" is stated more than once`);
   }
 
   return issues;
+}
+
+/**
+ * THE SHARED HOSTNAMES of a set of Spokes: every normalized hostname claimed by more than one DISTINCT
+ * Spoke, in the order the claims were read.
+ *
+ * This is the ONE classification the request path asks about. A hostname in this set may not be used for
+ * hostname dispatch — `./resolve` answers `null` for it — and its requests are answerable only by an
+ * explicit publication binding (`@/core/efs/publication`), whose `host + prefix` claim is what selects the
+ * owner. A hostname absent from the set is EXCLUSIVE and keeps the accepted dispatch behaviour, including
+ * the one-Spoke compatibility rule.
+ *
+ * Pure: it reads constructed values only, so a caller may ask it of one Spoke Hub, of a whole identified
+ * collection, or of the routing description a build inlined — the answer cannot drift between them.
+ */
+export function sharedHostnames(spokes: readonly Spoke[]): ReadonlySet<Hostname> {
+  return sharedHostnamesIn(spokes.map((spoke) => spoke.identity.hostnameClaims));
+}
+
+/**
+ * THE SAME CLASSIFICATION over raw claim sets — the form a caller holds when it has claims but no Spokes
+ * (the build's inlined routing description, for instance).
+ *
+ * `sharedHostnames` delegates here, so "a hostname claimed by more than one claimant is shared" is decided
+ * in exactly ONE place and the request boundary cannot form a second opinion about it.
+ */
+export function sharedHostnamesIn(
+  claimSets: readonly (readonly Hostname[])[],
+): ReadonlySet<Hostname> {
+  const claimantsByHostname = new Map<Hostname, number>();
+  for (const claims of claimSets) {
+    // A claimant that states one hostname twice is ONE claimant: `spokeHubIssues` refuses the repeated
+    // claim, and the classification must never turn that defect into a "shared" host.
+    for (const hostname of new Set(claims)) {
+      claimantsByHostname.set(hostname, (claimantsByHostname.get(hostname) ?? 0) + 1);
+    }
+  }
+
+  const shared = new Set<Hostname>();
+  for (const [hostname, claimants] of claimantsByHostname) {
+    if (claimants > 1) shared.add(hostname);
+  }
+  return shared;
 }
 
 /** True when a Spoke Hub satisfies every coherence rule. */

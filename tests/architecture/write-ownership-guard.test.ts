@@ -123,6 +123,8 @@ const SANCTIONED_DOMAIN_WRITERS: Record<string, string> = {
     "<installation root>/<capsule>/operational-state.json — THIS installation's own operational record, refused a location outside the root it was constructed for. The first legitimate writer of B4A's record (B4B)",
   "scripts/installation/platform-typescript.mjs":
     "OS temp only — a per-process TypeScript resolver it writes and removes before returning, so a plain Node process can run the platform's own TypeScript tooling (B4B)",
+  "scripts/efs/publication-projection.mjs":
+    "<repo>/node_modules/.cache/foundation/efs-publications/** only — this Installation's VERIFIED publication projection, deliberately outside every deployment root so a build never writes into an installation it reads (R07)",
 };
 
 /**
@@ -131,6 +133,12 @@ const SANCTIONED_DOMAIN_WRITERS: Record<string, string> = {
  * report directory. The runtime manifest is what proves none of them reaches shipped state.
  */
 const TEST_SCRATCH_WRITERS: Record<string, string> = {
+  "tests/browser/shared-host.scenario.mjs":
+    "The harness scratch roots (its disposable Installation and generated Spoke asset namespaces, written ONLY through the canonical asset synchroniser and restored by re-running it for the installed deployment), plus the projection cache that same producer writes (R09)",
+  "tests/browser/shared-host-production.mjs":
+    "One bounded PRODUCTION smoke, writing only state the run created or state it puts back: OS temp (its disposable Installation, the producer's projection cache and the build's own streamed log), `public/spokes/**` through the canonical asset synchroniser and restored by re-running it for the installed deployment, and the IGNORED `.next` build output — which it removes before building, re-establishes for THIS Installation to be served, and restores to the reference deployment's own build before it returns, so synthetic output is never left masquerading as the installed deployment's (A1 R11 B)",
+  "tests/integration/efs-publication-projection.test.ts":
+    "OS temp (the disposable synthetic Installations it materialises, through `tests/support/shared-host-installation.mjs`) and the repository's IGNORED projection cache `<repo>/node_modules/.cache/foundation/efs-publications/**`, which it writes only by invoking the production producer; it mutates its own fixtures' manifests to prove staleness, never a committed deployment (R08)",
   "tests/browser/scratch.mjs": "the guard: OS temp + `tests/browser/.report/` + the generated Spoke namespaces, refusing every other target",
   "tests/browser/matrix.mjs": "the synthetic deployment copy, `.report/`, OS temp and the generated Spoke namespaces a multi-Spoke scenario materialises — all via scratch.mjs",
   "tests/browser/cdp.mjs": "the headless-Chrome profile directory it created, under OS temp",
@@ -170,6 +178,12 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
     "OS temp only: the disposable FOUR-SPOKE Installation (one Hub: manifest, per-Spoke configuration, " +
     "dictionaries and content) it authors for the Hub-scoped switcher's browser proof, and the caller removes. " +
     "The committed synthetic fixture is only ever READ (R1)",
+  "tests/support/shared-host-installation.mjs":
+    "OS temp only: the disposable FIVE-SPOKE / TWO-IDENTIFIED-HUB shared-host Installation (manifest, " +
+    "per-Spoke configuration, dictionaries, content and per-Spoke artwork, plus the EFS manifest that " +
+    "binds five publications to five prefixes of ONE hostname) it authors for the shared-host publication " +
+    "proofs, and the caller removes. It writes inside the root it creates or is given and nowhere else, so " +
+    "the committed synthetic fixture, the selected deployment and `public/**` are only ever READ (A1, R1)",
   "tests/browser/hub-switcher.scenario.mjs":
     "OS temp only: the disposable four-Spoke Installation (materialised through that fixture builder) and its " +
     "dev server; the browser reads the rendered pages. Every write goes through the harness's own guarded " +
@@ -378,7 +392,7 @@ describe("the executable writer inventory is explicit", () => {
   });
 
   it("names the sanctioned durable domains, each as ONE document/domain and no more", () => {
-    expect(Object.keys(SANCTIONED_DOMAIN_WRITERS)).toHaveLength(8);
+    expect(Object.keys(SANCTIONED_DOMAIN_WRITERS)).toHaveLength(9);
     expect(SANCTIONED_DOMAIN_WRITERS["scripts/sync-runtime-assets.mjs"]).toContain("public/assets");
     expect(SANCTIONED_DOMAIN_WRITERS["scripts/generate-country-code-reference.mjs"]).toContain(
       "COUNTRY-CODES.md",

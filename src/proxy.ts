@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import {
   hostRoutingForBuild,
+  isSharedHostInRouting,
+  presentationAssetAuthority,
   routingEntryForSelection,
   spokeSelectionForHost,
   type SpokeHostRoutingEntry,
@@ -61,6 +63,43 @@ function refuse(): NextResponse {
   });
 }
 
+/**
+ * The runtime segment named by a Spoke asset path, or `null` if the path does not name exactly one.
+ *
+ * A namespace name is a SINGLE path segment, so this refuses anything that could address a different
+ * namespace by construction: an empty segment, `.`/`..` (including the `%2e%2e` spelling, which decodes to
+ * `..`), an encoded separator that would widen the segment, and embedded NUL. The proxy authorizes a
+ * namespace; it must never authorize a PATH through one.
+ */
+function assetSegment(pathname: string): string | null {
+  const raw = pathname.split("/").filter(Boolean)[1] ?? "";
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    // A malformed escape is not a namespace name.
+    return null;
+  }
+  if (decoded === "" || decoded === "." || decoded === "..") return null;
+  if (decoded.includes("/") || decoded.includes("\\") || decoded.includes("\u0000")) return null;
+  return decoded;
+}
+
+/**
+ * Continue WITHOUT the boundary's private headers.
+ *
+ * `SPOKE_SELECTION_HEADER` and `EFS_REQUEST_PATH_HEADER` are the boundary's own channel upstream. A path the
+ * boundary does not resolve (a static asset namespace) must not carry a client-supplied value under those
+ * names, so both are DELETED rather than forwarded: a request cannot forge the Spoke or the binding that a
+ * later surface would read.
+ */
+function passThrough(request: NextRequest): NextResponse {
+  const headers = new Headers(request.headers);
+  headers.delete(SPOKE_SELECTION_HEADER);
+  headers.delete(EFS_REQUEST_PATH_HEADER);
+  return NextResponse.next({ request: { headers } });
+}
+
 /** The Spoke answering the CURRENT host, or `null` (dispatch: exact claims; single: the sole entry). */
 function selectedEntry(
   routing: ReturnType<typeof hostRoutingForBuild>,
@@ -100,14 +139,39 @@ function continueWithSelectedSpoke(request: NextRequest, entry: SpokeHostRouting
   return NextResponse.next({ request: { headers } });
 }
 
-/** A Spoke's own artwork is served ONLY on a host that Spoke answers for. */
+/**
+ * A Spoke's own presentation artwork is served ONLY to a caller authorized to see THAT namespace.
+ *
+ * `declared` is not `published`. A Spoke declared in `spokes.json` has a namespace in `public/spokes/**`, but
+ * that alone must not expose it: the authorization question is *does an explicit EFS publication on THIS host
+ * name this Spoke?*, and only the build can answer it (the boundary has no filesystem). `@/config/spoke-routing`
+ * carries the build's projection of the manifest's bindings; this function consumes it and decides nothing on
+ * its own, so the proxy is not a second publication authority.
+ *
+ *   EFS PRESENT — this Installation's rights come from its publication bindings. Only Spokes those bindings
+ *   name on THIS host may serve their namespace. An empty answer means "EFS controls this deployment and
+ *   publishes nothing here", which is REFUSED: neither a declared Spoke nor an informational `site.url` may
+ *   stand in for a publication, and an unreadable projection refuses everything.
+ *
+ *   EFS ABSENT — no EFS runtime is configured at all, so the released host-only rule applies unchanged: an
+ *   exclusive host serves only its own selected Spoke, a shared host names no owner, an unclaimed host names
+ *   nobody.
+ */
 function spokeAsset(request: NextRequest): NextResponse {
   const routing = hostRoutingForBuild();
-  const segment = decodeURIComponent(request.nextUrl.pathname.split("/").filter(Boolean)[1] ?? "");
-  const entry = selectedEntry(routing, request.headers.get("host"));
+  const host = request.headers.get("host");
+  const segment = assetSegment(request.nextUrl.pathname);
+  // A namespace name is ONE path segment. Anything that could climb out of it is not a Spoke.
+  if (segment === null) return refuse();
 
+  const authority = presentationAssetAuthority(routing, host);
+  if (authority.kind === "efs") {
+    return authority.segments.has(segment) ? passThrough(request) : refuse();
+  }
+
+  const entry = isSharedHostInRouting(routing, host) ? null : selectedEntry(routing, host);
   if (entry === null || entry.runtimeSegment !== segment) return refuse();
-  return NextResponse.next();
+  return passThrough(request);
 }
 
 export function proxy(request: NextRequest) {

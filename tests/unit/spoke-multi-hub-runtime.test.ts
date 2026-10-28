@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { hostRoutingForInstallation } from "@/config/spoke-host-routing.mjs";
+import { sharedHostnamesIn } from "@/core/spoke";
 import { installationRuntimeIndex } from "@/config/installation-runtime";
 import { loadSpokeDictionaryRegistry } from "@/config/spoke-dictionaries";
 import { resolveInstallationSpokeRoots } from "@/config/spoke-roots";
@@ -281,17 +282,40 @@ describe("the asset plan of the same Installation", () => {
 
 // ── COLLISIONS: WHAT IS STILL REFUSED, AND WHAT IS NOT ───────────────────────────────────────────────────
 
-describe("collisions across Hubs", () => {
-  it("refuses ONE exact hostname claimed in TWO Hubs", () => {
-    const root = tempTree("foundation-m3p3-collide-host-");
-    // The SAME hostname in both Hubs: a request carries one host, so it must select exactly one Spoke in
-    // exactly one Hub across the whole Installation.
+describe("collisions and SHARED hosts across Hubs", () => {
+  it("accepts ONE exact hostname claimed in TWO Hubs — a SHARED host, which dispatches nothing", () => {
+    const root = tempTree("foundation-m3p3-shared-host-");
+    // The SAME hostname in both Hubs. Under `D31` the explicit publication binding — host plus whole-segment
+    // prefix — names a public address, so two Spokes may publish different prefixes of one host; the host
+    // itself then selects NOBODY and only a binding may answer a request on it.
     for (const member of MULTI_HUB_SPOKES) {
       writeMultiHubSpoke(root, process.cwd(), { ...member, hostname: "shared.localhost" });
     }
-    write(path.join(root, "spokes.json"), multiHubManifest({ inspection: null }));
+    // No switcher and no inspection policy: this proof is about the HOSTNAME classification alone, and a
+    // Hub-scoped switcher destination still has to route back to the member it names (an integrity rule the
+    // build keeps and this correction does not touch).
+    write(
+      path.join(root, "spokes.json"),
+      multiHubManifest({
+        hubs: MULTI_HUB_HUBS.map((hub) => ({ id: hub.id, spokes: hub.spokes })),
+        inspection: null,
+      }),
+    );
 
-    expect(() => installationRuntimeIndex(root)).toThrow(/claimed in more than one Spoke Hub/);
+    // COMPOSITION SUCCEEDS: sharing a public origin is a legitimate authored form, not a declaration defect.
+    const index = installationRuntimeIndex(root);
+    expect(index.mode).toBe("hubs");
+    expect(index.spokes).toHaveLength(MULTI_HUB_SPOKES.length);
+    expect(new Set(index.spokes.map((spoke) => spoke.canonicalHostname))).toEqual(
+      new Set(["shared.localhost"]),
+    );
+
+    // And the ONE classifier says so, so no hostname rule may name an owner for it. The REQUEST boundary's
+    // refusal is proved end to end in `tests/integration/efs-shared-host-publication.test.ts`, where the
+    // build's own routing description is the input.
+    expect([...sharedHostnamesIn(index.spokes.map((spoke) => spoke.hostnameClaims))]).toEqual([
+      "shared.localhost",
+    ]);
   });
 
   it("refuses TWO Hubs that share ONE physical Spoke root", () => {

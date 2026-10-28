@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { notFound } from "next/navigation";
 
 import { runtimeContextForCurrentRequest } from "@/config/spoke-request";
 
@@ -41,10 +42,11 @@ export default async function OpengraphImage({ params }: OpengraphImageProps) {
 
   const context = await runtimeContextForCurrentRequest();
   if (context === null) {
-    throw new Error(
-      "FOUNDATION-MULTISITE-M17: no Spoke answers this request, so no public OpenGraph image can be drawn. " +
-        "The image belongs to the hostname-selected Spoke, and there is no default Spoke.",
-    );
+    // No Spoke answers this request, so no public OpenGraph image can be drawn: the image belongs to the
+    // hostname-selected Spoke, and there is no default Spoke. That is a REFUSAL (404), not a server fault —
+    // a shared host whose prefixes publish the image elsewhere, or an unclaimed host, must answer nothing
+    // rather than fail with a diagnostic a visitor cannot act on.
+    notFound();
   }
 
   const model = openGraphImageModelForContext(context, siteCode, locale);

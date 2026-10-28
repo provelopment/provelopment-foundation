@@ -49,7 +49,7 @@
  *
  * Framework-neutral: pure data and pure functions. No filesystem, no configuration, no request.
  */
-import { spokeHubIssues } from "./coherence";
+import { sharedHostnames, spokeHubIssues } from "./coherence";
 import { normalizeHostname, type Hostname } from "./hostname";
 import { resolveSpokeFromHost, type SpokeInspectionPolicy, type SpokeSelectionReason } from "./resolve";
 import { spokeHubCollectionIssues } from "./spoke-hub-id";
@@ -69,8 +69,13 @@ import type {
  * each Spoke Hub satisfies the EXISTING `SpokeHub` contract (at least one Spoke, unique Spoke ids, at least
  * one hostname claim each — its canonical host among them and in the normalized spelling — at least one
  * Site Hub per Spoke, at least one Site per Site Hub, one Site code per Spoke, exactly one default Site
- * per Spoke); the same LOCAL Spoke id in two DIFFERENT Spoke Hubs is accepted; and no exact hostname is
- * claimed in more than one Spoke Hub.
+ * per Spoke); and the same LOCAL Spoke id in two DIFFERENT Spoke Hubs is accepted.
+ *
+ * A HOSTNAME MAY BE SHARED ACROSS HUBS. `D31` makes an explicit publication binding — host plus
+ * whole-segment prefix — the authority for a public URL, so several Spokes of one Installation, in one Hub
+ * or in several, may publish different prefixes of the SAME hostname. Such a hostname is not a defect: it
+ * is SHARED, hostname dispatch selects nothing there (`./resolve`), and only a binding may answer a request
+ * on it. `sharedHostnamesAcrossHubs` is the Installation-wide classifier.
  *
  * Every per-Hub issue is quoted with the Spoke Hub that owns it, because in a collection of Hubs the
  * sentence `Spoke "global" claims no hostname` is ambiguous on its own: two Hubs may each own a `global`.
@@ -86,39 +91,21 @@ export function identifiedSpokeHubCollectionIssues(
     issues.push(...spokeHubIssues(hub).map((issue) => `Spoke Hub "${hub.identity.id}": ${issue}`));
   }
 
-  // ONE EXACT HOSTNAME BELONGS TO ONE SPOKE IN ONE SPOKE HUB. Claims are gathered per Hub (one entry each
-  // Hub, whatever it states more than once — a duplicate INSIDE a Hub is already refused by the authority
-  // above, and this rule must never misreport it as a collision BETWEEN Hubs), and a hostname claimed by
-  // two different Hubs is refused because a request carries one host: it must select exactly one Spoke.
-  const claimantsByHostname = new Map<Hostname, Map<SpokeHubId, string>>();
-  const alreadyCounted = new Set<SpokeHubId>();
-
-  for (const hub of collection) {
-    // A repeated Spoke Hub id is already refused by the identity rules; counting its claims twice would
-    // describe one Hub as two.
-    if (alreadyCounted.has(hub.identity.id)) continue;
-    alreadyCounted.add(hub.identity.id);
-
-    for (const spoke of hub.spokes) {
-      const claimant = `Spoke "${spoke.identity.id}" in Spoke Hub "${hub.identity.id}"`;
-      for (const hostname of spoke.identity.hostnameClaims) {
-        const byHub = claimantsByHostname.get(hostname) ?? new Map<SpokeHubId, string>();
-        if (!byHub.has(hub.identity.id)) byHub.set(hub.identity.id, claimant);
-        claimantsByHostname.set(hostname, byHub);
-      }
-    }
-  }
-
-  for (const [hostname, byHub] of claimantsByHostname) {
-    if (byHub.size < 2) continue;
-    issues.push(
-      `hostname "${hostname}" is claimed in more than one Spoke Hub (${[...byHub.values()].join(", ")}): ` +
-        "a request carries ONE host, so a hostname must select exactly one Spoke in exactly one Spoke Hub " +
-        "across the whole Installation",
-    );
-  }
-
   return issues;
+}
+
+/**
+ * THE hostnames claimed by more than one Spoke ANYWHERE in an identified collection — the Installation-wide
+ * answer, for a reader that holds the collection rather than the flattened member list.
+ *
+ * A hostname claimed by two members of ONE Hub is already shared there; a hostname claimed by members of
+ * TWO Hubs is shared Installation-wide, and a request on it may only be answered by an explicit binding.
+ * Nothing about the ONE-Hub answer changes: this function reports the union and decides nothing.
+ */
+export function sharedHostnamesAcrossHubs(
+  collection: InstallationSpokeHubCollection,
+): ReadonlySet<Hostname> {
+  return sharedHostnames(collection.flatMap((hub) => hub.spokes));
 }
 
 /** True when an identified Spoke Hub collection satisfies every coherence rule. */
@@ -195,34 +182,44 @@ export function resolveSpokeRefFromHost(
   const hostname = normalizeHostname(host);
   if (hostname === null) return null;
 
+  // A HOSTNAME MAY BE SHARED ACROSS HUBS, so "the first Hub that answers" is not an answer. Every Hub is
+  // asked through the SAME pure decision, and the composite selection is returned only when EXACTLY ONE
+  // Hub selects — which, because a Hub itself refuses an internally shared hostname, is exactly the case
+  // "one Spoke in the whole Installation claims this hostname". Two Hubs claiming one hostname answer
+  // nothing: their requests are answered by an explicit publication binding, never by Hub order.
+  const selections: IdentifiedSpokeSelection[] = [];
   for (const hub of hubs) {
     const selection = resolveSpokeFromHost({ spokes: hub.spokes }, hostname, null);
     if (selection !== null) {
-      return {
+      selections.push({
         spokeHubId: hub.spokeHubId,
         spokeId: selection.spokeId,
         hostname: selection.hostname,
         reason: selection.reason,
-      };
+      });
     }
   }
+  if (selections.length > 1) return null;
 
-  if (
-    inspection !== null &&
-    inspection !== undefined &&
-    inspection.spokeHubId !== undefined &&
-    inspection.hostnames.includes(hostname)
-  ) {
-    const hub = hubs.find((candidate) => candidate.spokeHubId === inspection.spokeHubId);
-    if (hub !== undefined && hub.spokes.some((spoke) => spoke.identity.id === inspection.spokeId)) {
-      return {
-        spokeHubId: inspection.spokeHubId,
-        spokeId: inspection.spokeId,
-        hostname,
-        reason: "inspection-hostname",
-      };
+  if (selections.length === 0) {
+    if (
+      inspection !== null &&
+      inspection !== undefined &&
+      inspection.spokeHubId !== undefined &&
+      inspection.hostnames.includes(hostname)
+    ) {
+      const hub = hubs.find((candidate) => candidate.spokeHubId === inspection.spokeHubId);
+      if (hub !== undefined && hub.spokes.some((spoke) => spoke.identity.id === inspection.spokeId)) {
+        return {
+          spokeHubId: inspection.spokeHubId,
+          spokeId: inspection.spokeId,
+          hostname,
+          reason: "inspection-hostname",
+        };
+      }
     }
+    return null;
   }
 
-  return null;
+  return selections[0];
 }

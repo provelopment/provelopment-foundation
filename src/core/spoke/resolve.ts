@@ -4,8 +4,9 @@
  *
  * THE ONE PURE DECISION of the outer layer: given a raw request host, which Spoke answers — or none.
  *
- *   1. a host claimed EXPLICITLY by a Spoke → that Spoke;
- *   2. otherwise                            → no result (`null`).
+ *   1. a host claimed EXPLICITLY by exactly ONE Spoke → that Spoke;
+ *   2. a host claimed by MORE THAN ONE Spoke       → no result (`null`) — a SHARED host dispatches nothing;
+ *   3. otherwise                                    → no result (`null`).
  *
  * Ownership is EXACT: a Spoke that claims `example.com` does NOT answer `sub.example.com`, and a
  * Spoke may claim several exact hostnames — its canonical host plus any aliases.
@@ -84,11 +85,14 @@ export interface SpokeSelection {
 }
 
 /**
- * The Spoke that answers this request host, or `null` when none does.
+ * The Spoke that answers this request host, or `null` when none does — or when more than one does.
  *
- * Total and pure: it never throws and never guesses. The first Spoke with a matching claim wins, and
- * `./coherence` is what guarantees a second can never exist — a hostname claimed by two Spokes is a
- * REPORTED defect, not a race settled here.
+ * Total and pure: it never throws and never guesses. A hostname claimed by EXACTLY ONE Spoke selects that
+ * Spoke. A hostname claimed by MORE THAN ONE Spoke is a SHARED host (`./coherence`'s `sharedHostnames`):
+ * `null` is the only honest answer, because "which of these Spokes owns this host" has no answer, and a
+ * first-match rule would silently hand every request on the host to whichever Spoke the manifest happened
+ * to declare first. A shared host is answered by an explicit publication binding instead
+ * (`@/core/efs/publication`), never by this function.
  *
  * `inspection` is the Installation's explicit policy, or `null`/absent when it declares none. When it is
  * present, a hostname that NO Spoke claims is answered by the nominated Spoke ONLY if the platform itself
@@ -104,10 +108,10 @@ export function resolveSpokeFromHost(
   const hostname = normalizeHostname(host);
   if (hostname === null) return null;
 
-  for (const spoke of spokeHub.spokes) {
-    if (spoke.identity.hostnameClaims.includes(hostname)) {
-      return { spokeId: spoke.identity.id, hostname, reason: "registered-hostname" };
-    }
+  const claimants = spokeHub.spokes.filter((spoke) => spoke.identity.hostnameClaims.includes(hostname));
+  if (claimants.length > 1) return null;
+  if (claimants.length === 1) {
+    return { spokeId: claimants[0].identity.id, hostname, reason: "registered-hostname" };
   }
 
   if (

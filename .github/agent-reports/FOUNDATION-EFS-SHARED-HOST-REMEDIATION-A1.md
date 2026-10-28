@@ -1137,3 +1137,105 @@ This is a production-only request-resolution question (manifest read at request 
 route table), NOT the publication boundary, which is green at build time and unchanged.
 
 **Not accepted.** Draft PR, unmerged, unreleased, undeployed; no downstream Installation touched.
+
+## A1 R13 — PRODUCTION ACCEPTANCE: 18/18, WITH REAL 200s
+
+This supersedes the closing paragraph of R12. The 404s were **not** a Foundation production
+request-resolution defect. Two independent defects in the SMOKE RUNNER produced them, and both are corrected in
+`tests/browser/shared-host-production.mjs`; no file under `src/**` was modified.
+
+### 27.1 Defect 1 — the child environment was a snapshot taken at import time (CORRECTED)
+
+`productionEnv` was `{ ...process.env, NODE_ENV: "production" }` evaluated at MODULE LOAD, before `run()`
+materialises the disposable Installation and sets `FOUNDATION_DEPLOYMENT_ROOT`, `FOUNDATION_EFS_CAPSULE` and
+`FOUNDATION_EFS_MANIFEST`. The preflight, `next build` and `next start` children therefore described the
+AMBIENT deployment while the two validated claims described the SYNTHETIC one.
+
+Correction: `childEnv({ root })` builds the child environment at CALL time from the current `process.env`,
+explicitly setting `NODE_ENV: "production"`, and `assertChildSelection` refuses to compile or serve unless the
+child environment names the same Installation, manifest, capsule AND projection, and the manifest and
+projection files exist. The teardown reference build uses the same constructor AFTER the environment has been
+restored, so it rebuilds the ORIGINAL Installation.
+
+Evidence from the failing run (kept: it proves the guard fires):
+
+```text
+PASS  the build environment is bound to the Installation that produced the claims [root+manifest+capsule+projection+NODE_ENV]
+PASS  next build succeeds against the synthetic Installation  [exit=0]
+Error: next start answered /alpha/home with 404: the server is up but is not resolving the Installation whose publications were claimed
+probes: /=404[] /alpha/home=404[] /alpha/about=404[] /spokes/hub+group-one+alpha/assets/logo-header.svg=200[Alpha]
+server output tail: ... Ready in 161ms
+```
+
+### 27.2 Defect 2 — the smoke asserted a coordinate the resolver refuses BY DESIGN (CORRECTED)
+
+The 200 on `/spokes/.../logo-header.svg` in that same run proved the built server WAS bound to the synthetic
+Installation and serving ITS bytes: the pages were refused by the publication resolver, not by the deployment
+selection. The canonical public URL is `/<prefix>/<locale>/<route>`; a prefix-only path such as `/alpha/home` is
+a shorthand the resolver completes only where a host has exactly ONE canonical binding, and
+`shared.example.test` carries TWO (alpha and delta). `/alpha/home` is therefore ambiguous by design and is
+refused with an empty-bodied `notFound()`. The dev proof has always used `/alpha/en-001/home` for the same
+reason.
+
+Correction: `bindingFor(root, spokeId)` reads the prefix and default locale from the materialized manifest and
+the smoke requests `/<prefix>/<locale>/<route>`. Nothing is hardcoded, and no product behaviour was changed.
+
+### 27.3 Defect 3 — the shell assertion proved nothing (CORRECTED)
+
+`/<header/` matched on BOTH Spokes because every EFS page renders its own `<header>`
+(`src/components/efs/efs-page.tsx`), so "absence of the shell" could never be observed. The shared shell has
+its own marker (`ui-site-header`, `src/components/site/site-header.tsx`), which is now what the check reads.
+
+### 27.4 Readiness is no longer satisfied by a refusal (CORRECTED)
+
+`waitForServer(pathname)` requires **200**. A connection error or 502/503 is retried; a **404 fails at once**
+with the coordinate named, the probes for `/`, the page coordinate and the asset coordinate, and the server's
+own output tail. This is why the defect above surfaced instead of a green run.
+
+### 27.5 Acceptance result — 18/18
+
+`node tests/browser/shared-host-production.mjs` against a real `next build` and a real `next start`:
+
+```text
+PASS  the projection authorises exactly the two published Spokes      [status=projected claims=2]
+PASS  authored assets synchronise into the generated tree
+PASS  the build environment is bound to the Installation ...          [root+manifest+capsule+projection+NODE_ENV]
+PASS  next build succeeds against the synthetic Installation          [exit=0]
+PASS  next start serves a PUBLISHED coordinate with 200               [status=200 port=4391 host=shared.example.test]
+PASS  group-one/alpha serves its own Entity in production            [status=200 path=/alpha/en-001/about]
+PASS  group-two/delta serves its own Entity in production            [status=200 path=/delta/en-001/about]
+PASS  presentationSiteCode="ww" selects the shared shell for alpha   [status=200 header=true]
+PASS  the same page type without presentationSiteCode renders no shell [status=200 header=false]
+PASS  alpha's authorized logo-header returns 200 with its OWN bytes   [status=200 bytes=90]
+PASS  delta's authorized logo-header returns 200 with DISTINGUISHABLE bytes [status=200 bytes=90]
+PASS  the two owners' assets are byte-distinct                        [alpha=90B delta=90B]
+PASS  alpha's authorized favicon returns 200 with its OWN bytes       [status=200]
+PASS  an unauthorised asset under an owner's own namespace is refused [status=404]
+PASS  alpha's Spoke id under the OTHER Hub's namespace is refused     [status=404]
+PASS  an unmatched path prefix is refused                             [status=404]
+PASS  an unauthored / is refused rather than answered by some Spoke   [status=404]
+PASS  the smoke restored the environment, its Installation and the generated assets [restored]
+TOTAL=18 FAILED=0
+```
+
+The four refusals are now evidence rather than coincidence: they were produced in the SAME run in which the
+two Hubs' pages returned 200 with their own content and their own asset bytes.
+
+### 27.6 What this does not claim
+
+- No `src/**` change: the publication boundary, the resolver and the proxy are untouched. The 404s were the
+  runner's environment selection and the runner's coordinate, and they are fixed there.
+- The production smoke is still deliberately NOT wired into the CI matrix (it needs two real builds).
+- `.next` after the run holds a REFERENCE build of the restored Installation, and `public/spokes/**` is
+  re-synchronised for the original deployment root; the run's own restoration check asserts it.
+
+### 27.7 Gates run for this revision
+
+```text
+pnpm exec tsc --noEmit                                                      exit 0
+pnpm exec eslint tests/browser/shared-host-production.mjs                  exit 0 (path outside eslint scope)
+pnpm exec vitest run tests/architecture/write-ownership-guard.test.ts      17/17 passed
+node tests/browser/shared-host-production.mjs                              TOTAL=18 FAILED=0
+```
+
+Exact HEAD, tree and exact-head CI are recorded in PR #266's description for this commit.

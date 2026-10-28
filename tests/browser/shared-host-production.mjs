@@ -22,21 +22,24 @@
  * RESTORATION. Every task-owned write is inside one guarded region: the Installation (removed), the
  * projection file (removed), the three environment variables (restored to their exact previous values) and
  * the generated `public/spokes/**` tree (re-synchronised through the canonical synchronizer for the ORIGINAL
- * deployment root). `.next` is a gitignored build artifact and is left holding the build just smoke-tested;
- * the next normal build regenerates it.
+ * deployment root). The build artefact is restored too: the synthetic `.next` is replaced by a reference build
+ * of the restored Installation, so the directory never keeps a build of a site that no longer exists.
  *
- * KNOWN BLOCKER (A1 R11 B), recorded rather than hidden: this smoke currently FAILS at step 3 - `next build`
- * aborts prerendering `/_global-error` with "Cannot read properties of null (reading useContext)". The real
- * deployment builds green, so the trigger is the SYNTHETIC installation shape: nothing in it publishes at
- * `/`, the root layout therefore resolves no context, and the global-error prerender renders that null
- * provider chain. It is reproducible, it is production-only (`next dev` is green), and it is NOT the
- * publication-ownership boundary. It is left unfixed because the correction belongs to the layout/provider
- * chain, which is outside this work order scope. This module is deliberately NOT wired into the CI matrix.
+ * ENVIRONMENT BINDING (A1 R12). Every child process this smoke starts - the asset synchronisation, the
+ * publication validation, `next build` and `next start` - receives an environment CONSTRUCTED AT CALL TIME from
+ * the CURRENT selection, never a snapshot taken when this module was imported. The distinction decides whether
+ * this is a real proof or a plausible one: a module-level snapshot predates `run()`'s own selection of the
+ * disposable Installation, so the compiler and the server were pointed at the AMBIENT deployment while the two
+ * claims were generated from the SYNTHETIC one. The server then answered every published coordinate with 404 -
+ * faithfully, for a deployment in which those coordinates are unauthored. `assertChildSelection` now refuses to
+ * compile or serve unless the child environment names the SAME Installation, manifest, capsule and projection
+ * that produced the claims, and readiness requires a 200 from a published coordinate, so a refusal can never
+ * again be reported as readiness.
  *
  * Run: node tests/browser/shared-host-production.mjs
  */
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, closeSync, openSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, closeSync, existsSync, openSync, readFileSync, rmSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import path from "node:path";
 
@@ -66,6 +69,34 @@ function presentationSiteCode() {
     throw new Error("the synthetic deployment declares no Site code to present");
   }
   return code;
+}
+
+/**
+ * The PAGE coordinate of one published Spoke, READ from the materialized manifest rather than assumed.
+ *
+ * The canonical public URL is `/<prefix>/<locale>/<route>`: the prefix names the publication BINDING, the locale
+ * its default representation. A prefix-only path (`/alpha/home`) is a shorthand the resolver completes only
+ * where a host has exactly ONE canonical binding, so on this shared host - which carries TWO - it is ambiguous
+ * BY DESIGN and refused. Asserting the shorthand would test that fallback rather than the publication.
+ */
+function bindingFor(root, spokeId) {
+  const manifest = JSON.parse(readFileSync(path.join(root, "efs", "manifest.json"), "utf8"));
+  const publication = (manifest.publications ?? []).find((entry) => entry.spokeId === spokeId);
+  const binding = (publication?.bindings ?? []).find(
+    (candidate) => candidate.host === SHARED_HOST && candidate.canonical !== false,
+  );
+  if (!binding) throw new Error("no canonical EFS binding for " + spokeId + " on " + SHARED_HOST);
+  return { prefix: binding.prefix.join("/"), locale: binding.defaultLocale };
+}
+
+/**
+ * Does this document carry the shared PRESENTATION SHELL, rather than only the page's own header?
+ *
+ * Every EFS page renders a `<header>` of its own (`components/efs/efs-page.tsx`), so a coarse tag test would find
+ * a "shell" on both Spokes and prove nothing about the selection. The shell has its own marker.
+ */
+function hasSharedShell(body) {
+  return /class="[^"]*\bui-site-header\b/.test(body);
 }
 
 const rows = [];
@@ -98,11 +129,8 @@ function request({ pathname }) {
 
 /** The canonical generated-asset synchronisation for a given deployment root. */
 function syncAssets(root) {
-  const env = { ...process.env };
-  if (root === null) delete env.FOUNDATION_DEPLOYMENT_ROOT;
-  else env.FOUNDATION_DEPLOYMENT_ROOT = root;
   const result = spawnSync(process.execPath, ["scripts/sync-runtime-assets.mjs"], {
-    env,
+    env: childEnv({ root }),
     encoding: "utf8",
     shell: false,
   });
@@ -135,20 +163,35 @@ function namespaceOf(root, spokeId) {
   return plan[0].namespace.slice("spoke:".length);
 }
 
-async function waitForServer() {
+/**
+ * Wait for the production server to serve a PUBLISHED coordinate with 200.
+ *
+ * A refusal is not readiness. A connection error or a 502/503 means "not up yet" and is retried; a 404 means
+ * the server IS up and is resolving a different deployment than the one the claims were made for, which is the
+ * exact failure this smoke exists to catch, so it is reported at once instead of being counted as success.
+ */
+async function waitForServer(pathname) {
   const deadline = Date.now() + 180000;
   let last = "no attempt";
   while (Date.now() < deadline) {
     try {
-      const response = await request({ pathname: "/alpha/home" });
-      if (response.status !== 502 && response.status !== 503) return;
+      const response = await request({ pathname });
+      if (response.status === 200) return response;
+      if (response.status === 404) {
+        throw new Error(
+          "next start answered " +
+            pathname +
+            " with 404: the server is up but is not resolving the Installation whose publications were claimed",
+        );
+      }
       last = "status=" + response.status;
     } catch (error) {
+      if (error instanceof Error && error.message.startsWith("next start answered")) throw error;
       last = String(error?.code ?? error);
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  throw new Error("next start never answered: " + last);
+  throw new Error("next start never served " + pathname + " with 200: " + last);
 }
 
 // A production proof must run the PRODUCTION environment explicitly. The producer that validates the publication
@@ -156,7 +199,44 @@ async function waitForServer() {
 // inherited `process.env` therefore compiled against an inconsistent React build, which is exactly what makes a
 // client component SSR against a null dispatcher and fail `/_global-error`. Every child is given the production
 // environment by construction instead of inheriting it.
-const productionEnv = { ...process.env, NODE_ENV: "production" };
+//
+// CONSTRUCTED PER CALL, never snapshotted at import. `run()` selects the disposable Installation and its EFS
+// manifest AFTER this module is evaluated, so a module-level `{ ...process.env }` hands every child the
+// environment that existed BEFORE that selection - the ambient deployment - and the compiler and the server then
+// describe an Installation that publishes none of the coordinates the claims were made for.
+function childEnv({ root } = {}) {
+  const env = { ...process.env, NODE_ENV: "production" };
+  if (root === undefined) return env;
+  if (root === null) {
+    delete env.FOUNDATION_DEPLOYMENT_ROOT;
+    return env;
+  }
+  env.FOUNDATION_DEPLOYMENT_ROOT = root;
+  return env;
+}
+
+/**
+ * Refuse to compile or serve from an environment that does not name the EXACT Installation, manifest, capsule and
+ * projection the validated claims were produced from. The detail names only WHICH bindings were wrong; no
+ * environment value is printed.
+ */
+function assertChildSelection(env, { root, manifestPath, capsule, projectionPath }) {
+  const same = (a, b) =>
+    typeof a === "string" && typeof b === "string" && path.resolve(a) === path.resolve(b);
+  const unbound = [];
+  if (!same(env.FOUNDATION_DEPLOYMENT_ROOT, root)) unbound.push("FOUNDATION_DEPLOYMENT_ROOT");
+  if (!same(env.FOUNDATION_EFS_MANIFEST, manifestPath)) unbound.push("FOUNDATION_EFS_MANIFEST");
+  if (!same(env.FOUNDATION_EFS_CAPSULE, capsule)) unbound.push("FOUNDATION_EFS_CAPSULE");
+  if (env.NODE_ENV !== "production") unbound.push("NODE_ENV");
+  if (!existsSync(manifestPath)) unbound.push("manifest file");
+  if (!existsSync(projectionPath)) unbound.push("projection file");
+  if (unbound.length > 0) {
+    throw new Error(
+      "the child environment is not bound to the Installation that produced the claims: " + unbound.join(", "),
+    );
+  }
+  return "root+manifest+capsule+projection+NODE_ENV";
+}
 export async function run() {
   const previousEnv = {};
   for (const name of ENV_NAMES) previousEnv[name] = process.env[name];
@@ -212,6 +292,32 @@ export async function run() {
     const alphaNamespace = namespaceOf(installation.root, "alpha");
     const deltaNamespace = namespaceOf(installation.root, "delta");
 
+    // The published page coordinates, read from the manifest this build is pointed at.
+    const alphaBinding = bindingFor(installation.root, "alpha");
+    const deltaBinding = bindingFor(installation.root, "delta");
+    const alphaHomePath = "/" + alphaBinding.prefix + "/" + alphaBinding.locale + "/home";
+    const alphaAboutPath = "/" + alphaBinding.prefix + "/" + alphaBinding.locale + "/about";
+    const deltaHomePath = "/" + deltaBinding.prefix + "/" + deltaBinding.locale + "/home";
+    const deltaAboutPath = "/" + deltaBinding.prefix + "/" + deltaBinding.locale + "/about";
+
+    // Item 3 - the compiler must be pointed at the SAME Installation and manifest that produced the two claims,
+    // and the projection file its reader resolves must already exist. Asserted, not assumed, and asserted BEFORE
+    // anything is compiled: an environment that names a different deployment is the defect this correction
+    // removes, and it must stop the run rather than produce a well-formed result about the wrong site.
+    const projectionPath = efsProjectionPath(installation.root, process.cwd());
+    const buildEnv = childEnv();
+    const binding = assertChildSelection(buildEnv, {
+      root: installation.root,
+      manifestPath: selection.path,
+      capsule: installation.capsule,
+      projectionPath,
+    });
+    check(
+      "the build environment is bound to the Installation that produced the claims",
+      true,
+      binding,
+    );
+
     // 3 - a REAL production build through the normal Foundation build path.
     // The generated output is removed ONCE, here, and never again immediately before the compiler. Deleting
     // `.next` microseconds before `next build` starts writing it is what made the `/_global-error` prerender
@@ -228,7 +334,7 @@ export async function run() {
     ]) {
       const stepHandle = openSync(path.join(scratchRoot(), "prod-preflight.log"), "a");
       const stepResult = spawnSync("pnpm", step, {
-        env: { ...productionEnv },
+        env: buildEnv,
         stdio: ["ignore", stepHandle, stepHandle],
         shell: true,
       });
@@ -239,7 +345,7 @@ export async function run() {
     // killed the child with NO error reported at all, indistinguishable from a real build failure.
     const handle = openSync(buildLog, "w");
     const build = spawnSync("pnpm", ["exec", "next", "build"], {
-      env: { ...productionEnv },
+      env: buildEnv,
       stdio: ["ignore", handle, handle],
       shell: true,
     });
@@ -259,34 +365,84 @@ export async function run() {
       );
     }
 
-    // 4 - a REAL production server.
-    server = spawn("pnpm", ["exec", "next", "start", "-p", String(PORT)], {
-      env: { ...productionEnv },
-      shell: true,
-      stdio: "ignore",
+    // 4 - a REAL production server, bound to the SAME selection the build was compiled and the claims were made
+    // from, re-asserted here because the server is what answers requests and a mismatch would surface only as
+    // refusals.
+    const serverEnv = childEnv();
+    const servedBinding = assertChildSelection(serverEnv, {
+      root: installation.root,
+      manifestPath: selection.path,
+      capsule: installation.capsule,
+      projectionPath,
     });
-    await waitForServer();
-    check("next start serves the shared host", true, "port=" + PORT + " host=" + SHARED_HOST);
+    const serverLog = path.join(scratchRoot(), "prod-server.log");
+    const serverHandle = openSync(serverLog, "w");
+    server = spawn("pnpm", ["exec", "next", "start", "-p", String(PORT)], {
+      env: serverEnv,
+      shell: true,
+      stdio: ["ignore", serverHandle, serverHandle],
+    });
+    closeSync(serverHandle);
+    let ready;
+    try {
+      ready = await waitForServer(alphaHomePath);
+    } catch (error) {
+      // A readiness failure must be diagnosable from THIS run's evidence: which coordinates were refused, and
+      // what the server itself said. Silence plus "try again" is what let a 404 pass for readiness before.
+      const probes = [];
+      const probePaths = ["/", alphaHomePath, alphaAboutPath, "/spokes/" + alphaNamespace + "/assets/logo-header.svg"];
+      for (const probe of probePaths) {
+        try {
+          const response = await request({ pathname: probe });
+          const markers = [
+            /<h1[^>]*>([^<]{0,60})/i.exec(response.body)?.[1]?.trim(),
+            /<title[^>]*>([^<]{0,60})/i.exec(response.body)?.[1]?.trim(),
+          ].filter(Boolean);
+          probes.push(
+            probe +
+              "=" +
+              response.status +
+              (response.location ? "->" + response.location : "") +
+              "[" +
+              markers.join(" | ") +
+              "]",
+          );
+        } catch (probeError) {
+          probes.push(probe + "=" + String(probeError?.code ?? probeError));
+        }
+      }
+      const tail = existsSync(serverLog)
+        ? readFileSync(serverLog, "utf8").slice(-2500)
+        : "(no server output captured)";
+      throw new Error(
+        String(error?.message ?? error) + "\nprobes: " + probes.join(" ") + "\nserver output tail:\n" + tail,
+      );
+    }
+    check(
+      "next start serves a PUBLISHED coordinate with 200 on the shared host",
+      ready.status === 200,
+      "status=" + ready.status + " port=" + PORT + " host=" + SHARED_HOST + " binding=" + servedBinding,
+    );
 
     // 5 - one publication from EACH of two identified Spoke Hubs, each serving its OWN Entity.
-    const alphaAbout = await request({ pathname: "/alpha/about" });
+    const alphaAbout = await request({ pathname: alphaAboutPath });
     check(
       "group-one/alpha serves its own Entity in production",
       alphaAbout.status === 200 && alphaAbout.body.includes("About Alpha") && !alphaAbout.body.includes("About Delta"),
-      "status=" + alphaAbout.status,
+      "status=" + alphaAbout.status + " path=" + alphaAboutPath,
     );
-    const deltaAbout = await request({ pathname: "/delta/about" });
+    const deltaAbout = await request({ pathname: deltaAboutPath });
     check(
       "group-two/delta serves its own Entity in production",
       deltaAbout.status === 200 && deltaAbout.body.includes("About Delta") && !deltaAbout.body.includes("About Alpha"),
-      "status=" + deltaAbout.status,
+      "status=" + deltaAbout.status + " path=" + deltaAboutPath,
     );
 
     // 6 - an explicit presentationSiteCode selects an OBSERVABLE presentation value: the shared shell.
-    const alphaHome = await request({ pathname: "/alpha/home" });
-    const deltaHome = await request({ pathname: "/delta/home" });
-    const alphaShell = /<header[\s>]/i.test(alphaHome.body);
-    const deltaShell = /<header[\s>]/i.test(deltaHome.body);
+    const alphaHome = await request({ pathname: alphaHomePath });
+    const deltaHome = await request({ pathname: deltaHomePath });
+    const alphaShell = hasSharedShell(alphaHome.body);
+    const deltaShell = hasSharedShell(deltaHome.body);
     check(
       'presentationSiteCode="' + presented + '" selects the shared shell for alpha',
       alphaHome.status === 200 && alphaShell,
@@ -369,10 +525,12 @@ export async function run() {
       problems.push("asset restore: " + String(error));
     }
     // The build artefact is task-owned state too: a build of the SYNTHETIC Installation must never be left
-    // where the installed deployment's build belongs. Re-establish the reference build, and if even that
-    // fails, remove the artefact outright rather than leaving unidentifiable output behind.
+    // where the installed deployment's build belongs. The environment was restored to its exact previous values
+    // ABOVE, so `childEnv()` here describes the ORIGINAL Installation - the reference build, not another one of
+    // the synthetic one. If even that fails, remove the artefact outright rather than leaving unidentifiable
+    // output behind.
     try {
-      const reference = spawnSync("pnpm", ["build"], { env: { ...productionEnv }, stdio: "ignore", shell: true });
+      const reference = spawnSync("pnpm", ["build"], { env: childEnv(), stdio: "ignore", shell: true });
       if (reference.status !== 0) {
         rmSync(path.join(process.cwd(), ".next"), { recursive: true, force: true });
         problems.push("reference rebuild failed (exit " + reference.status + "); .next removed");
@@ -391,11 +549,19 @@ export async function run() {
 }
 
 if (process.argv[1] && process.argv[1].endsWith("shared-host-production.mjs")) {
-  const result = await run();
-  for (const row of result.rows) console.log(row);
-  console.log("\nTOTAL=" + result.rows.length + " FAILED=" + result.failures.length);
-  for (const failure of result.failures) console.log("FAIL " + failure);
-  process.exit(result.ok ? 0 : 1);
+  try {
+    const result = await run();
+    for (const row of result.rows) console.log(row);
+    console.log("\nTOTAL=" + result.rows.length + " FAILED=" + result.failures.length);
+    for (const failure of result.failures) console.log("FAIL " + failure);
+    process.exit(result.ok ? 0 : 1);
+  } catch (error) {
+    // Whatever WAS established before an abort is evidence; printing it keeps a failed run diagnosable instead
+    // of silent.
+    for (const row of rows) console.log(row);
+    console.log("\nABORTED after " + rows.length + " checks");
+    throw error;
+  }
 }
 
 export default { run };

@@ -20,7 +20,7 @@
  *   · Foundation imports the Module only through `src/index.ts`, never a deep module path;
  *   · the licence record exists, and the provenance may not claim a grant it cannot name.
  */
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -47,7 +47,12 @@ const PROVENANCE = JSON.parse(
     fileCount: number;
   };
   carried: { path: string; verifiedBy: string };
-  license: { state: string; instrument?: string; grantRecorded: boolean };
+  license: {
+    state: string;
+    instrument?: string;
+    attributionPaths?: readonly string[];
+    grantRecorded: boolean;
+  };
 };
 
 describe("the pinned Connect source", () => {
@@ -139,6 +144,16 @@ describe("Foundation's use of the Module", () => {
       expect(record).toMatch(/grant/i);
     } else {
       expect(PROVENANCE.license.state).toMatch(/BLOCKED/);
+    }
+  });
+
+  it("points attribution at files that actually exist", () => {
+    // A notice that names a file the repository does not have is a dangling claim: it reads as
+    // compliance while proving nothing. Every recorded path is a real file, checked here.
+    const paths = PROVENANCE.license.attributionPaths ?? [];
+    expect(paths.length).toBeGreaterThan(0);
+    for (const relative of paths) {
+      expect(existsSync(path.join(REPOSITORY_ROOT, relative)), relative).toBe(true);
     }
   });
 

@@ -67,7 +67,7 @@ public/spokes/*/assets/** -text
 # `git cat-file blob` when re-vendoring.
 modules/connect/src/** -text
 
-
+# `LICENSE` is the CANONICAL Apache License 2.0 text, installed byte-for-byte
 # from <https://www.apache.org/licenses/LICENSE-2.0.txt> and never paraphrased,
 # reformatted or extended (no copyright-holder name is filled in — the canonical
 # appendix placeholders stay as published). It is legal evidence as well as

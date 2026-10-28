@@ -19,13 +19,18 @@ modules/connect/LICENSE-CONNECT.md  the licence and attribution record — READ 
 `src/index.ts` is the Module's public entry point, and the only import Foundation may use:
 
 ```ts
-import { sendDirectEnquiry } from "@/modules/connect/src/index.js";
+import { SendDirectEnquiry } from "../../../modules/connect/src/index.js";
 ```
 
 It exports **domain contracts, application use cases and port interfaces — and nothing else**. The
 reference in-memory adapters are deliberately not exported: a consumer must supply its own approved
 adapters, and no store, transport or mail provider is created by the Module. That is the boundary
 Foundation fills in `src/adapters/connect/**`.
+
+That snippet is the real Foundation import, written from `src/adapters/connect/`, which sits three
+directories below the repository root: no `@/` alias reaches outside `src/`, so a file one level
+shallower needs one fewer `../`. Never point it at a module-internal path — `index.ts` is the whole
+published surface, and the architecture suite fails a deep import.
 
 ## Verify the pin
 

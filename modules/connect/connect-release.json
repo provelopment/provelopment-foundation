@@ -25,7 +25,11 @@
     "grantor": "Provelopment (copyright holder, Project Owner)",
     "upstreamDeclaration": "unchanged and intentionally so: the private Module's package.json still declares \"private\": true and \"license\": \"UNLICENSED\", and it ships no LICENSE file. Upstream metadata is not Foundation's to edit, and no separate Connect publication is authorised. The grant covers the Foundation-integrated copy recorded here, not a relicensing of the private repository.",
     "grantRecorded": true,
-    "attributionPaths": ["modules/connect/LICENSE-CONNECT.md", "NOTICE"]
+    "attributionPaths": [
+      "modules/connect/LICENSE-CONNECT.md",
+      "modules/connect/README.md",
+      "LICENSE"
+    ]
   },
   "note": "Pinned as a source revision, never as an npm package, registry artifact, archive or moving branch."
 }

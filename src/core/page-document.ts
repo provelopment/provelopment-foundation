@@ -45,7 +45,7 @@ import { z } from "zod";
 
 import { HOME_CONTENT_SLUG, isContentSlug } from "./page-content";
 import { isPageRoutePath } from "./page-route-path";
-import { classifyAuthorUrl } from "./safe-url";
+import { classifyAuthorUrl, decodeAuthorReferences } from "./safe-url";
 
 /** The ONE supported envelope version. A document naming another one is refused. */
 export const PAGE_DOCUMENT_SCHEMA_VERSION = 1;
@@ -202,6 +202,9 @@ const PAGE_LINK_KEY_PATTERN = /^[a-z0-9]+(?:[.-][a-z0-9]+)*$/;
  */
 export const PAGE_LINK_MARKER_PREFIX = "#link:";
 
+/** The reserved namespace itself — the prefix `isReservedLinkDestination` judges, encoded or not. */
+const RESERVED_LINK_NAMESPACE_PATTERN = /^#link:/i;
+
 /** True when `value` may be a link declaration id (the same slug rule, and the same length bound). */
 export function isPageLinkId(value: string): boolean {
   return value.length > 0 && value.length <= PAGE_MAX_LINK_ID && isContentSlug(value);
@@ -240,7 +243,19 @@ export function parsePageLinkMarker(destination: string): string | null {
  * other ordinary fragment keep the exact behaviour and scheme policy they always had.
  */
 export function isReservedLinkDestination(destination: string): boolean {
-  return /^#link:/i.test(destination);
+  if (RESERVED_LINK_NAMESPACE_PATTERN.test(destination)) return true;
+  // THE VALUE THAT WILL BE EMITTED, NOT THE ONE THAT WAS TYPED (A8 Phase F, safety closure).
+  //
+  // `classifyAuthorUrl` decodes character references EXACTLY ONCE and returns the DECODED href — that
+  // decoded value is what reaches HTML. So `#link&colon;other` and `#li&#x6e;k:other` are classified
+  // as the fragment `#link:other` and emitted as one; a guard that inspected only the raw spelling
+  // would let an encoded reserved destination through as a clickable fragment.
+  //
+  // This is Foundation's existing normalization authority, applied at its own single-pass depth: no
+  // second decoder, no extra pass, no change to scheme, allowlist or sanitiser policy. Judging the
+  // decoded form here is what makes the guard and the emitter agree by construction, and because this
+  // is the ONE predicate, authored `href` validation inherits the same canonical decision.
+  return RESERVED_LINK_NAMESPACE_PATTERN.test(decodeAuthorReferences(destination.trim()));
 }
 
 /* `PageLinkReference` is DERIVED from its schema (`pageLinkReferenceSchema`, below), so the type and

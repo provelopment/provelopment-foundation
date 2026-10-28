@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { renderSafeMarkdown, reservedLinkIds } from "@/adapters/markdown/safe-markdown";
 import { pageLinkAuthoringIssues } from "@/adapters/content/page-link-integrity";
+import { classifyAuthorUrl } from "@/core/safe-url";
 import {
   describePageDocumentIssues,
   pageDocumentSchema,
@@ -457,5 +458,66 @@ describe("the shared reader contract", () => {
       sections: [{ type: "prose", body: "write #link:declared in prose, and [a](#link:declared)" }],
     });
     expect(pageLinkAuthoringIssues(document)).toEqual([]);
+  });
+});
+
+describe("the reserved namespace after normalization (safety closure)", () => {
+  // The classifier decodes character references ONCE and emits the decoded href, so these two
+  // spellings become the reserved fragment `#link:other` by the time a visitor would follow them.
+  const encoded = [
+    "#link&colon;other",
+    "#li&#x6e;k:other",
+    "#LINK&colon;other",
+    "#li&#110;k:other",
+    "#link&colon;",
+  ];
+  const decoded = ["#link:other", "#LINK:other"];
+
+  it("targets the exact bypass: the classifier emits the DECODED reserved fragment", () => {
+    // Without the normalization fix this is what reached HTML: a clickable `#link:other`.
+    expect(classifyAuthorUrl("#link&colon;other")).toEqual({ ok: true, href: "#link:other" });
+    expect(classifyAuthorUrl("#li&#x6e;k:other")).toEqual({ ok: true, href: "#link:other" });
+  });
+
+  it("refuses an encoded reserved destination in every authored href position", () => {
+    for (const href of [...encoded, ...decoded]) {
+      expect(
+        issues(documentWithLink({ sections: [{ type: "actions", actions: [{ label: "A", href }] }] })),
+        href,
+      ).toContain("reserved");
+      expect(
+        issues(documentWithLink({ sections: [{ type: "list", items: [{ label: "A", href }] }] })),
+        href,
+      ).toContain("reserved");
+    }
+  });
+
+  it("never emits an encoded or decoded reserved destination from the Markdown renderer", () => {
+    for (const href of [...encoded, ...decoded]) {
+      const html = renderSafeMarkdown(`[x](${href})`);
+      expect(html, href).not.toContain("<a");
+      expect(html.toLowerCase(), href).not.toContain("#link");
+    }
+  });
+
+  it("never emits an encoded or decoded reserved destination from a resolver answer", () => {
+    for (const answer of [...encoded, ...decoded]) {
+      const html = renderSafeMarkdown("[x](#link:contact)", () => answer);
+      expect(html, answer).not.toContain("<a");
+      expect(html.toLowerCase(), answer).not.toContain("#link");
+    }
+  });
+
+  it("still refuses the plain malformed and unsafe cases, unchanged", () => {
+    expect(renderSafeMarkdown("[x](#link:)")).not.toContain("<a");
+    expect(renderSafeMarkdown("[x](#link:a_b)")).not.toContain("<a");
+    expect(renderSafeMarkdown("[x](#link:contact)", () => "javascript:alert(1)")).not.toContain("<a");
+  });
+
+  it("leaves ordinary fragments untouched, encoded or not", () => {
+    expect(renderSafeMarkdown("[x](#anchor)")).toContain('href="#anchor"');
+    expect(renderSafeMarkdown("[x](#link-to-hours)")).toContain('href="#link-to-hours"');
+    // Outside the namespace: still an anchor. Its encoding form is the classifier's business, not a refusal.
+    expect(renderSafeMarkdown("[x](#sect&colon;one)")).toContain("<a");
   });
 });

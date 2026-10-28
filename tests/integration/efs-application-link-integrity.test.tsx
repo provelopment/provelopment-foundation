@@ -185,3 +185,27 @@ describe("the composer resolves actions and list items per render", () => {
     expect(html).toContain("Email us");
   });
 });
+
+describe("an encoded reserved destination never reaches HTML", () => {
+  const document = pageDocumentSchema.parse({
+    schemaVersion: 1,
+    title: "Encoded",
+    links: { contact: { reference: "applicationLink", key: "public-contact-email" } },
+    sections: [
+      { type: "actions", actions: [{ label: "Email us", link: "contact" }] },
+      { type: "list", items: [{ label: "Email us too", link: "contact" }] },
+    ],
+  });
+
+  it("renders text, not an anchor, for every encoded spelling a resolver might return", () => {
+    for (const answer of ["#link&colon;chained", "#li&#x6e;k:chained", "#LINK&colon;chained"]) {
+      const html = renderToStaticMarkup(
+        <PageDocumentContent document={document} locale="en" resolveLink={() => answer} />,
+      );
+      expect(html, answer).not.toContain("mailto:");
+      expect(html, answer).not.toContain("href=");
+      expect(html.toLowerCase(), answer).not.toContain("#link");
+      expect(html, answer).toContain("Email us");
+    }
+  });
+});

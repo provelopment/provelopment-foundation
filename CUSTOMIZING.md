@@ -74,13 +74,17 @@ site owns and may change. Declare a **reference** and let that application answe
 
 Three things follow, and they are the whole contract:
 
-- **An action still names one destination.** `href`, `route` and `link` are mutually exclusive; a card's
-  action and an actions section use the same rule.
+- **A control names one destination.** `href`, `route` and `link` are mutually exclusive for an action
+  (exactly one is required) and for a list item (at most one; a plain label is still a list item). The
+  actions section, a card's action, a hero's actions and a list all obey the same rule.
 - **Words without a destination are normal.** If the application answers nothing — the link is not offered,
   was revoked, or the site has no such application wired at all — the label is shown as text with no anchor.
   Nothing is invented, and there is never a broken `#…` fragment in the page.
-- **A marker must name something.** `[label](#link:<id>)` whose id the document does not declare is refused
-  when the page is read, with the field and the id named: no host could resolve it.
+- **A marker must name something.** The whole `#link:` namespace belongs to this contract: `[label](#link:<id>)`
+  that is malformed (`#link:`, `#link:a_b`, `#LINK:x`), or whose id the document does not declare, is refused
+  when the page is read — with the field and the marker named — and it is never rendered as a clickable
+  fragment. The same contract runs when published content is read at serve time, so authoring and serving
+  cannot disagree.
 
 The `key` is deliberately opaque. Foundation validates its shape only, which is what lets the same document
 serve every site and lets the application rename its own side without re-authoring the page. If you need a

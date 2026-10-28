@@ -22,6 +22,10 @@ import {
   type PageDocument,
   type PageVisibility,
 } from "@/core/page-document";
+import {
+  describePageLinkAuthoringIssues,
+  pageLinkAuthoringIssues,
+} from "@/adapters/content/page-link-integrity";
 
 /** The supported synthetic source formats. */
 export type EfsSourceFormat = "json" | "markdown";
@@ -168,6 +172,22 @@ export function loadEfsPageSource(input: {
       return {
         kind: "rejected",
         reason: `Invalid Page document "${page}/${locale ?? page}.json": ${reservedIssue}`,
+      };
+    }
+    // A8 PHASE F — THE SAME APPLICATION-LINK CONTRACT THE OFFLINE READER APPLIES.
+    //
+    // This is the reader that actually SERVES a published representation, so this is where the rule must
+    // hold: a marker that is malformed, or names an id the document does not declare, can never resolve
+    // for any host, and serving it would publish a dead fragment. One implementation
+    // (`@/adapters/content/page-link-integrity`), shared with `json-page`, so the two cannot drift.
+    const linkIssues = pageLinkAuthoringIssues(document.data);
+    if (linkIssues.length > 0) {
+      return {
+        kind: "rejected",
+        reason:
+          `Invalid Page document "${page}/${locale ?? page}.json":\n` +
+          `${describePageLinkAuthoringIssues(linkIssues)}\n` +
+          'A reserved "#link:" marker must name a link the document declares.',
       };
     }
     return {

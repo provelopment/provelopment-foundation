@@ -141,15 +141,19 @@ change. A JSON Page declares it as a **reference**, and the application answers 
   `reference` is a closed set — today exactly `applicationLink` — and `key` is an **opaque** name your
   application understands. The platform validates their shape and never their meaning, so the same Page
   serves every host and survives a rename on the application side.
-- An action sets **exactly one** destination form: `href`, `route` or `link`. Two is refused, none is
-  refused.
-- In Markdown, `[label](#link:<declaration-id>)` is a reserved marker. It is a fragment, so no scheme,
-  allowlist or sanitiser rule was added for it.
-- Your application supplies the destination at render time. The marker and the `link` action render as an
-  **anchor** only when the application answers with a destination this platform classifies; otherwise the
-  author's words appear with **no anchor**, never as a broken fragment.
-- A marker naming a declaration the document does not carry is refused when the Page is read, naming the
-  field and the id: no host could ever resolve it.
+- An action sets **exactly one** destination form: `href`, `route` or `link`; two is refused, none is
+  refused. A **list item** accepts the same three and may also set none — a plain label — so every
+  existing list keeps working.
+- In Markdown, `[label](#link:<declaration-id>)` is a reserved marker. The whole `#link:` namespace is
+  reserved: a malformed spelling (`#link:`, `#link:a_b`, `#LINK:x`) is never turned into a clickable
+  fragment. Ordinary fragments — `#hours`, `#link-to-services` — are untouched, and no scheme, allowlist
+  or sanitiser rule was added.
+- Your application supplies the destination at render time. A marker, a `link` action and a `link` list
+  item render as an **anchor** only when the application answers with a destination this platform
+  classifies; otherwise the author's words appear with **no anchor**, never as a broken fragment.
+- A marker that is malformed, or that names a declaration the document does not carry, is refused when
+  the Page is read — by the same contract that reads published content, naming the field and the marker —
+  because no host could ever resolve it.
 - Foundation ships no resolver. Without one, a declared link renders as its words alone — which is the
   correct behaviour for a site that has no such application behind it.
 

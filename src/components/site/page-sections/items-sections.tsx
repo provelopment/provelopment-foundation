@@ -1,5 +1,6 @@
 import { ItemTitle, MarkdownField, PageImage, SectionHeading, columnsClass, sectionClassName } from "./section-support";
 import type { SectionViewProps } from "./text-sections";
+import type { PageLinkIdResolver } from "@/core/page-document";
 import { Grid } from "@/components/ui/grid";
 
 /**
@@ -56,7 +57,7 @@ export function ListSection({ section, locale, id, resolveLink }: SectionViewPro
       >
         {items.map((item, index) => (
           <li key={index}>
-            <InlineOrLink item={item} locale={locale} />
+            <InlineOrLink item={item} locale={locale} resolveLink={resolveLink} />
             {item.detail ? <MarkdownField text={item.detail} resolveLink={resolveLink} className="mt-1 text-sm" /> : null}
           </li>
         ))}
@@ -69,12 +70,21 @@ export function ListSection({ section, locale, id, resolveLink }: SectionViewPro
 function InlineOrLink({
   item,
   locale,
+  resolveLink,
 }: {
-  readonly item: { label: string; href?: string; route?: string };
+  readonly item: { label: string; href?: string; route?: string; link?: string };
   readonly locale: string;
+  readonly resolveLink?: PageLinkIdResolver;
 }) {
   if (item.href !== undefined) return <a href={item.href}>{item.label}</a>;
   if (item.route !== undefined) return <a href={`/${locale}/${item.route}`}>{item.label}</a>;
+  // AN APPLICATION-LINK DESTINATION (A8 Phase F, §3C): the SAME per-render resolver and the SAME
+  // text-only fallback the action and Markdown controls use. A resolved href becomes a link; anything
+  // else — no resolver, no answer, an answer the contract refused — leaves the label and no anchor.
+  if (item.link !== undefined) {
+    const href = resolveLink === undefined ? null : resolveLink(item.link);
+    if (href !== null) return <a href={href}>{item.label}</a>;
+  }
   return <span>{item.label}</span>;
 }
 

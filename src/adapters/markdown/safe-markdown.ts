@@ -88,7 +88,7 @@ import {
   MARKDOWN_HEADING_TAGS,
   MARKDOWN_MAX_HEADING_LEVEL,
 } from "@/core/markdown-policy";
-import { parsePageLinkMarker } from "@/core/page-document";
+import { isReservedLinkDestination, parsePageLinkMarker } from "@/core/page-document";
 import { classifyAuthorUrl } from "@/core/safe-url";
 
 const TEXT_ESCAPES: Readonly<Record<string, string>> = {
@@ -195,12 +195,15 @@ const authoringRendererMethods = (resolveLink: MarkdownLinkResolver | undefined)
     const label = this.parser.parseInline(token.tokens) as string;
     const destination = token.href ?? "";
 
-    // THE RESERVED MARKER (A8 Phase F). A declaration id, never a fragment: only a resolver's
-    // classified answer may become an anchor, and nothing else about ordinary links changes.
+    // THE RESERVED NAMESPACE (A8 Phase F). A declaration id resolves through the host application;
+    // every other spelling of `#link:` — malformed, undeclared, unresolved — is WORDS ONLY. It is never
+    // passed through as an ordinary fragment, because a dead `href="#link:…"` is exactly what the author
+    // believed was a working link.
     const linkId = parsePageLinkMarker(destination);
     if (linkId !== null) {
       return resolvedLink(label, linkId, resolveLink, optionalTitle(token.title));
     }
+    if (isReservedLinkDestination(destination)) return label;
 
     const verdict = classifyAuthorUrl(destination);
     // Fail closed: the author's words survive, an unsafe destination does not.
@@ -242,7 +245,9 @@ function resolvedLink(
     return label;
   }
   if (answer === null || answer.length === 0) return label;
-  if (parsePageLinkMarker(answer) !== null) return label;
+  // No chained resolution and no namespace re-entry: an answer inside the reserved namespace is refused
+  // however it is spelled.
+  if (isReservedLinkDestination(answer)) return label;
 
   const verdict = classifyAuthorUrl(answer);
   if (!verdict.ok) return label;
@@ -357,26 +362,47 @@ export function renderSafeMarkdown(
 }
 
 /**
- * EVERY reserved marker id a Markdown text actually contains — derived from the PARSER's own link
+ * One reserved destination found in Markdown, exactly as the author wrote it.
+ *
+ * `linkId` is `null` when the spelling is malformed: it is still RESERVED (never clickable), and a reader
+ * that is validating a document can report it precisely rather than letting it disappear into prose.
+ */
+export interface ReservedLinkReference {
+  readonly marker: string;
+  readonly linkId: string | null;
+}
+
+/**
+ * EVERY reserved destination a Markdown text actually contains — derived from the PARSER's own link
  * tokens, never from a text scan (A8 Phase F, condition 6).
  *
  * This is what lets a reader report "you refer to `#link:x`, but nothing declares `x`" precisely: the
- * tokens know where a link is, so a page that merely MENTIONS `#link:…` in prose is not flagged, while
- * a marker inside emphasis, a list, a table cell or a nested label is. Duplicates are reported once, and
- * a malformed marker (`#link:`, `#LINK:x`, `#link:a_b`) is not a marker at all, so it is never listed.
+ * tokens know where a link is, so a page that merely MENTIONS `#link:…` in prose is not flagged, while a
+ * marker inside emphasis, a list, a table cell or a nested label is. Duplicates are reported once. Because
+ * the whole `#link:` namespace is reserved, a MALFORMED spelling is reported too (with `linkId: null`) —
+ * it is not a marker, but it is never an ordinary fragment either.
  *
  * It parses and discards: it resolves nothing, renders nothing and holds no state.
  */
-export function reservedLinkIds(markdown: string): readonly string[] {
+export function reservedLinkReferences(markdown: string): readonly ReservedLinkReference[] {
   if (typeof markdown !== "string" || markdown.length === 0) return [];
   const parser = new Marked({ async: false, gfm: true });
+  const markers = new Set<string>();
+  collectReservedMarkers(parser.lexer(markdown), markers);
+  return [...markers].map((marker) => ({ marker, linkId: parsePageLinkMarker(marker) }));
+}
+
+/** The declaration ids a Markdown text names — the well-formed subset of `reservedLinkReferences`. */
+export function reservedLinkIds(markdown: string): readonly string[] {
   const ids = new Set<string>();
-  collectReservedLinkIds(parser.lexer(markdown), ids);
+  for (const reference of reservedLinkReferences(markdown)) {
+    if (reference.linkId !== null) ids.add(reference.linkId);
+  }
   return [...ids];
 }
 
-/** Walk a token tree, collecting every `href` that names a reserved marker. */
-function collectReservedLinkIds(tokens: readonly Token[], ids: Set<string>): void {
+/** Walk a token tree, collecting every `href` that claims the reserved namespace. */
+function collectReservedMarkers(tokens: readonly Token[], markers: Set<string>): void {
   for (const token of tokens) {
     const record = token as {
       href?: unknown;
@@ -386,22 +412,21 @@ function collectReservedLinkIds(tokens: readonly Token[], ids: Set<string>): voi
       rows?: unknown;
     };
 
-    if (typeof record.href === "string") {
-      const linkId = parsePageLinkMarker(record.href);
-      if (linkId !== null) ids.add(linkId);
+    if (typeof record.href === "string" && isReservedLinkDestination(record.href)) {
+      markers.add(record.href);
     }
 
     // Inline children (emphasis, strong, link labels, paragraph content) and list items.
     for (const key of ["tokens", "items"] as const) {
       const children = record[key];
-      if (Array.isArray(children)) collectReservedLinkIds(children as Token[], ids);
+      if (Array.isArray(children)) collectReservedMarkers(children as Token[], markers);
     }
 
     // A table carries its cells inside `header` and `rows` (rows are arrays of cells).
-    if (Array.isArray(record.header)) collectReservedLinkIds(record.header as Token[], ids);
+    if (Array.isArray(record.header)) collectReservedMarkers(record.header as Token[], markers);
     if (Array.isArray(record.rows)) {
       for (const row of record.rows as unknown[]) {
-        if (Array.isArray(row)) collectReservedLinkIds(row as Token[], ids);
+        if (Array.isArray(row)) collectReservedMarkers(row as Token[], markers);
       }
     }
   }

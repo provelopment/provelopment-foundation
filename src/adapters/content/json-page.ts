@@ -27,15 +27,17 @@
  * never reinterpreted as something the author did not write.
  */
 import type { Locale } from "@/core/locale";
-import { reservedLinkIds } from "@/adapters/markdown/safe-markdown";
 import {
   PAGE_SECTION_TYPES,
   describePageDocumentIssues,
   pageDocumentSchema,
-  pageMarkdownFields,
   reservedHomeVisibilityIssue,
   type PageDocument,
 } from "@/core/page-document";
+import {
+  describePageLinkAuthoringIssues,
+  pageLinkAuthoringIssues,
+} from "@/adapters/content/page-link-integrity";
 import { isPageRoutePath } from "@/core/page-route-path";
 import { pageSourceFile } from "@/core/page-source";
 
@@ -142,27 +144,17 @@ export function parseJsonPageFile(
     );
   }
 
-  // A8 PHASE F — A MARKER MUST NAME SOMETHING.
+  // A8 PHASE F — THE APPLICATION-LINK AUTHORING CONTRACT.
   //
-  // At render time an unresolved marker is harmless (the author's words, no anchor), and that is the
-  // right behaviour for a link a HOST declines to offer. A marker whose id NOTHING declares is a
-  // different thing: no host could ever resolve it, so it is an author mistake, and only the reader can
-  // report it precisely. Detection runs over the Markdown PARSER's own link tokens
-  // (`reservedLinkIds`), never a text scan — so a page that merely mentions `#link:…` in prose is not
-  // flagged, while a marker inside emphasis, a list, a table cell or a nested label is.
-  const undeclared: string[] = [];
-  for (const field of pageMarkdownFields(document)) {
-    for (const linkId of reservedLinkIds(field.text)) {
-      if (document.links?.[linkId] !== undefined) continue;
-      undeclared.push(
-        `  - ${field.path}: "#link:${linkId}" is declared nowhere — add ` +
-          `"links": { "${linkId}": { "reference": "applicationLink", "key": "…" } } to the document`,
-      );
-    }
-  }
-  if (undeclared.length > 0) {
+  // At render time an unresolved marker is harmless (the author's words, no anchor), and that is the right
+  // behaviour for a link a HOST declines to offer. A marker that is malformed, or names an id nothing
+  // declares, is a different thing: no host could ever resolve it, so it is an author mistake. The rule is
+  // the ONE adapter-level contract (`@/adapters/content/page-link-integrity`), shared with the EFS runtime
+  // reader so the two can never drift, and it is token-derived rather than a text scan.
+  const linkIssues = pageLinkAuthoringIssues(document);
+  if (linkIssues.length > 0) {
     throw new Error(
-      `Invalid page document "${file}":\n${undeclared.join("\n")}\n` +
+      `Invalid page document "${file}":\n${describePageLinkAuthoringIssues(linkIssues)}\n` +
         "A reserved \"#link:\" marker must name a link the document declares; it is never served as a " +
         "fragment that can only ever fail.",
     );

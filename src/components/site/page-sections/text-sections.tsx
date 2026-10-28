@@ -83,7 +83,12 @@ export function ActionsSection({ section, locale, id, resolveLink }: SectionView
   return (
     <section className={sectionClassName(section.surface, section.align)} aria-labelledby={section.heading ? id : undefined}>
       <SectionHeading heading={section.heading} lede={section.lede} id={id} resolveLink={resolveLink} />
-      <ActionLinks actions={section.actions} locale={locale} className="mt-4" />
+      <ActionLinks
+        actions={section.actions}
+        locale={locale}
+        resolveLink={resolveLink}
+        className="mt-4"
+      />
     </section>
   );
 }

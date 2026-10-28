@@ -222,6 +222,27 @@ export function parsePageLinkMarker(destination: string): string | null {
   return isPageLinkId(id) ? id : null;
 }
 
+/**
+ * True when a destination CLAIMS the reserved application-link namespace — well-formed or not.
+ *
+ * The namespace is CONTROLLED by this contract (A8 Phase F, review round 2). A destination that begins
+ * with `#link:` is an application-link reference by declaration, so it may be resolved into an anchor
+ * only through the declaration → resolver path; every other fate — malformed id, undeclared id, no
+ * resolver, a refused answer — leaves the author's words and NO anchor.
+ *
+ * Why this is separate from `parsePageLinkMarker`: a malformed marker (`#link:`, `#LINK:x`, `#link:a_b`,
+ * `#link:a--b`, an over-length id) is not a *marker*, but it is unambiguously *in the namespace* — and
+ * turning it into an ordinary `href="#link:…"` would publish a dead fragment an author believed was a
+ * link. The check is case-insensitive because `#LINK:x` is a mistaken spelling of the marker, never a
+ * heading an author could have generated (`@/core/heading-anchor` only produces lowercase ids).
+ *
+ * Everything OUTSIDE the namespace is untouched: `#anchor`, `#link`, `#links`, `#link-to-hours` and every
+ * other ordinary fragment keep the exact behaviour and scheme policy they always had.
+ */
+export function isReservedLinkDestination(destination: string): boolean {
+  return /^#link:/i.test(destination);
+}
+
 /* `PageLinkReference` is DERIVED from its schema (`pageLinkReferenceSchema`, below), so the type and
  * the refusal for a document that names anything else cannot drift apart. */
 
@@ -277,8 +298,9 @@ export function resolvePageLink(
     return null;
   }
   if (typeof answer !== "string" || answer.length === 0) return null;
-  // NO CHAINED RESOLUTION: a resolver may not answer with another marker.
-  if (parsePageLinkMarker(answer) !== null) return null;
+  // NO CHAINED RESOLUTION, AND NO NAMESPACE RE-ENTRY: a resolver may not answer with a reserved
+  // destination at all (a malformed spelling of the marker included).
+  if (isReservedLinkDestination(answer)) return null;
 
   const verdict = classifyAuthorUrl(answer);
   return verdict.ok ? verdict.href : null;
@@ -370,17 +392,19 @@ const destinationSchema = z
       "must be a same-site path (e.g. /contact), a fragment, or an http, https, mailto or tel destination",
   })
   /**
-   * THE RESERVED MARKER IS NOT A DESTINATION (A8 Phase F, condition 3).
+   * THE RESERVED NAMESPACE IS NOT A DESTINATION (A8 Phase F, condition 3 — review round 2).
    *
-   * `#link:<id>` is a fragment, so the classifier above ACCEPTS it — which is exactly why it must be
-   * refused here: a resolved href may only ever come from the declaration → resolver path, never from
-   * an author writing the marker into a field that is emitted straight into an `href`. This is the ONE
-   * place the refusal is stated, so every destination position (an action's `href`, a list item's
-   * `href`) inherits it and none can bypass resolution.
+   * `#link:<id>` is a fragment, so the classifier above ACCEPTS it — which is exactly why the whole
+   * namespace must be refused here: a resolved href may only ever come from the declaration → resolver
+   * path, never from an author writing the marker into a field that is emitted straight into an `href`.
+   * The refusal covers MALFORMED spellings too (`#link:`, `#LINK:x`, `#link:a_b`), because a fragment that
+   * can never resolve is a broken link the author believed they had made. This is the ONE place the
+   * refusal is stated, so every destination position (an action's `href`, a list item's `href`) inherits
+   * it and none can bypass resolution.
    */
-  .refine((value) => parsePageLinkMarker(value) === null, {
+  .refine((value) => !isReservedLinkDestination(value), {
     message:
-      'must not use the reserved "#link:" marker as a destination: declare the link under "links" and refer to it with "link"',
+      'must not use the reserved "#link:" namespace as a destination: declare the link under "links" and refer to it with "link"',
   });
 
 /** Another page OF THIS SITE, named by its route path (locale is added when rendered). */
@@ -513,17 +537,26 @@ const actionSchema = z
 
 const actionsSchema = z.array(actionSchema).min(1).max(PAGE_MAX_ACTIONS);
 
-/** A list entry: a plain label, or a label with detail text and an optional destination. */
+/**
+ * A list entry: a plain label, or a label with detail text and an optional destination.
+ *
+ * The destination forms are the same three an action has, with the same exclusivity: `href`, `route` or
+ * `link` (A8 Phase F, §3C — actionable list items use the ONE resolution contract). A list entry may also
+ * have NONE of them — the plain-label shape — so the rule is “at most one”, never “exactly one”, which is
+ * what keeps every existing list compatible.
+ */
 const listItemSchema = z
   .strictObject({
     label: labelSchema,
     detail: markdownTextSchema.optional(),
     href: destinationSchema.optional(),
     route: routeTargetSchema.optional(),
+    link: linkIdSchema.optional(),
   })
-  .refine((item) => item.href === undefined || item.route === undefined, {
-    message: 'may set "href" or "route", not both',
-  });
+  .refine(
+    (item) => [item.href, item.route, item.link].filter((form) => form !== undefined).length <= 1,
+    { message: 'may set at most one of "href", "route" or "link"' },
+  );
 
 const listItemsSchema = z
   .array(z.union([labelSchema, listItemSchema]))
@@ -759,6 +792,70 @@ export const pageSectionSchema = z.discriminatedUnion("type", [
 export type PageSection = z.infer<typeof pageSectionSchema>;
 
 /**
+ * EVERY `link` MUST NAME A DECLARATION (A8 Phase F, §3B — review round 2)
+ * ======================================================================
+ *
+ * A `link` is a REFERENCE: it carries no destination, only the promise that this document declares one.
+ * An action or list item naming an id the document does not declare is therefore not a narrower kind of
+ * link — it is a page that can never resolve for ANY host, which no renderer can repair and no reader
+ * should accept.
+ *
+ * The rule lives HERE, on the ONE schema, rather than in a reader: `@/adapters/content/json-page` and the
+ * EFS runtime reader (`@/adapters/content/efs-content`) both validate through this schema, so both refuse
+ * the same documents for the same reason, and no second copy of the rule can drift. The issue carries the
+ * precise path (`sections[2].actions[0].link`), which is what each reader renders into its own
+ * source-named message.
+ */
+function undeclaredLinkIssues(document: {
+  readonly links?: Readonly<Record<string, PageLinkReference>>;
+  readonly sections: readonly PageSection[];
+}): readonly { readonly path: (string | number)[]; readonly message: string }[] {
+  const issues: { path: (string | number)[]; message: string }[] = [];
+  const declared = document.links ?? {};
+
+  const check = (linkId: string | undefined, path: (string | number)[]): void => {
+    if (linkId === undefined || declared[linkId] !== undefined) return;
+    const available = Object.keys(declared).sort();
+    issues.push({
+      path,
+      message:
+        `"${linkId}" is not declared in this document's "links": every "link" must name a declaration ` +
+        `(declared: ${available.length === 0 ? "none" : available.join(", ")})`,
+    });
+  };
+
+  document.sections.forEach((section, index) => {
+    switch (section.type) {
+      case "hero":
+        section.actions?.forEach((action, actionIndex) =>
+          check(action.link, ["sections", index, "actions", actionIndex, "link"]),
+        );
+        break;
+      case "actions":
+        section.actions.forEach((action, actionIndex) =>
+          check(action.link, ["sections", index, "actions", actionIndex, "link"]),
+        );
+        break;
+      case "cards":
+        section.items.forEach((item, itemIndex) =>
+          check(item.action?.link, ["sections", index, "items", itemIndex, "action", "link"]),
+        );
+        break;
+      case "list":
+        section.items.forEach((item, itemIndex) => {
+          if (typeof item === "string") return;
+          check(item.link, ["sections", index, "items", itemIndex, "link"]);
+        });
+        break;
+      default:
+        break;
+    }
+  });
+
+  return issues;
+}
+
+/**
  * THE PAGE ENVELOPE. `schemaVersion` is explicit and singular: a document naming
  * another version is refused rather than reinterpreted, so a future document can never
  * be half-understood today. `title` is required (it is the page's identity, its
@@ -791,7 +888,17 @@ export const pageDocumentSchema = z.strictObject({
    */
   links: linksSchema.optional(),
   sections: z.array(pageSectionSchema).max(PAGE_MAX_SECTIONS),
-});
+})
+  /**
+   * THE DOCUMENT-LEVEL INTEGRITY RULE (A8 Phase F, §3B). A section's own schema cannot see the
+   * document's `links`, so the cross-reference is checked here — once, for every reader that validates
+   * through this schema.
+   */
+  .superRefine((document, context) => {
+    for (const issue of undeclaredLinkIssues(document)) {
+      context.addIssue({ code: "custom", path: [...issue.path], message: issue.message });
+    }
+  });
 
 export type PageDocument = z.infer<typeof pageDocumentSchema>;
 

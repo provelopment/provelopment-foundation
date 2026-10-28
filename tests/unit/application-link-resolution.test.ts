@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { renderSafeMarkdown, reservedLinkIds } from "@/adapters/markdown/safe-markdown";
+import { pageLinkAuthoringIssues } from "@/adapters/content/page-link-integrity";
 import {
   describePageDocumentIssues,
   pageDocumentSchema,
@@ -227,15 +228,33 @@ describe("rendering a marker — words without an authorized destination", () =>
     }
   });
 
-  it("treats a malformed marker as the ordinary fragment it is, and never resolves it", () => {
+  it("refuses every malformed reserved destination — never a clickable fragment, never resolved", () => {
+    const malformed = ["#link:", "#LINK:x", "#link:a_b", "#link:a--b", `#link:${"a".repeat(65)}`];
     let asked = 0;
-    const html = renderSafeMarkdown("[x](#LINK:y) [z](#link:a_b)", () => {
-      asked += 1;
-      return "mailto:no@example.test";
-    });
-    expect(html).toContain('href="#LINK:y"');
-    expect(html).toContain('href="#link:a_b"');
+    for (const destination of malformed) {
+      const html = renderSafeMarkdown(`[x](${destination})`, () => {
+        asked += 1;
+        return "mailto:no@example.test";
+      });
+      expect(html, destination).not.toContain("<a");
+      expect(html, destination).not.toContain("#link:");
+      expect(html, destination).not.toContain("#LINK:");
+    }
     expect(asked).toBe(0);
+  });
+
+  it("leaves ordinary fragments OUTSIDE the reserved namespace as the clickable anchors they were", () => {
+    for (const destination of ["#anchor", "#link", "#links", "#link-to-hours", "#opening-hours"]) {
+      expect(renderSafeMarkdown(`[x](${destination})`), destination).toContain(
+        `href="${destination}"`,
+      );
+    }
+  });
+
+  it("refuses a resolver answer inside the reserved namespace, however it is spelled", () => {
+    for (const answer of ["#link:other", "#LINK:x", "#link:", "#link:a_b"]) {
+      expect(renderSafeMarkdown("[x](#link:contact)", () => answer), answer).not.toContain("<a");
+    }
   });
 
   it("leaves every ordinary destination byte-identical whether or not a resolver is present", () => {
@@ -343,5 +362,100 @@ describe("request-local resolution", () => {
         expect(source, `${file} must not name ${forbidden}`).not.toContain(forbidden);
       }
     }
+  });
+});
+
+describe("reserved-namespace and declaration-integrity rules", () => {
+  it("refuses every reserved spelling in an authored href position, malformed or not", () => {
+    const spellings = ["#link:contact", "#link:", "#LINK:x", "#link:a_b", `#link:${"a".repeat(65)}`];
+    for (const href of spellings) {
+      const action = documentWithLink({
+        sections: [{ type: "actions", actions: [{ label: "A", href }] }],
+      });
+      expect(issues(action), href).toContain("reserved");
+      const list = documentWithLink({ sections: [{ type: "list", items: [{ label: "A", href }] }] });
+      expect(issues(list), href).toContain("reserved");
+    }
+  });
+
+  it("refuses an action link that names no declaration, naming the property", () => {
+    const value = documentWithLink({
+      sections: [{ type: "actions", actions: [{ label: "A", link: "missing" }] }],
+    });
+    expect(issues(value)).toContain("sections[0].actions[0].link");
+  });
+
+  it("refuses a card action link that names no declaration, naming the property", () => {
+    const value = documentWithLink({
+      links: undefined,
+      sections: [{ type: "cards", items: [{ title: "C", action: { label: "A", link: "missing" } }] }],
+    });
+    expect(issues(value)).toContain("sections[0].items[0].action.link");
+  });
+
+  it("refuses a list-item link that names no declaration, naming the property", () => {
+    const value = documentWithLink({
+      sections: [{ type: "list", items: [{ label: "A", link: "missing" }] }],
+    });
+    expect(issues(value)).toContain("sections[0].items[0].link");
+  });
+
+  it("accepts a declared list-item link and keeps the plain, href and route forms compatible", () => {
+    const value = documentWithLink({
+      sections: [
+        {
+          type: "list",
+          items: [
+            "plain label",
+            { label: "declared", link: "quotation-email" },
+            { label: "href", href: "/contact" },
+            { label: "route", route: "services" },
+          ],
+        },
+      ],
+    });
+    expect(pageDocumentSchema.safeParse(value).success).toBe(true);
+  });
+
+  it("refuses two destination forms on a list item", () => {
+    const value = documentWithLink({
+      sections: [{ type: "list", items: [{ label: "A", href: "/x", link: "quotation-email" }] }],
+    });
+    expect(issues(value)).toContain("at most one");
+  });
+});
+
+describe("the shared reader contract", () => {
+  const parse = (value: unknown) => pageDocumentSchema.parse(value);
+
+  it("reports a malformed reserved marker with the field that holds it", () => {
+    const found = pageLinkAuthoringIssues(
+      parse({ schemaVersion: 1, title: "P", sections: [{ type: "prose", body: "see [x](#link:)" }] }),
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0].location).toBe("sections[0].body");
+    expect(found[0].message).toContain("malformed");
+  });
+
+  it("reports an undeclared marker once, naming the id", () => {
+    const found = pageLinkAuthoringIssues(
+      parse({
+        schemaVersion: 1,
+        title: "P",
+        sections: [{ type: "prose", body: "[a](#link:absent) and [b](#link:absent)" }],
+      }),
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0].message).toContain("#link:absent");
+  });
+
+  it("accepts a declared marker, and a prose mention of one, without complaint", () => {
+    const document = parse({
+      schemaVersion: 1,
+      title: "P",
+      links: { declared: { reference: "applicationLink", key: "k" } },
+      sections: [{ type: "prose", body: "write #link:declared in prose, and [a](#link:declared)" }],
+    });
+    expect(pageLinkAuthoringIssues(document)).toEqual([]);
   });
 });

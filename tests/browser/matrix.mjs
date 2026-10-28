@@ -52,6 +52,7 @@ import {
   deploymentScenarioFiles,
   parseBrowserScope,
 } from "./scope.mjs";
+import { createPortAllocator } from "./ports.mjs";
 // ONE WRITE DOMAIN (FOUNDATION-DEPLOYMENT-ISO-B3C2B)
 // Every MUTATING filesystem call in this harness comes from `./scratch.mjs`, which refuses a target
 // inside the selected deployment — or outside this run's disposable temp state and its own `.report/` —
@@ -254,7 +255,13 @@ process.on("exit", () => {
 });
 
 const NEXT_BIN = join(ROOT, "node_modules", "next", "dist", "bin", "next");
-const BASE_PORT = 3800 + (Math.floor(Math.random() * 900) % 900);
+// ONE ALLOCATOR FOR EVERY PORT (FOUNDATION-CONTROLLED-INTEGRATION-R3). The draw is unchanged; what it is
+// turned into is not. A restricted port (4045, 4190, 5060, 5061, …) can no longer be handed to a dev
+// server, because every logical offset is resolved against a probed window of usable ports. See
+// `tests/browser/ports.mjs` for the contract and why it is a contract rather than a wider guess.
+const PORTS = await createPortAllocator();
+/** `port(0)` — a real, usable port, never the raw draw. Scenarios address ports by OFFSET, never by adding. */
+const BASE_PORT = PORTS.base;
 
 let BASE_URL = "";
 
@@ -667,6 +674,9 @@ async function waitForServer(url, timeoutMs = 300000) {
 function deploymentHarness() {
   return {
     basePort: BASE_PORT,
+    // Address ports by LOGICAL OFFSET: the allocator guarantees the physical port is usable and unique,
+    // including for a scenario added later with an offset nobody has used yet.
+    port: (offset) => PORTS.port(offset),
     viewports: VIEWPORTS,
     check,
     startDevServer,
@@ -1504,7 +1514,7 @@ async function runReducedMotion(rows, trigger, panel, cdp) {
  * that only existed to compare presentations are gone with the feature.
  */
 async function runCanonical(chrome) {
-  const port = BASE_PORT;
+  const port = PORTS.port(0);
   // IMPORTANT: navigate over `localhost`, NOT `127.0.0.1`. Next.js's dev server
   // blocks JS/HMR chunks from `127.0.0.1` as a cross-origin dev request unless
   // `allowedDevOrigins` is set; `localhost` is an allowed dev origin by default.
@@ -1652,7 +1662,7 @@ async function runDuplicateNavScenario(chrome) {
   const rows = [];
 
   const bootPhase = async (label, portSuffix) => {
-    const port = BASE_PORT + 99 + portSuffix;
+    const port = PORTS.port(99 + portSuffix);
     const url = `http://localhost:${port}/ww/en`;
     BASE_URL = `http://localhost:${port}`;
     const config = JSON.parse(original);
@@ -2860,7 +2870,7 @@ async function runConnectivityIconScenario(chrome) {
   const MISSING = "missing-connectivity-icon-fixture.svg"; // deliberately absent
   const original = await readFile(CONFIG_PATH, "utf8");
   const rows = [];
-  const port = BASE_PORT + 150;
+  const port = PORTS.port(150);
   const url = `http://localhost:${port}/ww/en`;
   BASE_URL = `http://localhost:${port}`;
   const config = JSON.parse(original);
@@ -3273,7 +3283,7 @@ function tallPageFixture() {
 }
 
 async function runPersistentNavigationScenario(chrome) {
-  const port = BASE_PORT + 210;
+  const port = PORTS.port(210);
   BASE_URL = `http://localhost:${port}`;
   const homeUrl = `${BASE_URL}/ww/en`;
   const tallUrl = `${BASE_URL}/ww/en/zz-nav-tall`;
@@ -3781,7 +3791,7 @@ A repeated heading, which the renderer must disambiguate.
 `;
 
 async function runSafeMarkdownScenario(chrome) {
-  const port = BASE_PORT + 260;
+  const port = PORTS.port(260);
   BASE_URL = `http://localhost:${port}`;
   const fixturePath = join(CONTENT_ROOT, "markdown", "ww", "en", `${SAFE_MARKDOWN_SLUG}.md`);
   const url = `${BASE_URL}/ww/en/${SAFE_MARKDOWN_SLUG}`;
@@ -3996,7 +4006,7 @@ async function waitForNotFound(cdp) {
 }
 
 async function runNestedPageScenario(chrome) {
-  const port = BASE_PORT + 270;
+  const port = PORTS.port(270);
   BASE_URL = `http://localhost:${port}`;
   const sectionDirectory = join(CONTENT_ROOT, "markdown", "ww", "en", NESTED_SECTION);
   const pagePath = join(sectionDirectory, `${NESTED_SLUG}.md`);
@@ -4123,7 +4133,7 @@ const JSON_PAGE_FIXTURE = JSON.stringify(
 );
 
 async function runAdvancedJsonScenario(chrome) {
-  const port = BASE_PORT + 271;
+  const port = PORTS.port(271);
   BASE_URL = `http://localhost:${port}`;
   const directory = join(CONTENT_ROOT, "json", "ww", "en");
   const pagePath = join(directory, `${JSON_ROUTE_PATH}.json`);
@@ -4602,7 +4612,7 @@ const chooseLayout = (layout) => `(() => {
 async function runLayoutSwitcherScenario(chrome) {
   const original = await readFile(CONFIG_PATH, "utf8");
   const rows = [];
-  const port = BASE_PORT + 320;
+  const port = PORTS.port(320);
   const url = `http://localhost:${port}/ww/en`;
   BASE_URL = `http://localhost:${port}`;
   const config = JSON.parse(original);
@@ -5527,7 +5537,7 @@ async function runBottomNavWrapScenario(chrome) {
   ];
 
   const phase = async (label, navigation, portSuffix) => {
-    const port = BASE_PORT + 360 + portSuffix;
+    const port = PORTS.port(360 + portSuffix);
     const url = `http://localhost:${port}/ww/en`;
     BASE_URL = `http://localhost:${port}`;
     const config = JSON.parse(original);
@@ -5725,7 +5735,7 @@ async function runHeaderRowsScenario(chrome) {
   const rows = [];
 
   const phase = async (label, mutate, widths, portSuffix) => {
-    const port = BASE_PORT + 400 + portSuffix;
+    const port = PORTS.port(400 + portSuffix);
     const url = `http://localhost:${port}/ww/en`;
     BASE_URL = `http://localhost:${port}`;
     const config = JSON.parse(original);
@@ -6037,7 +6047,7 @@ const multisiteChoose = (name, value) => `(() => {
 })()`;
 
 async function runMultisiteScenario(chrome) {
-  const port = BASE_PORT + 271;
+  const port = PORTS.port(271);
   BASE_URL = `http://localhost:${port}`;
   const original = await readFile(CONFIG_PATH, "utf8");
   const written = [];
@@ -6846,7 +6856,7 @@ const SIDEBAR_MOBILE_HOME_LINK = "#shell-sidebar-mobile-rail ul li:first-child a
  */
 async function runSidebarStateScenario(chrome) {
   const rows = [];
-  const port = BASE_PORT + 341;
+  const port = PORTS.port(341);
   const base = `http://localhost:${port}`;
   BASE_URL = base;
   const HOME = "/ww/en";
@@ -7605,7 +7615,7 @@ async function runAppearanceContractScenario(chrome) {
     "utf8",
   );
 
-  const surfacePort = BASE_PORT + 600;
+  const surfacePort = PORTS.port(600);
   const surfaceUrl = `http://localhost:${surfacePort}`;
   /** The colour-only signature of a frame: every audited surface, no state and no geometry. */
   const signatureOf = (probe) =>
@@ -7921,7 +7931,7 @@ async function runAppearanceContractScenario(chrome) {
   // `ui.theme.background` (the only configured colour authority that exists) plus the two decorative
   // graphic roles, pointed at SHIPPED mirrored placeholders. The config write lands in the disposable
   // COPY and is restored here and by the runner's own `finally`.
-  const configuredPort = BASE_PORT + 601;
+  const configuredPort = PORTS.port(601);
   const configuredUrl = `http://localhost:${configuredPort}`;
   const configuredConfig = patchShippedUi(JSON.parse(original));
   configuredConfig.ui = {

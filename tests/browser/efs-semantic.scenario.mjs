@@ -44,7 +44,7 @@ async function start(harness) {
   );
   let last = null;
   for (const offset of PORT_OFFSETS) {
-    const port = harness.basePort + offset;
+    const port = harness.port(offset);
     const server = harness.startDevServer(port, { synthetic: false, deploymentRoot: installation });
     try {
       await harness.waitForServer(`http://localhost:${port}/zz/de/frankfurt`, 240000);

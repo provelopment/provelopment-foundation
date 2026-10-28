@@ -479,13 +479,13 @@ async function startServer(harness, installation) {
   process.env["VERCEL_URL"] = platformIdentity.hostname;
   process.env["VERCEL_BRANCH_URL"] = platformIdentity.branchHostname;
   for (const offset of PORT_OFFSETS) {
-    const port = harness.basePort + offset;
+    const port = harness.port(offset);
     const server = harness.startDevServer(port, { deploymentRoot: installation.root });
     if (await waitForAnyResponse(port)) return { server, port };
     last = server;
     await harness.stopServer(server);
   }
-  throw new Error(`no port answered among ${PORT_OFFSETS.map((o) => harness.basePort + o).join(", ")} — last log: ${last ? last.log().slice(-400) : "(none)"}`);
+  throw new Error(`no port answered among ${PORT_OFFSETS.map((o) => harness.port(o)).join(", ")} — last log: ${last ? last.log().slice(-400) : "(none)"}`);
 }
 
 /**

@@ -74,7 +74,7 @@ export async function run(chrome, harness) {
 
   try {
     for (const offset of PORT_OFFSETS) {
-      const candidate = harness.basePort + offset;
+      const candidate = harness.port(offset);
       const started = harness.startDevServer(candidate, { synthetic: false });
       // A readiness probe that carries the PUBLIC hostname: the dev server needs tens of seconds to compile,
       // and a loopback request without the claimed Host answers 404 by design (the boundary is doing its job).

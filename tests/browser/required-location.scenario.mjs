@@ -346,7 +346,7 @@ async function requiredBrowserProof(harness, rows, chrome, port, dictionary) {
 async function startServer(harness, root) {
   let last = null;
   for (const offset of PORT_OFFSETS) {
-    const port = harness.basePort + offset;
+    const port = harness.port(offset);
     const server = harness.startDevServer(port, { deploymentRoot: root });
     try {
       // The readiness URL is a path BOTH copies answer with 200 — the untouched Site's locale root.

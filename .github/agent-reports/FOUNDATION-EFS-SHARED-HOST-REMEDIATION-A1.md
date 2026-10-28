@@ -1057,3 +1057,37 @@ that scenario is finished.
 
 Everything else in this revision is green: `pnpm test` (2787 passed, 1 skipped), `tsc`, `lint`,
 `pnpm build`, and the eight scenario browser run.
+
+## A1 R11 — FINAL GATE STATUS (addendum, evidence only)
+
+**Guard registration (step 1) — DONE.** `tests/browser/shared-host-production.mjs` is registered in
+`tests/architecture/write-ownership-guard.test.ts` (`TEST_SCRATCH_WRITERS`, with its precise domain) and in
+`tests/architecture/deployment-root-guard.test.ts` (approved build-harness list). No guard was disabled and no
+filesystem permission was broadened. `tests/architecture` + `tests/unit`: 188 files, 2625 tests, 2 failed —
+and both failures were stale generated namespace state from an aborted smoke run, not the delta; after
+rebuilding `public/spokes/**` from the canonical plan the asset suites pass 29/29 and `tsc --noEmit` is clean.
+The exact-head CI failure on `6ff1274` (`full`, `validate`) was these two guards and nothing else.
+
+**The `/_global-error` build failure (step 2) — INTERMITTENT; THE ROOT-HOMEPAGE CAUSE IS DISPROVED.**
+
+```text
+bare `next build` (x2, plus --debug-prerender)                     exit 0, 4/4 static pages
+diag2: sync + validate-publications + next build, step by step     exit 0, no /_global-error failure
+projection digest after project / after sync / after validate      528b509f525895b4 unchanging, 2 claims
+same build inside tests/browser/shared-host-production.mjs         exit 1 at /_global-error
+failure text: TypeError: Cannot read properties of null (reading useContext)
+```
+
+The Installation published NOTHING at `/` in the PASSING runs and in the failing ones, so root ownership is
+not the discriminator. The projection is byte-identical across both, so neither asset synchronisation nor
+publication validation changes what the compiler reads. The route is `/_global-error`: a SYNTHETIC page Next
+generates for an error boundary nothing links to, not part of the authored surface. The remaining discriminator
+was NOT isolated, so the smoke builds at most twice and reports the attempt count instead of presenting a flake
+as a deployment verdict.
+
+**Steps 3-5 — NOT COMPLETED.** `next start` was never reached: there are NO production HTTP statuses and NO
+measured asset bytes. The behavioural assertions remain UNEXECUTED and must not be recorded as passed.
+
+**Housekeeping.** The smoke closes its log descriptor, kills the server process tree, removes its disposable
+Installation, restores `public/spokes/**` through the canonical synchroniser, and restores `.next` to the
+reference deployment build, removing the artefact if that rebuild fails.

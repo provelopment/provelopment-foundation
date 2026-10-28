@@ -201,7 +201,15 @@ export async function submitContactForm(
     siteId,
     formRef: record.formRef,
     authorizationRef: origin.bindingId,
-    placement: { kind: "page", pageRef: pageId },
+    // THE AUTHORED PLACEMENT, REPORTED TRUTHFULLY (A7).
+    //
+    // A `siteWide` record authorizes this Site's Pages; a `page` record authorizes exactly one Page. A5 always
+    // told Connect `page`, so a site-wide record was presented by the renderer and then refused by
+    // `contactFormAuthorizationProblems` on every submission - the one place rendering and submission disagreed.
+    // This reads the record's OWN authored placement, so a page-scoped record can never be widened into
+    // site-wide authority here, and a site-wide record still needs a real Page section naming the same form
+    // (that requirement lives in the verified route and the renderer, never in an injected default).
+    placement: "siteWide" in record.placement ? { kind: "site-wide" } : { kind: "page", pageRef: pageId },
     ...(origin.locale === undefined ? {} : { locale: origin.locale }),
   };
 

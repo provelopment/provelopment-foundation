@@ -48,11 +48,18 @@ export type ContactFormPresentation = "legacy" | ContactFormMode;
  * An inactive record offers NOTHING. One switch governs the ONE decision both callers need — what this Site
  * presents — so rendering and submission cannot disagree, and a visitor is never invited to compose a
  * message that would be refused every time.
+ *
+ * `transport: "none"` is an ACTIVE refusal, not a mode: the Site states that nothing may carry the message.
+ * A7 found the presentation predicate ignoring it, so an authorized Page could offer a working-looking form
+ * whose every submission the orchestrator refused for having no transport. The refusal now happens where the
+ * offer is made, not only where the send is attempted.
  */
 export function contactFormOfferedMode(
   record: AuthoredContactFormConfiguration,
 ): ContactFormMode {
-  return record.enabled ? record.mode : "off";
+  if (!record.enabled) return "off";
+  if (record.transport === "none") return "off";
+  return record.mode;
 }
 
 export function contactFormPresentationForSite(
@@ -80,4 +87,36 @@ export function contactFormPresentsOnPage(
 ): boolean {
   if (contactFormOfferedMode(record) !== "simple") return false;
   return "siteWide" in record.placement ? true : record.placement.page === pageId;
+}
+
+/**
+ * MAY THIS SITE PRESENT ITS FORM TO ***THIS*** VISITOR? (A7)
+ *
+ * The one decision, taken from facts the route has already PROVED, so a public page never advertises a form
+ * that the Server Action would refuse:
+ *
+ *   - the record must actually offer SIMPLE (`enabled`, `mode`, and a transport the Site selected);
+ *   - the Page must be the record's own Page, or the record must be explicitly site-wide — a section alone is
+ *     never authority;
+ *   - the **verified canonical EFS binding** must appear in the record's authored `authorizationRefs`. EFS
+ *     resolves an alias binding to its canonical binding before this request context exists, so an alias is
+ *     judged as the publication it actually reaches — no request value can manufacture an authorization;
+ *   - the owning Spoke must author a valid private policy for this Site, because a form whose every submission
+ *     is guaranteed to fail is worse than no form.
+ *
+ * `policyAvailable` is a BOOLEAN, not the policy: the renderer needs to know whether a sender exists, never
+ * who the recipients are. Recipients and sender addresses stay on the server (A7 §5).
+ */
+export function contactFormPresentsOnPublication(
+  record: AuthoredContactFormConfiguration,
+  facts: {
+    readonly pageId: string;
+    readonly bindingId: string;
+    readonly policyAvailable: boolean;
+  },
+): boolean {
+  if (contactFormOfferedMode(record) !== "simple") return false;
+  if (!("siteWide" in record.placement) && record.placement.page !== facts.pageId) return false;
+  if (!record.authorizationRefs.includes(facts.bindingId)) return false;
+  return facts.policyAvailable;
 }

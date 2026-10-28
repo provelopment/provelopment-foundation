@@ -242,7 +242,7 @@ this server and was discarded. Keep these four states distinct when you talk abo
 | Actual delivery | **not** claimed, and not observable here at all |
 
 **It fails closed.** No form renders, and no submission sends, when: the Page authors no section; the Site authors
-no record; the record is disabled or names a mode Foundation cannot present; the section and the record name
+no record; the record is disabled, names a mode Foundation cannot present, or selects **no transport** (`transport: "none"`); the section and the record name
 different forms; the record does not place the form on this Page; the verified publication is not in
 `authorizationRefs`; or the Spoke authors no valid private policy. A missing, unreadable, malformed or wrongly
 shaped policy file answers "no policy" — never "inherit someone else's", never "fall back to the default Site".

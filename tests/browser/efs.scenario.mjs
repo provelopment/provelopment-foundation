@@ -80,7 +80,7 @@ async function start(harness) {
   process.env.FOUNDATION_EFS_CAPSULE = capsule;
   let last = null;
   for (const offset of PORT_OFFSETS) {
-    const port = harness.basePort + offset;
+    const port = harness.port(offset);
     const server = harness.startDevServer(port, { synthetic: false, deploymentRoot: installation });
     try {
       await harness.waitForServer(`${base(port)}/acme-co/en-001/about`, 240000);

@@ -266,14 +266,14 @@ async function startServer(harness, installation, offsets, { platformIdentity = 
   }
 
   for (const offset of offsets) {
-    const port = harness.basePort + offset;
+    const port = harness.port(offset);
     const server = harness.startDevServer(port, { deploymentRoot: installation.root });
     if (await waitForAnyResponse(server, port)) return { server, port };
     failures.push(`:${port} => ${server.log().slice(-300) || "(no output)"}`);
     await harness.stopServer(server);
   }
   throw new Error(
-    `no port answered among ${offsets.map((o) => harness.basePort + o).join(", ")} — ${failures.join(" || ")}`,
+    `no port answered among ${offsets.map((o) => harness.port(o)).join(", ")} — ${failures.join(" || ")}`,
   );
 }
 

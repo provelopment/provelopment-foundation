@@ -11,20 +11,20 @@ import type { SectionViewProps } from "./text-sections";
  */
 
 /** `columns`: two or three side-by-side blocks, each with a title and body-or-list. */
-export function ColumnsSection({ section, id }: SectionViewProps<"columns">) {
+export function ColumnsSection({ section, id, resolveLink }: SectionViewProps<"columns">) {
   const layout = section.items.length === 3 ? "sm:grid-cols-3" : ratioClass(section.ratio);
   return (
     <section
       className={sectionClassName(section.surface, undefined)}
       aria-labelledby={section.heading ? id : undefined}
     >
-      <SectionHeading heading={section.heading} lede={section.lede} id={id} />
+      <SectionHeading heading={section.heading} lede={section.lede} id={id} resolveLink={resolveLink} />
       <div className={["mt-6 grid gap-6", layout].join(" ")}>
         {section.items.map((column, index) => (
           <div key={index}>
             <ItemTitle>{column.title}</ItemTitle>
             {column.body ? (
-              <MarkdownField text={column.body} className="mt-2 text-sm" />
+              <MarkdownField text={column.body} resolveLink={resolveLink} className="mt-2 text-sm" />
             ) : null}
             {column.items ? (
               <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
@@ -45,18 +45,18 @@ export function ColumnsSection({ section, id }: SectionViewProps<"columns">) {
  * column — in the same keyboard-reachable local scroll region the platform's Markdown
  * tables use, so a wide table never forces the page sideways.
  */
-export function TableSection({ section, id }: SectionViewProps<"table">) {
+export function TableSection({ section, id, resolveLink }: SectionViewProps<"table">) {
   return (
     <section
       className={sectionClassName(section.surface, undefined)}
       aria-labelledby={section.heading ? id : undefined}
     >
-      <SectionHeading heading={section.heading} lede={section.lede} id={id} />
+      <SectionHeading heading={section.heading} lede={section.lede} id={id} resolveLink={resolveLink} />
       <div className="prose-table-scroll mt-4" tabIndex={0}>
         <table className="w-full text-left text-sm">
           {section.caption ? (
             <caption className="pb-2 text-left">
-              <MarkdownField text={section.caption} className="text-sm text-muted-foreground" />
+              <MarkdownField text={section.caption} resolveLink={resolveLink} className="text-sm text-muted-foreground" />
             </caption>
           ) : null}
           <thead>
@@ -96,20 +96,20 @@ export function TableSection({ section, id }: SectionViewProps<"table">) {
  * anything. Each question is a level-3 heading inside its summary, keeping the outline
  * navigable.
  */
-export function FaqSection({ section, id }: SectionViewProps<"faq">) {
+export function FaqSection({ section, id, resolveLink }: SectionViewProps<"faq">) {
   return (
     <section
       className={sectionClassName(section.surface, undefined)}
       aria-labelledby={section.heading ? id : undefined}
     >
-      <SectionHeading heading={section.heading} lede={section.lede} id={id} />
+      <SectionHeading heading={section.heading} lede={section.lede} id={id} resolveLink={resolveLink} />
       <div className="mt-4 border-y border-border">
         {section.items.map((item, index) => (
           <details key={index} className="border-b border-border py-4 last:border-b-0">
             <summary className="cursor-pointer">
               <ItemTitle>{item.question}</ItemTitle>
             </summary>
-            <MarkdownField text={item.answer} className="mt-2 text-sm" />
+            <MarkdownField text={item.answer} resolveLink={resolveLink} className="mt-2 text-sm" />
           </details>
         ))}
       </div>

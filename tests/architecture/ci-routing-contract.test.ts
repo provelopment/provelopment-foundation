@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { ROUTE_COMMANDS, ROUTE_SETUP_COMMAND, SCOPES } from "../../scripts/ci/change-scope.mjs";
+import { ROUTE_COMMANDS, PRODUCTION_SHARED_HOST_COMMAND, ROUTE_SETUP_COMMAND, SCOPES } from "../../scripts/ci/change-scope.mjs";
 
 /**
  * THE CI ROUTING CONTRACT (FOUNDATION-DEPLOYMENT-ISO-B3B)
@@ -218,7 +218,47 @@ describe("each route runs exactly its declared contract", () => {
       "pnpm test",
       "pnpm build",
       "pnpm test:browser",
+      PRODUCTION_SHARED_HOST_COMMAND,
     ]);
+  });
+
+  /**
+   * IA-VERIFY-01 — THE PRODUCTION PROOF IS REQUIRED, AND CANNOT BE QUIETLY REMOVED.
+   *
+   * A development matrix (`next dev`) is not the artefact a consumer deploys, so the shared-host
+   * production smoke must run on every route that can change shared-host behaviour. These assertions are
+   * the regression: deleting the step, deleting the command from the declarative contract, or downgrading
+   * it to a development substitute fails HERE, in the repository, instead of being noticed only when a
+   * production-only defect reaches a release.
+   */
+  it("requires the production shared-host proof on the Foundation and complete routes", () => {
+    for (const scope of ["foundation", "full"] as const) {
+      expect(ROUTE_COMMANDS[scope], `${scope} must declare the production proof`).toContain(
+        PRODUCTION_SHARED_HOST_COMMAND,
+      );
+      expect(commandsOf(scope), `${scope} must RUN the production proof`).toContain(
+        PRODUCTION_SHARED_HOST_COMMAND,
+      );
+    }
+    // It proves a REAL build and server: the command names the production smoke, not a dev substitute.
+    expect(PRODUCTION_SHARED_HOST_COMMAND).toBe("node tests/browser/shared-host-production.mjs");
+    expect(PRODUCTION_SHARED_HOST_COMMAND).not.toMatch(/test:browser\b/);
+    // A documentation-only change still runs nothing, and a deployment-only change stays Foundation-free.
+    expect(commandsOf("documentation").join(" ")).not.toContain("shared-host-production");
+    expect(commandsOf("deployment").join(" ")).not.toContain("shared-host-production");
+  });
+
+  it("keeps the production proof reachable from the ONE required status context", () => {
+    // `validate` decides the run from the SELECTED route's job result, and the production proof is a step
+    // of that job — so its failure is a route failure, which `validate` already turns into a red status.
+    // This asserts the wiring rather than restating it: no route job may carry `continue-on-error`, which
+    // would let a failed production proof leave its job green.
+    for (const scope of ["foundation", "full"] as const) {
+      expect(jobLines(scope).join("\n"), scope).not.toContain("continue-on-error");
+    }
+    const validate = jobLines("validate").join("\n");
+    expect(validate).toMatch(/selected/);
+    expect(validate).toContain('"$selected" != "success"');
   });
 
   it("gives an ambiguous change MORE validation than any single-owner route", () => {

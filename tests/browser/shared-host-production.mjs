@@ -52,8 +52,31 @@ import {
   materializeSharedHostInstallation,
 } from "../support/shared-host-installation.mjs";
 import { scratchRoot } from "./scratch.mjs";
+import { canBind, isRestrictedPort } from "./ports.mjs";
 
-const PORT = 4391;
+/**
+ * THE PORT IS NEGOTIATED, NEVER ASSUMED (IA-VERIFY-01).
+ *
+ * This smoke is a REQUIRED CI step, so a busy port must not be reported as a product failure. The harness's
+ * own port authority decides: `canBind` proves a candidate is free on 127.0.0.1, and `isRestrictedPort`
+ * keeps a port Next.js refuses out of the search. If the whole window is occupied the run fails LOUDLY,
+ * naming the window — an occupied machine is an environment problem, never a routing defect.
+ */
+const PREFERRED_PORT = 4391;
+const PORT_WINDOW = 24;
+
+async function choosePort() {
+  for (let candidate = PREFERRED_PORT; candidate < PREFERRED_PORT + PORT_WINDOW; candidate += 1) {
+    if (isRestrictedPort(candidate)) continue;
+    if (await canBind(candidate)) return candidate;
+  }
+  throw new Error(
+    `shared-host production smoke: no free port in ${PREFERRED_PORT}..${PREFERRED_PORT + PORT_WINDOW - 1}; ` +
+      "the machine is busy, which is an environment problem rather than a routing defect",
+  );
+}
+
+const PORT = await choosePort();
 const ENV_NAMES = ["FOUNDATION_DEPLOYMENT_ROOT", "FOUNDATION_EFS_MANIFEST", "FOUNDATION_EFS_CAPSULE"];
 const SYNTHETIC = path.join(process.cwd(), "tests", "fixtures", "synthetic-deployment");
 

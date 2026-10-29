@@ -197,6 +197,13 @@ jobs:
 
       - run: pnpm test:browser:foundation
 
+      - name: Production shared-host proof — a REAL build and server, not a dev run
+        # IA-VERIFY-01. The browser matrix above drives `next dev`; this drives `next build` + `next start`
+        # for the shared-host Installation, so cross-Hub publication, canonical addresses, owner-scoped
+        # assets, unmatched prefixes and an unauthored root are proven against the artefact a consumer
+        # deploys. It is a REQUIRED step of this route: its failure fails `validate`.
+        run: node tests/browser/shared-host-production.mjs
+
       - name: Reference-deployment canary — the deployment's acceptance contract
         run: pnpm test:deployment
 
@@ -253,6 +260,11 @@ jobs:
       - run: pnpm build
 
       - run: pnpm test:browser
+
+      - name: Production shared-host proof — a REAL build and server, not a dev run
+        # IA-VERIFY-01, required on the complete gate as well: a green development matrix never stands in
+        # for a production build of the shared-host Installation.
+        run: node tests/browser/shared-host-production.mjs
 
   # ── THE ONE REQUIRED RESULT ─────────────────────────────────────────────────
   # `validate` is the required status context on `main`, and the only check branch protection has to

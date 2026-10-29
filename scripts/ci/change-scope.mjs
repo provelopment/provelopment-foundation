@@ -108,6 +108,18 @@ export const SCOPE_ROUTES = {
 export const ROUTE_SETUP_COMMAND = "pnpm install --frozen-lockfile";
 
 /**
+ * THE PRODUCTION SHARED-HOST PROOF (IA-VERIFY-01).
+ *
+ * `pnpm test:browser` drives `next dev`; that is not the same artefact a consumer deploys. This command
+ * runs `tests/browser/shared-host-production.mjs`, which builds a REAL production server for the
+ * shared-host Installation and proves cross-Hub publication, canonical addresses, owner-scoped assets,
+ * unmatched prefixes and an unauthored root against it. It is REQUIRED on the Foundation and complete
+ * routes — a green development matrix may never stand in for it — and it is declared here, once, so a
+ * removal is a contract failure rather than a quiet edit to the workflow.
+ */
+export const PRODUCTION_SHARED_HOST_COMMAND = "node tests/browser/shared-host-production.mjs";
+
+/**
  * THE VALIDATION CONTRACT OF EACH ROUTE, as data.
  *
  * One entry per command the route must run, in the order the workflow runs it. The documentation
@@ -147,6 +159,7 @@ export const ROUTE_COMMANDS = {
     "pnpm test:foundation",
     "pnpm build",
     "pnpm test:browser:foundation",
+    PRODUCTION_SHARED_HOST_COMMAND,
     "pnpm test:deployment",
     "pnpm test:browser:deployment",
   ],
@@ -160,6 +173,7 @@ export const ROUTE_COMMANDS = {
     "pnpm test",
     "pnpm build",
     "pnpm test:browser",
+    PRODUCTION_SHARED_HOST_COMMAND,
   ],
 };
 

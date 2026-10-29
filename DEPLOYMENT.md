@@ -96,7 +96,9 @@ Run these checks against the actual public host:
 
 - [ ] Every binding that claims the host is authorized and unambiguous — not necessarily exclusive.
       One hostname may carry more than one Spoke, which is the supported shared-host case, provided
-      the bindings' EFS path prefixes do not collide.
+      the bindings' EFS path prefixes do not collide. A collision is *any* shared first segment on that
+      host (`/tenant-a` with `/tenant-a/other`, or `/tenant-a/x` with `/tenant-a/y`), not only an
+      identical prefix; the manifest validator refuses it before anything is served.
 - [ ] On a shared host every published Spoke answers its canonical `/<prefix>/<locale>/<route>`, and
       a path that names only a prefix is refused rather than guessed, because the host then names no
       single owner.

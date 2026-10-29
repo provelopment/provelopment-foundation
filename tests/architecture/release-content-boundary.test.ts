@@ -1,11 +1,15 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import { assertReleasePayloadImportsResolve } from "../../scripts/release/release-construction.mjs";
 import {
+  CAPSULE_RESOLVER_CALL,
+  CI_SUBJECT_TEST_EXCLUSIONS,
+  REFERENCE_CAPSULE_SURFACE,
+  REFERENCE_CAPSULE_TEST_EXCLUSIONS,
   RELEASE_CONTENT_POLICY_ID,
   RELEASE_CONTENT_RULES,
   REQUIRED_PLATFORM_PATHS,
@@ -147,6 +151,153 @@ describe("the released generic suite never imports an excluded module", () => {
     // The writer inventory names the excluded router and the capsule's own test tree, so a release
     // cannot make it match (a clean room proved it) — it stays with the repository it describes.
     expect(classifyReleasePath("tests/architecture/write-ownership-guard.test.ts").inclusion).toBe("excluded");
+    // FOUNDATION-R8-REL-01: a test of THIS repository's workflow has an excluded subject, so it may not
+    // travel either — shipping it produced four avoidable clean-room failures in the published release.
+    expect(classifyReleasePath("tests/unit/temp-tracking-guard.test.ts").inclusion).toBe("excluded");
+  });
+
+  describe("the CI-subject criterion holds in both directions (FOUNDATION-R8-REL-01)", () => {
+    /**
+     * A path list can be right today and wrong tomorrow; a CRITERION cannot. The declaration in the
+     * policy names every generic test whose subject is this repository's automation, and these
+     * assertions prove the relationship rather than the inventory:
+     *
+     *   1. the premise still holds      — each declared subject is excluded from a release;
+     *   2. the policy implements it     — each declared test is excluded;
+     *   3. the declaration is truthful  — in a SOURCE repository, each described file exists and names
+     *                                     its subject;
+     *   4. nothing new escapes          — every test that RESOLVES a `.github/` path is declared.
+     *
+     * Assertion 3 is scoped to a source repository on purpose: a materialised release has no `.github`
+     * at all and legitimately does not contain the tests that assert it, so requiring their presence
+     * there would make the release's own suite red — the very defect this criterion exists to fix. Inside
+     * a release the same property is proved from the other side: NONE of them may be present.
+     */
+    const read = (file: string): string => readFileSync(path.join(ROOT, ...file.split("/")), "utf8");
+    const has = (file: string): boolean => existsSync(path.join(ROOT, ...file.split("/")));
+    /** A checkout of the repository that owns the automation — not a materialised release. */
+    const CI_SURFACE_DIRECTORY = ".github";
+    const inSourceRepository = existsSync(path.join(ROOT, CI_SURFACE_DIRECTORY));
+    /** Generic test sources, asked of the index, so this also runs inside a release. */
+    const testFiles = trackedPaths().filter(
+      (file) => file.startsWith("tests/") && /\.(ts|mts|tsx)$/.test(file),
+    );
+    /** THE CRITERION: a test that RESOLVES a filesystem path beneath this repository's CI surface. */
+    const resolvesCi = /path\.join\(\s*ROOT\s*,\s*"\.github"/;
+    const ciResolvingTests = testFiles.filter((file) => resolvesCi.test(read(file)));
+    const declaredCiTests = CI_SUBJECT_TEST_EXCLUSIONS.filter((entry) =>
+      entry.subject.startsWith(".github/"),
+    ).map((entry) => entry.test);
+
+    it("classifies every declared subject as excluded, and every declared test with its subject", () => {
+      expect(CI_SUBJECT_TEST_EXCLUSIONS.length).toBeGreaterThan(0);
+      for (const entry of CI_SUBJECT_TEST_EXCLUSIONS) {
+        expect(classifyReleasePath(entry.test).inclusion, entry.test).toBe("excluded");
+        expect(classifyReleasePath(entry.test).ruleId, entry.test).toBe(entry.ruleId);
+        // `.github/**` and `scripts/ci/**` are both outside a release; the declaration may name either.
+        expect(classifyReleasePath(entry.subject).inclusion, entry.subject).toBe("excluded");
+      }
+    });
+
+    it("declares only tests that exist and actually name their subject — in the repository that owns them", () => {
+      if (!inSourceRepository) {
+        // A release: the declarations must NOT be present, which is the property being protected.
+        for (const entry of CI_SUBJECT_TEST_EXCLUSIONS) {
+          expect(has(entry.test), `${entry.test} must not travel in a release`).toBe(false);
+        }
+        return;
+      }
+      for (const entry of CI_SUBJECT_TEST_EXCLUSIONS) {
+        expect(trackedPaths(), entry.test).toContain(entry.test);
+        // The declaration must be TRUE: a test that no longer asserts its subject is a stale claim.
+        expect(read(entry.test), entry.test).toContain(entry.subject);
+      }
+    });
+
+    it("leaves no generic test that RESOLVES this repository's CI surface undeclared", () => {
+      const offenders = ciResolvingTests.filter((file) => !declaredCiTests.includes(file));
+      expect(
+        offenders,
+        "a generic test resolves a `.github/` path and is still released; declare it in CI_SUBJECT_TEST_EXCLUSIONS " +
+          "and exclude it, or the next clean room finds it:",
+      ).toEqual([]);
+      // …and the scan is not vacuous: in a source repository it finds exactly the declared ones, and in a
+      // release it finds none at all.
+      expect(ciResolvingTests.slice().sort()).toEqual(inSourceRepository ? declaredCiTests.slice().sort() : []);
+    });
+
+    /**
+     * THE REFERENCE-CAPSULE CRITERION (FOUNDATION-R10)
+     * ===============================================
+     *
+     * The second surface a release never carries is `deployment/**` — this repository's own authored
+     * Installation. A generic test that resolves THAT capsule asserts identities only this repository
+     * authors, so it may not travel: an adopter's Installation has its OWN capsule at the same path, and a
+     * shipped reference test then runs against the wrong subject and fails on material the adopter never
+     * wrote (observed in a disposable `acme`/`globex` Installation: `expected [ 'acme', 'globex' ] to deeply
+     * equal [ 'foundation', 'germany' ]`).
+     *
+     * Same principle as the CI criterion, and the same four properties — the subject is excluded, the test
+     * is excluded by the rule that names it, the declaration is true of its file, and the scan is neither
+     * vacuous nor incomplete. What is deliberately NOT asserted is a filename list: the scan finds the
+     * relationship (resolving the capsule through the platform's own authority), so a NEW reference-specific
+     * suite is caught, and a suite that merely names a Spoke in its OWN fixture is not.
+     */
+    describe("the reference-capsule criterion holds in both directions (FOUNDATION-R10)", () => {
+      const capsuleResolvingTests = testFiles.filter((file) => read(file).includes(CAPSULE_RESOLVER_CALL));
+      const declaredCapsuleTests = REFERENCE_CAPSULE_TEST_EXCLUSIONS.map((entry) => entry.test);
+
+      it("excludes the reference capsule, and every declared test with it", () => {
+        expect(classifyReleasePath(REFERENCE_CAPSULE_SURFACE).inclusion).toBe("excluded");
+        expect(REFERENCE_CAPSULE_TEST_EXCLUSIONS.length).toBeGreaterThan(0);
+        for (const entry of REFERENCE_CAPSULE_TEST_EXCLUSIONS) {
+          expect(classifyReleasePath(entry.test).inclusion, entry.test).toBe("excluded");
+          expect(classifyReleasePath(entry.test).ruleId, entry.test).toBe(entry.ruleId);
+          expect(entry.subject, entry.test).toBe(REFERENCE_CAPSULE_SURFACE);
+        }
+      });
+
+      it("declares only tests that exist and actually resolve that capsule — in the repository that authors it", () => {
+        if (!inSourceRepository) {
+          // A release carries no capsule and no test of one.
+          for (const entry of REFERENCE_CAPSULE_TEST_EXCLUSIONS) {
+            expect(has(entry.test), `${entry.test} must not travel in a release`).toBe(false);
+          }
+          return;
+        }
+        for (const entry of REFERENCE_CAPSULE_TEST_EXCLUSIONS) {
+          expect(trackedPaths(), entry.test).toContain(entry.test);
+          expect(read(entry.test), entry.test).toContain(entry.resolver);
+        }
+      });
+
+      it("leaves no generic test that resolves the reference capsule undeclared", () => {
+        const offenders = capsuleResolvingTests.filter((file) => !declaredCapsuleTests.includes(file));
+        expect(
+          offenders,
+          "a generic test resolves this repository's own capsule and is still released; declare it in " +
+            "REFERENCE_CAPSULE_TEST_EXCLUSIONS and exclude it, or an adopter's Installation finds it:",
+        ).toEqual([]);
+        expect(capsuleResolvingTests.slice().sort()).toEqual(
+          inSourceRepository ? declaredCapsuleTests.slice().sort() : [],
+        );
+      });
+
+      it("KEEPS the portable establishment suites in the release", () => {
+        // The correction must not become a broad skip of installation testing. These prove establishment
+        // with material the PLATFORM ships or generates, so they belong to every release; the same suite
+        // proves it in a clean room, where they run and pass.
+        for (const portable of [
+          "tests/integration/foundation-installation-bootstrap.test.ts",
+          "tests/integration/foundation-installation-cli.test.ts",
+          "tests/integration/foundation-installation-operational-state.test.ts",
+          "tests/integration/efs-independent-installations.test.ts",
+        ]) {
+          expect(classifyReleasePath(portable).inclusion, portable).toBe("platform");
+          expect(classifyReleasePath(portable).ruleId, portable).toBe("platform-tests");
+        }
+      });
+    });
   });
 });
 

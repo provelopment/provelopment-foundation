@@ -126,6 +126,20 @@ export const RELEASE_CONTENT_RULES = Object.freeze([
     reason: "the router's architecture contract, for the same reason: its subject is this repository's CI routing, which a consumer replaces with its own",
   },
   {
+    id: "exclude-ci-subject-tests",
+    kind: "exact",
+    match: "tests/unit/temp-tracking-guard.test.ts",
+    inclusion: RELEASE_INCLUSION.EXCLUDED,
+    reason: "it asserts the CONTENTS of `.github/workflows/ci.yml`, which a release never carries: shipping it ships a test whose subject is absent, and it failed four times in a platform-only clean room (FOUNDATION-R8-REL-01)",
+  },
+  {
+    id: "exclude-reference-capsule-tests",
+    kind: "exact",
+    match: "tests/integration/foundation-installation-multispoke.test.ts",
+    inclusion: RELEASE_INCLUSION.EXCLUDED,
+    reason: "it asserts THIS repository's reference capsule through the platform's own capsule authority — its Spokes, its `spokes/<id>/…` tree and its authored bytes — so an adopter's Installation, which authors a DIFFERENT capsule at the same path, would run it against the wrong subject and fail on identities it never authored (FOUNDATION-R10; the criterion is declared, not this filename)",
+  },
+  {
     id: "exclude-writer-inventory-guard",
     kind: "exact",
     match: "tests/architecture/write-ownership-guard.test.ts",
@@ -342,6 +356,103 @@ export const RELEASE_CONTENT_RULES = Object.freeze([
  * @param {string} file a path as Git reports it
  * @returns {string} the normalised path
  */
+/**
+ * THE CI-SUBJECT CRITERION (FOUNDATION-R8-REL-01)
+ * ===============================================
+ *
+ * A test whose SUBJECT is this repository's own automation cannot travel in a platform release, and the
+ * reason is not the test's path — it is the RELATIONSHIP between the test and the surface it asserts.
+ * `tests/unit/temp-tracking-guard.test.ts` reads `.github/workflows/ci.yml`; the workflow is excluded, so
+ * that test failed four times in every platform-only clean room while the platform itself was correct.
+ *
+ * A path list alone cannot hold that rule: the next test written against `.github/**` would ship and
+ * break the same way. So the criterion is DECLARED here, once — every generic test that resolves a path
+ * beneath this repository's CI surface, together with the excluded subject it asserts — and
+ * `tests/architecture/release-content-boundary.test.ts` verifies it MECHANICALLY in both directions:
+ *
+ *   · every declared subject is classified `excluded` (the criterion's premise still holds);
+ *   · every declared test is classified `excluded` (the criterion is implemented by the policy);
+ *   · every declared test exists and actually references its declared subject (the declaration is true);
+ *   · every generic test that resolves a `.github/` path is declared (a NEW such test cannot ship
+ *     unnoticed, which is what turns this from a list into a rule).
+ *
+ * The test keeps its normal source-repository and CI enforcement: nothing here skips, weakens or removes
+ * an assertion — it decides only whether the FILE travels in a release.
+ */
+export const CI_SUBJECT_TEST_EXCLUSIONS = Object.freeze([
+  {
+    test: "tests/architecture/ci-routing-contract.test.ts",
+    subject: ".github/workflows/ci.yml",
+    ruleId: "exclude-ci-routing-contract",
+  },
+  {
+    test: "tests/architecture/write-ownership-guard.test.ts",
+    subject: "scripts/ci/",
+    ruleId: "exclude-writer-inventory-guard",
+  },
+  {
+    test: "tests/unit/change-scope.test.ts",
+    subject: "scripts/ci/",
+    ruleId: "exclude-ci-router-tests",
+  },
+  {
+    test: "tests/unit/temp-tracking-guard.test.ts",
+    subject: ".github/workflows/ci.yml",
+    ruleId: "exclude-ci-subject-tests",
+  },
+]);
+
+/**
+ * THE REFERENCE-CAPSULE CRITERION (FOUNDATION-R10)
+ * ===============================================
+ *
+ * The same subject-ownership principle as the CI criterion above, applied to the other surface a release
+ * never carries: `deployment/**`, this repository's own authored Installation.
+ *
+ * `tests/integration/foundation-installation-multispoke.test.ts` asserts THAT capsule's authored material —
+ * its two Spokes, its `spokes/<id>/…` tree and its page/artwork bytes. Its subject-detection was the mere
+ * existence of the capsule, which is precisely wrong in the field: an ordinary adopter's Installation has
+ * its OWN capsule at that path, so the suite ran against the adopter's material and failed on identities it
+ * never authored (`expected [ 'acme', 'globex' ] to deeply equal [ 'foundation', 'germany' ]`).
+ *
+ * The subject here is not a filename, and neither is the test: it is the RELATIONSHIP between a test and the
+ * capsule authority it reads. So the criterion is declared, once — every generic test that resolves THIS
+ * repository's capsule through the platform's own authority — and
+ * `tests/architecture/release-content-boundary.test.ts` verifies it mechanically in both directions:
+ *
+ *   · the reference capsule surface is classified `excluded` (the criterion's premise still holds);
+ *   · every declared test is classified `excluded`, by the rule that names its subject;
+ *   · in a source repository each declared test EXISTS and actually resolves the capsule (the declaration is
+ *     true), and no generic test resolves the capsule without being declared — a NEW reference-specific
+ *     suite cannot ship unnoticed;
+ *   · in a release NONE of them is present, which is the property being protected.
+ *
+ * The test keeps its full assertions in this repository and its full CI enforcement: it is what proves the
+ * reference capsule still establishes. Only its inclusion in a release is decided. The PORTABLE
+ * establishment suites (the shipped synthetic deployment, the release's own platform, the CLI and the
+ * operational record) stay in the platform set, and the same suite asserts that they do.
+ */
+export const REFERENCE_CAPSULE_SURFACE = "deployment/";
+
+/**
+ * The platform's own capsule authority, called on the PROCESS ROOT. That call — and only that call — says
+ * "resolve the capsule of the repository I am standing in", which is what makes a test a proof about THIS
+ * repository's Installation. A test that mentions the authority for another reason (a unit test of its own
+ * rule, a shared fixture resolving a target root it was given) asserts no such identity and is portable;
+ * a bare symbol match would have flagged those three as well, which is why the criterion is the call.
+ */
+export const CAPSULE_RESOLVER_CALL = "capsuleDirectory(process.cwd())";
+
+export const REFERENCE_CAPSULE_TEST_EXCLUSIONS = Object.freeze([
+  {
+    test: "tests/integration/foundation-installation-multispoke.test.ts",
+    subject: REFERENCE_CAPSULE_SURFACE,
+    resolver: CAPSULE_RESOLVER_CALL,
+    ruleId: "exclude-reference-capsule-tests",
+  },
+]);
+
+
 export function normaliseReleasePath(file) {
   return String(file).replace(/\\/g, "/").replace(/^\.\//, "").trim();
 }

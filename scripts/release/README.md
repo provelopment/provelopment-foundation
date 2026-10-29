@@ -35,9 +35,28 @@ Consequences that follow from that sentence:
 - **The release never contains another site.** `deployment/**` — the reference deployment's
   configuration, dictionaries, pages, artwork, acceptance suite and baseline record — is excluded, as
   is this repository's own CI and the tests whose subject IS that CI (`.github/**`, `scripts/ci/**`,
-  the router's unit and architecture contracts, and the writer-inventory guard that names it) and
-  every generated path (`public/**`, `.next/**`, `node_modules/**`). A deployment adopting a release
+  the router's unit and architecture contracts, the writer-inventory guard that names it, and every
+  generic test that RESOLVES a path beneath `.github/` — the `.temp` tracking guard reads the required
+  `validate` step out of the workflow, so it travels only with the repository that owns the workflow),
+  and every generated path (`public/**`, `.next/**`, `node_modules/**`). A deployment adopting a release
   brings **its own** deployment state and its own CI.
+
+  The exclusion is a declared CRITERION, not a list of filenames:
+  `scripts/release/release-content-policy.mjs` exports `CI_SUBJECT_TEST_EXCLUSIONS`, and
+  `tests/architecture/release-content-boundary.test.ts` checks it in both directions — every declared
+  subject is excluded, every declared test is excluded, every declaration is true of its file, and no
+  NEW generic test that resolves a `.github/` path may go undeclared. A test keeps its full
+  source-repository and CI enforcement; only its inclusion in a release is decided.
+
+  The same principle covers the OTHER excluded surface, this repository's own Installation, through
+  `REFERENCE_CAPSULE_TEST_EXCLUSIONS` (FOUNDATION-R10): a generic test that resolves `deployment/**`
+  through the platform's own capsule authority asserts identities only this repository authors, so it
+  travels only with the repository that authors them. An adopter's Installation has its OWN capsule at that
+  path, and a shipped reference test would run against the wrong subject — it did, failing on Spoke
+  identities the adopter never wrote. The portable establishment suites (the shipped synthetic deployment,
+  the release's own platform, the CLI, the operational record) stay in the release, and the same suite
+  asserts that they do.
+
   A released file never imports an excluded module: `scripts/release/release-construction.mjs` refuses
   such a release at construction, and `tests/architecture/release-content-boundary.test.ts` runs that
   same check over the whole tracked tree.

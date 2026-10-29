@@ -404,7 +404,7 @@ failed gate is being re-verified after a fix.
 | Documentation only | README wording, instructional prose, documentation comments, spelling, non-executable diagrams | `git diff --check`, plus documentation integrity/parity checks where they exist. Do NOT automatically install dependencies, build, run Vitest or start browsers. |
 | Authored website content | Markdown pages, JSON page documents, locale dictionaries, ordinary authored artwork | Source format/schema validity, the deployment-owned structural tests, asset integrity where applicable, and a production build. Do NOT run the whole browser matrix merely because prose or artwork changed. |
 | Deployment configuration, routing or runtime-facing authored structure | `site.config.json`, `spokes.json`, hostname behaviour, locale/site/location declarations, asset-role configuration, deployment acceptance code | The full DEPLOYMENT gate, including deployment browser acceptance where relevant. |
-| Foundation/runtime code | Application code, the generic test tree | The FOUNDATION gate: generic Foundation tests, generic browser scenarios, and the bounded real-deployment canary. |
+| Foundation/runtime code | Application code, the generic test tree | The FOUNDATION gate: generic Foundation tests, generic browser scenarios, the production shared-host proof (`tests/browser/shared-host-production.mjs` — a real build and server, required, never replaced by a development matrix), and the bounded real-deployment canary. |
 | Shared, mixed, dependency, security, release or CI infrastructure | Manifests, lockfiles, build/CI configuration, platform scripts, the shared harness, this file | FULL. |
 | Unknown or unclassifiable | Anything you cannot place above | FULL. |
 

@@ -216,10 +216,17 @@ asserts what only a real server can show — the runtime context each publicatio
 each owner's own asset bytes, and the refusals that must stay refusals: an unknown prefix, an
 unauthorized owner namespace, a declared-but-unpublished Spoke, and a prefix-only path on a host that
 names two owners. The authorized and refused rows run in the SAME session, so a refusal cannot be an
-artefact of a build that serves nothing. Like the continuity proof it is **owned by this directory**,
-**NOT wired into any CI route** (it performs a production build of the synthetic Installation and
-restores a reference build afterwards), and it deletes the Installation, projection and assets it
-created, restoring the environment it was given:
+artefact of a build that serves nothing.
+
+**It is a REQUIRED CI step (IA-VERIFY-01).** The `foundation` and `full` routes run it after their browser
+matrix, and its failure fails the `validate` status — a green development matrix (`next dev`) is never
+accepted in its place, because it is not the artefact a consumer deploys. The command is declared once in
+`scripts/ci/change-scope.mjs` (`PRODUCTION_SHARED_HOST_COMMAND`) and
+`tests/architecture/ci-routing-contract.test.ts` fails if it is removed from either route, or if a route
+job gains `continue-on-error`. Its port is negotiated through this directory's own port authority
+(`ports.mjs`), so a busy machine is reported as an environment problem rather than as a routing defect; it
+still deletes the Installation, projection and assets it created and restores a reference build, so it can
+run on a shared runner:
 
 ```sh
 node tests/browser/shared-host-production.mjs

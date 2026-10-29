@@ -17,16 +17,28 @@ import type { EfsView } from "@/app/[[...segments]]/efs-request";
  * A5 decided this from the Page section and the Site record alone. A7 found three consequences: a Page could
  * advertise a working form on a publication the record never authorized; a Site that authored
  * `transport: "none"` still offered a form whose every submission was refused; and an Installation with no
- * private policy still invited a visitor to type into a form guaranteed to fail. All three are now decided
- * here, by ONE shared predicate (`contactFormPresentsOnPublication`), so what a page shows and what the Server
- * Action accepts cannot drift apart.
+ * private policy still invited a visitor to type into a form guaranteed to fail. All three are decided here,
+ * before a form is rendered, from facts this request already proved.
+ *
+ * TWO CORRESPONDING CHECKS, NOT ONE FUNCTION (FOUNDATION-R8-CONTACT-01). Rendering calls
+ * `contactFormPresentsOnPublication`; submission (`src/app/contact-actions.ts`) re-reads the record and
+ * calls `contactFormAuthorizationProblems` instead. They are NOT the same function, and an earlier version
+ * of this comment claimed they were — which is why the claim is now stated as the property it really is:
+ * the two checks read the SAME verified facts, so they agree. Both take the offer from
+ * `contactFormOfferedMode` (enabled, mode, transport), both compare the authored placement with the Page
+ * EFS proved, both require the record's `authorizationRefs` to contain the CANONICAL binding
+ * (`binding.aliasOf ?? binding.id` here; `origin.bindingId`, already canonical, there), both compare the
+ * same section `formRef`, and both require the owning Spoke to author a private policy. A future edit to
+ * one path must therefore be mirrored in the other — the equivalence is asserted by the contact-form
+ * suites rather than guaranteed by a single call site.
  *
  * The policy decision is a SERVER-SIDE BOOLEAN. Whether the owning Spoke authors a usable policy is a
  * server-only fact; the recipients and sender addresses in it never reach this component, and nothing about the
  * policy is ever handed to the client.
  *
- * Submission-time revalidation is retained: availability can change between rendering and submitting, and the
- * action re-reads the policy then.
+ * Submission-time revalidation is retained and is NOT redundant: availability can change between rendering
+ * and submitting (a policy file can be removed, a record edited, a publication re-bound), and the action
+ * re-reads the policy then rather than trusting the render.
  */
 export function EfsContactForm({ view, formRef }: { readonly view: EfsView; readonly formRef: string }) {
   const record = contactFormRecordForSite(view.context.siteConfig, view.site.id);

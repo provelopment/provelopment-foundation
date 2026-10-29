@@ -8,9 +8,17 @@
  * Facet, a declared set of eligible Sites and validated host/path claims.
  *
  * On a host, either one dedicated-root binding or only prefix-scoped bindings are legal, never
- * both. Prefixes match whole path segments, deterministically by longest prefix. Duplicate,
- * ambiguous or unclaimed claims fail closed. The same Entity may be republished under another
- * binding without merging the publications or changing any identity.
+ * both. Every prefix-scoped binding on a host owns ONE TOP-LEVEL public namespace: two bindings on the
+ * same host may never share that first segment, so neither nesting (`/a` + `/a/b`) nor sibling
+ * sub-namespaces (`/a/x` + `/a/y`) can exist, and no binding can shadow another's content route
+ * (FOUNDATION-IA-ROUTE-02). Distinct top-level segments are independent however deep a Page beneath
+ * them is authored (`/a/en/services/design` is a Page route, never a second publication namespace).
+ * A public prefix is a ROUTING ADDRESS: it names nothing about tenancy, ownership or identity, and no
+ * binding is ever selected by an Entity name, a Spoke name, Hub membership or array order.
+ *
+ * Prefixes match whole path segments. Duplicate, ambiguous, nested or unclaimed claims fail closed at
+ * validation, before anything is served. The same Entity may be republished under another binding
+ * without merging the publications or changing any identity.
  *
  * This module is pure data + functions; DNS and provider work remain outside E1.
  */
@@ -168,14 +176,54 @@ export function bindingIssues(bindings: readonly EfsBinding[]): readonly string[
     if (roots.length > 0 && hostBindings.length > roots.length) {
       issues.push(`Host "${host}" mixes a dedicated-root binding with prefix-scoped bindings.`);
     }
-    const seen = new Map<string, string>();
+    /**
+     * FOUNDATION-IA-ROUTE-02 — ONE TOP-LEVEL PUBLIC NAMESPACE PER BINDING, PER HOST.
+     *
+     * Before this rule, two bindings on one host were refused only when their prefixes were EQUAL, so
+     * `/tenant-a` beside `/tenant-a/other` (nesting) or `/tenant-a/x` beside `/tenant-a/y` (sibling
+     * sub-namespaces) validated. Both are ambiguous by construction: `matchBinding` selects the longest
+     * matching prefix, so a deeper binding silently SHADOWS the content route of the shorter one, and a
+     * public address stops identifying one publication. The Owner's current clarification is that a
+     * public routing namespace must be unambiguous, so the reserved unit is the host's FIRST path
+     * segment:
+     *
+     *   · `/tenant-a` and `/tenant-b`      → two independent publications (valid);
+     *   · `/tenant-a` and `/tenant-ab`     → independent (whole-segment comparison, never a substring);
+     *   · `/tenant-a` and `/tenant-a/other`→ invalid (a longer binding would shadow the shorter one);
+     *   · `/tenant-a/x` and `/tenant-a/y`  → invalid (both claim the `tenant-a` namespace);
+     *   · `/tenant-a/en/services/design`   → a PAGE route beneath the `tenant-a` binding, not a namespace.
+     *
+     * The rule is deliberately blind to OWNERSHIP: it holds whether the two bindings belong to the same
+     * Spoke, to two Spokes in one Spoke Hub or to two different Spoke Hubs, because the ambiguity is a
+     * property of the ADDRESS, not of who publishes it. An identical prefix keeps its own, more specific
+     * diagnostic (reported first, so the operator sees the exact collision rather than the general rule).
+     *
+     * `matchBinding` below still selects the longest whole-segment prefix. On a VALID manifest at most one
+     * candidate can match a path, so longest-prefix is defence in depth rather than a tie-break: the
+     * ambiguity this rule refuses can no longer be resolved by depth.
+     */
+    const namespaceOwner = new Map<string, { id: string; prefix: readonly string[] }>();
     for (const binding of hostBindings) {
-      const key = prefixKey(prefixOf(binding));
-      const previous = seen.get(key);
-      if (previous) {
-        issues.push(`Host "${host}" has duplicate prefix "${key || "/"}" on "${previous}" and "${binding.id}".`);
+      const prefix = prefixOf(binding);
+      const namespace = prefix[0];
+      if (namespace === undefined) continue; // a dedicated-root binding is answered by the rules above
+      const previous = namespaceOwner.get(namespace);
+      if (previous === undefined) {
+        namespaceOwner.set(namespace, { id: binding.id, prefix });
+        continue;
       }
-      seen.set(key, binding.id);
+      if (prefixKey(previous.prefix) === prefixKey(prefix)) {
+        issues.push(
+          `Host "${host}" has duplicate prefix "${prefixKey(prefix)}" on "${previous.id}" and "${binding.id}".`,
+        );
+        continue;
+      }
+      issues.push(
+        `Host "${host}" claims the top-level public namespace "${namespace}" twice: binding "${previous.id}" ` +
+          `uses "/${prefixKey(previous.prefix)}" and binding "${binding.id}" uses "/${prefixKey(prefix)}". A ` +
+          `shared host reserves one top-level prefix segment per publication binding, so nested and sibling ` +
+          `sub-prefixes are refused — the longer binding would shadow the shorter one's content route.`,
+      );
     }
   }
 

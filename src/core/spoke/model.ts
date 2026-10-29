@@ -24,12 +24,14 @@
  *   Spoke Hub   the OUTER coordinator of an installation's Spokes   (`SpokeHub`)
  *   Site Hub    the INNER grouping of Sites inside ONE Spoke        (`Hub`, aliased below)
  *
- * CURRENT implementation: an installation composes exactly ONE Spoke Hub, and each of its Spokes
- * holds one IMPLICIT Site Hub — or the several its authored `sites[].hub` leaves name. APPROVED
- * TARGET (NOT implemented here, and deliberately not pretended here): SEVERAL independently
- * identified Spoke Hubs per installation, with Spoke ids scoped to their owning Spoke Hub, while Site
- * Hubs stay scoped to individual Spokes. Nothing in this module gains a Spoke-Hub id, a second Site
- * Hub layer or a membership rule of its own — the explicit names below are vocabulary, not behaviour.
+ * CURRENT implementation: an installation declares its Spokes in ONE of three forms — `legacy` (none
+ * declared: one permissive Spoke), `explicit` (flat: hostname dispatch over the declared Spokes) or
+ * `hubs` (nested: ONE **or SEVERAL** identified Spoke Hubs, each owning its own Spokes, with Spoke ids
+ * scoped to their owning Hub). Several Hubs on ONE hostname are the current, tested capability: each
+ * publishes explicit path prefixes, and ownership is the composite `(spokeHubId, spokeId)` pair, so two
+ * Hubs may each declare a Spoke with the same local id without either one borrowing the other's content.
+ * Site Hubs stay scoped to individual Spokes. This module models the CONTAINERS; the routing and
+ * ownership rules live in `@/config/spoke-routing` and `@/config/efs/owner`.
  *
  * A SPOKE IS THE DOMAIN, SO IT CARRIES THE HOSTNAMES
  * --------------------------------------------------

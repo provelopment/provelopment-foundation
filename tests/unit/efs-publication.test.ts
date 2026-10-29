@@ -179,3 +179,131 @@ describe("EFS publication and routing (D31 / O-4, O-5)", () => {
     );
   });
 });
+
+/**
+ * IA-ROUTE-02 — A SHARED HOST RESERVES ONE TOP-LEVEL PUBLIC NAMESPACE PER BINDING
+ * ==============================================================================
+ *
+ * The Owner's clarification is that a public routing namespace must be unambiguous: two publications on
+ * one hostname may never overlap, in either direction. These cases fix the boundary of the rule —
+ * independent prefixes are valid however deep their PAGES are authored, and every overlapping shape is
+ * refused at validation rather than resolved by "longest prefix wins" at request time.
+ */
+describe("shared-host prefix namespaces (IA-ROUTE-02)", () => {
+  const tenant = (id: string, prefix: readonly string[], overrides: Partial<EfsBinding> = {}): EfsBinding => ({
+    id,
+    host: "my.provelopment.com",
+    prefix,
+    entityId: "e_00000000000000000000000001",
+    facetId: "acme",
+    siteIds: ["main"],
+    siteMode: "closed",
+    defaultSiteId: "main",
+    locales: ["en-001"],
+    defaultLocale: "en-001",
+    ...overrides,
+  });
+
+  it("accepts two independent tenants on one host", () => {
+    expect(bindingIssues([tenant("tenant-a", ["tenant-a"]), tenant("tenant-b", ["tenant-b"])])).toEqual([]);
+  });
+
+  it("accepts a Spoke publishing several Entities at distinct top-level prefixes", () => {
+    // One publishing OWNER, two independent addresses: the rule is about the address, not the owner.
+    const bindings = [tenant("one", ["tenant-a"]), tenant("two", ["tenant-b"])];
+    expect(bindingIssues(bindings)).toEqual([]);
+    for (const binding of bindings) {
+      const matched = matchBinding("my.provelopment.com", `/${binding.prefix[0]}/en-001/home`, bindings)!;
+      expect(matched.binding.id).toBe(binding.id);
+      expect(matched.remaining).toEqual(["en-001", "home"]);
+    }
+  });
+
+  it("keeps whole-segment identity: tenant-a and tenant-ab are different namespaces", () => {
+    // A substring rule would refuse this pair; complete path segments accept it.
+    expect(bindingIssues([tenant("a", ["tenant-a"]), tenant("ab", ["tenant-ab"])])).toEqual([]);
+    expect(
+      matchBinding("my.provelopment.com", "/tenant-ab/en-001/home", [
+        tenant("a", ["tenant-a"]),
+        tenant("ab", ["tenant-ab"]),
+      ])?.binding.id,
+    ).toBe("ab");
+  });
+
+  it("refuses a longer binding that would shadow a shorter one's content route", () => {
+    const issues = bindingIssues([tenant("short", ["tenant-a"]), tenant("long", ["tenant-a", "other"])]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toContain('claims the top-level public namespace "tenant-a" twice');
+    expect(issues[0]).toContain('binding "short" uses "/tenant-a"');
+    expect(issues[0]).toContain('binding "long" uses "/tenant-a/other"');
+  });
+
+  it("refuses sibling sub-prefixes competing for one namespace", () => {
+    const issues = bindingIssues([tenant("x", ["tenant-a", "x"]), tenant("y", ["tenant-a", "y"])]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toContain('claims the top-level public namespace "tenant-a" twice');
+  });
+
+  it("keeps the more specific diagnostic for an identical prefix", () => {
+    const issues = bindingIssues([tenant("a", ["tenant-a"]), tenant("b", ["tenant-a"])]);
+    expect(issues).toEqual(['Host "my.provelopment.com" has duplicate prefix "tenant-a" on "a" and "b".']);
+    expect(issues.join(" ")).not.toContain("top-level public namespace");
+  });
+
+  it("still keeps dedicated-root and prefix-scoped bindings exclusive", () => {
+    expect(bindingIssues([tenant("root", []), tenant("tenant-a", ["tenant-a"])])).toEqual([
+      'Host "my.provelopment.com" mixes a dedicated-root binding with prefix-scoped bindings.',
+    ]);
+  });
+});
+
+describe("the selection is a property of the PATH, never of declaration order (IA-ROUTE-02)", () => {
+  const binding = (id: string, prefix: readonly string[]): EfsBinding => ({
+    id,
+    host: "my.provelopment.com",
+    prefix,
+    entityId: "e_00000000000000000000000001",
+    facetId: "acme",
+    siteIds: ["main"],
+    siteMode: "closed",
+    defaultSiteId: "main",
+    locales: ["en-001"],
+    defaultLocale: "en-001",
+  });
+
+  it("resolves the same binding for every permutation of the same declarations", () => {
+    // With one namespace per binding the answer cannot depend on array order — which is what stops a
+    // reordering of a manifest from silently re-pointing a public address at another publication.
+    const a = binding("tenant-a", ["tenant-a"]);
+    const b = binding("tenant-b", ["tenant-b"]);
+    const c = binding("tenant-c", ["tenant-c"]);
+    for (const order of [
+      [a, b, c],
+      [c, b, a],
+      [b, c, a],
+      [c, a, b],
+    ]) {
+      const matched = matchBinding("my.provelopment.com", "/tenant-b/en-001/home", order)!;
+      expect(matched.binding.id).toBe("tenant-b");
+      expect(parseContentRoute(matched.binding, matched.remaining)).toEqual({
+        kind: "route",
+        route: { siteId: "main", locale: "en-001", localeKey: "en-001", pageRoute: ["home"] },
+      });
+    }
+  });
+
+  it("does not confuse a deep Page route with a publication binding", () => {
+    // A tenant's own nested pages keep working: only the FIRST segment is a namespace.
+    const bindings = [binding("tenant-a", ["tenant-a"]), binding("tenant-b", ["tenant-b"])];
+    const matched = matchBinding("my.provelopment.com", "/tenant-a/en-001/services/design", bindings)!;
+    expect(matched.binding.id).toBe("tenant-a");
+    const route = parseContentRoute(matched.binding, matched.remaining);
+    expect(route.kind).toBe("route");
+    if (route.kind === "route") {
+      expect(route.route.pageRoute).toEqual(["services", "design"]);
+      expect(canonicalUrl(matched.canonicalBinding, route.route)).toBe(
+        "https://my.provelopment.com/tenant-a/en-001/services/design",
+      );
+    }
+  });
+});

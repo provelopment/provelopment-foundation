@@ -126,6 +126,13 @@ export const RELEASE_CONTENT_RULES = Object.freeze([
     reason: "the router's architecture contract, for the same reason: its subject is this repository's CI routing, which a consumer replaces with its own",
   },
   {
+    id: "exclude-ci-subject-tests",
+    kind: "exact",
+    match: "tests/unit/temp-tracking-guard.test.ts",
+    inclusion: RELEASE_INCLUSION.EXCLUDED,
+    reason: "it asserts the CONTENTS of `.github/workflows/ci.yml`, which a release never carries: shipping it ships a test whose subject is absent, and it failed four times in a platform-only clean room (FOUNDATION-R8-REL-01)",
+  },
+  {
     id: "exclude-writer-inventory-guard",
     kind: "exact",
     match: "tests/architecture/write-ownership-guard.test.ts",
@@ -342,6 +349,59 @@ export const RELEASE_CONTENT_RULES = Object.freeze([
  * @param {string} file a path as Git reports it
  * @returns {string} the normalised path
  */
+/**
+ * THE CI-SUBJECT CRITERION (FOUNDATION-R8-REL-01)
+ * ===============================================
+ *
+ * A test whose SUBJECT is this repository's own automation cannot travel in a platform release, and the
+ * reason is not the test's path — it is the RELATIONSHIP between the test and the surface it asserts.
+ * `tests/unit/temp-tracking-guard.test.ts` reads `.github/workflows/ci.yml`; the workflow is excluded, so
+ * that test failed four times in every platform-only clean room while the platform itself was correct.
+ *
+ * A path list alone cannot hold that rule: the next test written against `.github/**` would ship and
+ * break the same way. So the criterion is DECLARED here, once — every generic test that resolves a path
+ * beneath this repository's CI surface, together with the excluded subject it asserts — and
+ * `tests/architecture/release-content-boundary.test.ts` verifies it MECHANICALLY in both directions:
+ *
+ *   · every declared subject is classified `excluded` (the criterion's premise still holds);
+ *   · every declared test is classified `excluded` (the criterion is implemented by the policy);
+ *   · every declared test exists and actually references its declared subject (the declaration is true);
+ *   · every generic test that resolves a `.github/` path is declared (a NEW such test cannot ship
+ *     unnoticed, which is what turns this from a list into a rule).
+ *
+ * The test keeps its normal source-repository and CI enforcement: nothing here skips, weakens or removes
+ * an assertion — it decides only whether the FILE travels in a release.
+ */
+export const CI_SUBJECT_TEST_EXCLUSIONS = Object.freeze([
+  {
+    test: "tests/architecture/ci-routing-contract.test.ts",
+    subject: ".github/workflows/ci.yml",
+    ruleId: "exclude-ci-routing-contract",
+  },
+  {
+    test: "tests/architecture/write-ownership-guard.test.ts",
+    subject: "scripts/ci/",
+    ruleId: "exclude-writer-inventory-guard",
+  },
+  {
+    test: "tests/unit/change-scope.test.ts",
+    subject: "scripts/ci/",
+    ruleId: "exclude-ci-router-tests",
+  },
+  {
+    test: "tests/unit/temp-tracking-guard.test.ts",
+    subject: ".github/workflows/ci.yml",
+    ruleId: "exclude-ci-subject-tests",
+  },
+]);
+
+/**
+ * The one path prefix a release can never carry in any form: this repository's automation surface.
+ * A generic test that resolves a path beneath it therefore has an EXCLUDED subject by construction.
+ */
+export const REPOSITORY_CI_SURFACE = ".github/";
+
+
 export function normaliseReleasePath(file) {
   return String(file).replace(/\\/g, "/").replace(/^\.\//, "").trim();
 }

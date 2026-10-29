@@ -1,7 +1,7 @@
 # Content Management — business content ownership
 
 > **Manual system:** Provelopment Foundation Instruction Manuals
-> **Manual revision:** `2026-10-22.1`
+> **Manual revision:** `2026-10-29.1`
 > **Content model described:** the **current EFS installation model** — one immutable Foundation release established into one autonomous Installation that owns its authored capsule and serves explicitly declared Entities, Facets, Sites, Pages and localized representations through publication bindings owned by declared Spokes. Pages are language-neutral; each localized representation is a JSON or Markdown source; JSON visibility is per representation; `unlisted` means reachable but not advertised, never private. Update changes authored material; Upgrade adopts a different immutable release. Legacy country-coded Sites, regional pages, Location routing and computed timezone/DST behavior are historical only.
 > **Procedure validation:** the release and establishment procedures retain their 2026-09-30 end-to-end baseline. Revision `2026-10-22.1` reconciles the distributed model to the merged EFS runtime and the A1-R2F receiver-key isolation, reference and hygiene correction, and the A1-R2F-C1 injective identified-Hub receiver-key correction, and is verified by the Foundation unit, integration, architecture, deployment and browser gates recorded in `FOUNDATION-COMPLETE-A1-R2F` (including its C1 correction record); no release tag is claimed by this revision.
 > **Adopter baseline:** the installation's own adoption record — `deployment/foundation-baseline.json` inside the installation's capsule. An adopter's own governance record is the adopter's; it is never the Foundation's adoption record.
@@ -94,6 +94,16 @@ The manifest has no Page-level visibility field. One effective representation ha
 `deployment/efs/manifest.json` owns publication: `spokeId`, optional `spokeHubId`, Entity, Facet,
 host, prefix, Site set/mode, locales, default locale and canonical/alias role. `deployment/spokes.json`
 owns the Spoke hierarchy. Ownership is never inferred from a name or hostname.
+
+**On one host, a binding reserves its FIRST path segment.** `/tenant-a` and `/tenant-b` are two
+independent publications; `/tenant-a` beside `/tenant-a/other`, and `/tenant-a/x` beside `/tenant-a/y`,
+are refused when the manifest is validated, because the longer binding would shadow the shorter one's
+content route. The rule applies whether the bindings belong to one Spoke, to two Spokes in one Spoke Hub
+or to two different Spoke Hubs — and `/tenant-a` and `/tenant-ab` stay distinct, since a prefix is
+compared as complete path segments, never as text. Pages nest as deeply as you like beneath a prefix:
+`/tenant-a/en/services/design` is a Page route, never a second publication. The prefix is a **routing
+address**: it names no tenancy, Entity, Site or Spoke identity, and nothing selects a publication from
+the spelling of a URL.
 
 Canonical URLs, alternates, Open Graph URLs, assets and sitemap entries come from the effective
 canonical binding. `site.url` is optional and informational; a host change is a binding change, not

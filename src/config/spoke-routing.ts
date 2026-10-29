@@ -88,12 +88,16 @@ export interface SpokeSwitcherOption {
 /**
  * The Installation's authored SPOKE-HUB-SCOPED SPOKE SWITCHER (R1).
  *
- * THE SWITCHER MOVES BETWEEN THE SPOKES OF ONE SPOKE HUB. The CURRENT implementation composes exactly ONE
- * Spoke Hub per Installation — the OUTER coordinator of its Spokes — and every Spoke the manifest declares
- * is a MEMBER of it. The APPROVED TARGET (SEVERAL independently identified Spoke Hubs per Installation, with
- * Spoke ids scoped to their owning Spoke Hub) is NOT implemented here and is not pretended here. These
- * options are that ONE Spoke Hub's members — never an arbitrary link list, never another organization's
- * site, and never a template/provisioning relationship (a site generated or updated from a centrally managed
+ * THE SWITCHER MOVES BETWEEN THE SPOKES OF ONE SPOKE HUB, and an Installation may declare ONE **or
+ * SEVERAL** identified Spoke Hubs (`spokeHubs` in `deployment/spokes.json`; `SpokeCollectionMode` is
+ * `hubs`, not `hubs`-as-a-future-target). A Hub's switcher offers that Hub's own members only; the Spoke
+ * rendering a page is handed its OWNING Hub's list, never an Installation-wide merge, so two Hubs that
+ * both declare a Spoke called `main` never borrow each other's navigation
+ * (`@/config/spoke-roots`'s `IdentifiedSpokeHubRoots`, `@/config/spoke-routing`'s per-entry `spokeHubId`).
+ * The FLAT authoring form (no `spokeHubs`) composes one implicit coordinator over its declared Spokes and
+ * keeps the released hostname dispatch; the LEGACY one-Spoke form keeps the permissive single-Spoke path.
+ * Either way these options are members — never an arbitrary link list, never another organization's site,
+ * and never a template/provisioning relationship (a site generated or updated from a centrally managed
  * template remains its OWN Spoke Hub / Installation unless it is declared as a member).
  *
  * DO NOT CONFUSE THE TWO ORGANISATIONAL LAYERS (FOUNDATION-ID-M2). The SPOKE HUB is the OUTER coordinator of

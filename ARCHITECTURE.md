@@ -56,7 +56,18 @@ That classification decides only which Spoke a host with no matching binding may
 an ownership input for an EFS publication: an informational `site.url` cannot veto a publication whose
 binding names its own owner. A publication is refused only when its declaration is unusable — an undeclared
 Spoke, the wrong Spoke Hub, an ambiguous owner, a flat/legacy Installation with no explicit hierarchy, or two
-publications claiming the same host and prefix (`bindingIssues`, the explicit collision check).
+publications whose public namespaces on one host overlap (`bindingIssues`, the explicit collision check).
+
+**One top-level public namespace per binding, per host (IA-ROUTE-02).** On a hostname, each prefix-scoped
+binding reserves its FIRST path segment: `/tenant-a` and `/tenant-b` are independent publications, while
+`/tenant-a` beside `/tenant-a/other`, and `/tenant-a/x` beside `/tenant-a/y`, are refused at manifest
+validation — a longer binding would otherwise shadow the shorter one's content route, and a public address
+would stop identifying one publication. Whole segments are compared, so `/tenant-a` and `/tenant-ab` remain
+distinct, and a Page may nest as deeply as its author likes beneath a prefix
+(`/tenant-a/en/services/design` is a Page route). The rule is blind to ownership: it holds for one Spoke
+publishing twice, for two Spokes in one Spoke Hub and for two Spokes in different Spoke Hubs. A prefix is a
+ROUTING ADDRESS and never a tenant, Entity, Site or Spoke identity; nothing selects a publication from the
+spelling of a URL, from a name or from array order.
 
 Presentation-asset authorization follows the same authority, never the classification. A Spoke's namespace
 (`/spokes/<segment>/assets/**`) is served on a host only when an explicit publication binding on that host

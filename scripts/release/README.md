@@ -48,6 +48,15 @@ Consequences that follow from that sentence:
   NEW generic test that resolves a `.github/` path may go undeclared. A test keeps its full
   source-repository and CI enforcement; only its inclusion in a release is decided.
 
+  The same principle covers the OTHER excluded surface, this repository's own Installation, through
+  `REFERENCE_CAPSULE_TEST_EXCLUSIONS` (FOUNDATION-R10): a generic test that resolves `deployment/**`
+  through the platform's own capsule authority asserts identities only this repository authors, so it
+  travels only with the repository that authors them. An adopter's Installation has its OWN capsule at that
+  path, and a shipped reference test would run against the wrong subject — it did, failing on Spoke
+  identities the adopter never wrote. The portable establishment suites (the shipped synthetic deployment,
+  the release's own platform, the CLI, the operational record) stay in the release, and the same suite
+  asserts that they do.
+
   A released file never imports an excluded module: `scripts/release/release-construction.mjs` refuses
   such a release at construction, and `tests/architecture/release-content-boundary.test.ts` runs that
   same check over the whole tracked tree.

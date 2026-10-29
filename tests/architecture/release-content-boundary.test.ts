@@ -6,7 +6,10 @@ import { describe, expect, it } from "vitest";
 
 import { assertReleasePayloadImportsResolve } from "../../scripts/release/release-construction.mjs";
 import {
+  CAPSULE_RESOLVER_CALL,
   CI_SUBJECT_TEST_EXCLUSIONS,
+  REFERENCE_CAPSULE_SURFACE,
+  REFERENCE_CAPSULE_TEST_EXCLUSIONS,
   RELEASE_CONTENT_POLICY_ID,
   RELEASE_CONTENT_RULES,
   REQUIRED_PLATFORM_PATHS,
@@ -221,6 +224,79 @@ describe("the released generic suite never imports an excluded module", () => {
       // …and the scan is not vacuous: in a source repository it finds exactly the declared ones, and in a
       // release it finds none at all.
       expect(ciResolvingTests.slice().sort()).toEqual(inSourceRepository ? declaredCiTests.slice().sort() : []);
+    });
+
+    /**
+     * THE REFERENCE-CAPSULE CRITERION (FOUNDATION-R10)
+     * ===============================================
+     *
+     * The second surface a release never carries is `deployment/**` — this repository's own authored
+     * Installation. A generic test that resolves THAT capsule asserts identities only this repository
+     * authors, so it may not travel: an adopter's Installation has its OWN capsule at the same path, and a
+     * shipped reference test then runs against the wrong subject and fails on material the adopter never
+     * wrote (observed in a disposable `acme`/`globex` Installation: `expected [ 'acme', 'globex' ] to deeply
+     * equal [ 'foundation', 'germany' ]`).
+     *
+     * Same principle as the CI criterion, and the same four properties — the subject is excluded, the test
+     * is excluded by the rule that names it, the declaration is true of its file, and the scan is neither
+     * vacuous nor incomplete. What is deliberately NOT asserted is a filename list: the scan finds the
+     * relationship (resolving the capsule through the platform's own authority), so a NEW reference-specific
+     * suite is caught, and a suite that merely names a Spoke in its OWN fixture is not.
+     */
+    describe("the reference-capsule criterion holds in both directions (FOUNDATION-R10)", () => {
+      const capsuleResolvingTests = testFiles.filter((file) => read(file).includes(CAPSULE_RESOLVER_CALL));
+      const declaredCapsuleTests = REFERENCE_CAPSULE_TEST_EXCLUSIONS.map((entry) => entry.test);
+
+      it("excludes the reference capsule, and every declared test with it", () => {
+        expect(classifyReleasePath(REFERENCE_CAPSULE_SURFACE).inclusion).toBe("excluded");
+        expect(REFERENCE_CAPSULE_TEST_EXCLUSIONS.length).toBeGreaterThan(0);
+        for (const entry of REFERENCE_CAPSULE_TEST_EXCLUSIONS) {
+          expect(classifyReleasePath(entry.test).inclusion, entry.test).toBe("excluded");
+          expect(classifyReleasePath(entry.test).ruleId, entry.test).toBe(entry.ruleId);
+          expect(entry.subject, entry.test).toBe(REFERENCE_CAPSULE_SURFACE);
+        }
+      });
+
+      it("declares only tests that exist and actually resolve that capsule — in the repository that authors it", () => {
+        if (!inSourceRepository) {
+          // A release carries no capsule and no test of one.
+          for (const entry of REFERENCE_CAPSULE_TEST_EXCLUSIONS) {
+            expect(has(entry.test), `${entry.test} must not travel in a release`).toBe(false);
+          }
+          return;
+        }
+        for (const entry of REFERENCE_CAPSULE_TEST_EXCLUSIONS) {
+          expect(trackedPaths(), entry.test).toContain(entry.test);
+          expect(read(entry.test), entry.test).toContain(entry.resolver);
+        }
+      });
+
+      it("leaves no generic test that resolves the reference capsule undeclared", () => {
+        const offenders = capsuleResolvingTests.filter((file) => !declaredCapsuleTests.includes(file));
+        expect(
+          offenders,
+          "a generic test resolves this repository's own capsule and is still released; declare it in " +
+            "REFERENCE_CAPSULE_TEST_EXCLUSIONS and exclude it, or an adopter's Installation finds it:",
+        ).toEqual([]);
+        expect(capsuleResolvingTests.slice().sort()).toEqual(
+          inSourceRepository ? declaredCapsuleTests.slice().sort() : [],
+        );
+      });
+
+      it("KEEPS the portable establishment suites in the release", () => {
+        // The correction must not become a broad skip of installation testing. These prove establishment
+        // with material the PLATFORM ships or generates, so they belong to every release; the same suite
+        // proves it in a clean room, where they run and pass.
+        for (const portable of [
+          "tests/integration/foundation-installation-bootstrap.test.ts",
+          "tests/integration/foundation-installation-cli.test.ts",
+          "tests/integration/foundation-installation-operational-state.test.ts",
+          "tests/integration/efs-independent-installations.test.ts",
+        ]) {
+          expect(classifyReleasePath(portable).inclusion, portable).toBe("platform");
+          expect(classifyReleasePath(portable).ruleId, portable).toBe("platform-tests");
+        }
+      });
     });
   });
 });

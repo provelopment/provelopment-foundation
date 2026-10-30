@@ -110,8 +110,6 @@ const SANCTIONED_DOMAIN_WRITERS: Record<string, string> = {
   "scripts/generate-country-code-reference.mjs":
     "<selected deployment>/content/COUNTRY-CODES.md — the ONE generated deployment document (ISO-B3A)",
   "scripts/ci/change-scope.mjs": "$GITHUB_OUTPUT — the CI runner's own file, never repository state (ISO-B3B)",
-  "scripts/efs/convert-reference.mjs":
-    "<selected deployment>/efs/manifest.json and <selected deployment>/efs/capsule/** — the explicit EFS capsule converted from the controlled reference Spokes. It reads deployment/spokes/** and never writes there (S3-E3-R02)",
   "scripts/release/release-construction.mjs":
     "the EMPTY destination directory the caller names — a release construction area outside the source repository. It reads committed bytes only, and writes no repository, deployment or generated state (R1B)",
   // ── FOUNDATION-B4B: the FIRST writers inside `src/**`, each owning exactly ONE installation ──────────
@@ -318,6 +316,8 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
   "tests/unit/change-scope.test.ts": "OS temp trees and `$GITHUB_OUTPUT` files",
   "tests/unit/country-code-generator-deployment-root.test.ts": "OS temp deployment trees the generator writes into",
   "tests/unit/dictionary-precedence.test.ts": "the synthetic deployment's dictionary tree",
+  "tests/unit/efs-status-labels.test.ts":
+    "OS temp dictionary and override trees it creates — the GEO-02 computed-status-label proofs author their own dictionaries, overrides and a language-only dictionary, removed by exact ownership (GEO-02 R03)",
   "tests/unit/i18n-dictionary-discovery.test.ts": "OS temp dictionary trees it creates",
   "tests/unit/i18n-site-overlay.test.ts": "OS temp dictionary trees it creates",
   "tests/unit/page-sources.test.ts": "the synthetic deployment's page tree",
@@ -402,7 +402,7 @@ describe("the executable writer inventory is explicit", () => {
   });
 
   it("names the sanctioned durable domains, each as ONE document/domain and no more", () => {
-    expect(Object.keys(SANCTIONED_DOMAIN_WRITERS)).toHaveLength(9);
+    expect(Object.keys(SANCTIONED_DOMAIN_WRITERS)).toHaveLength(8);
     expect(SANCTIONED_DOMAIN_WRITERS["scripts/sync-runtime-assets.mjs"]).toContain("public/assets");
     expect(SANCTIONED_DOMAIN_WRITERS["scripts/generate-country-code-reference.mjs"]).toContain(
       "COUNTRY-CODES.md",

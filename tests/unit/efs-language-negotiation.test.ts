@@ -64,29 +64,23 @@ describe("EFS language negotiation (GEO-01 NG-1 … NG-16)", () => {
     ).toEqual({ kind: "selected", locale: "zh-Hant", source: "accept-language" });
   });
 
-  it("NG-6 treats a variant-qualified authored representation as a first-class candidate", () => {
+  it("NG-6′ selects the authored default between two region-qualified candidates", () => {
     expect(
-      select({ supported: ["de-DE", "de-1996"], defaultLocale: "de-1996", acceptLanguage: "de" }),
-    ).toEqual({ kind: "selected", locale: "de-1996", source: "accept-language" });
+      select({ supported: ["de-DE", "de-AT"], defaultLocale: "de-AT", acceptLanguage: "de" }),
+    ).toEqual({ kind: "selected", locale: "de-AT", source: "accept-language" });
   });
 
-  it("NG-6′ negotiation candidacy does not confer publication qualification", () => {
-    // Separate concerns: `de-1996` may be authored and negotiated, and still be unfit to publish,
-    // because a variant names no script and no region.
+  it("NG-6″ negotiates a representation that carries BOTH a region and a variant", () => {
+    // `de-DE-1996` is qualified and published, and takes part in ordinary language negotiation:
+    // the variant is preserved rather than dropped to reach a shorter candidate.
+    expect(publicationLocaleIssue("de-DE-1996")).toBeNull();
     expect(
-      select({ supported: ["de-DE", "de-1996"], defaultLocale: "de-1996", acceptLanguage: "de" }),
-    ).toEqual({ kind: "selected", locale: "de-1996", source: "accept-language" });
-    expect(publicationLocaleIssue("de-1996")?.kind).toBe("unqualified");
-    expect(isPublicationQualifiedLocale("de-1996")).toBe(false);
-  });
-
-  it("NG-6″ invents no supported set: every selection is authored", () => {
-    const supported = ["en-001", "de-DE", "zh-Hans"];
-    for (const acceptLanguage of ["en", "de", "zh", "de-AT", "en-GB-x-private", "", "*"]) {
-      const result = select({ supported, defaultLocale: "en-001", acceptLanguage });
-      expect(result.kind).toBe("selected");
-      if (result.kind === "selected") expect(supported).toContain(result.locale);
-    }
+      select({
+        supported: ["de-DE", "de-DE-1996"],
+        defaultLocale: "de-DE-1996",
+        acceptLanguage: "de",
+      }),
+    ).toEqual({ kind: "selected", locale: "de-DE-1996", source: "accept-language" });
   });
 
   it("NG-7 invents no preference from a wildcard or an empty header", () => {
@@ -193,11 +187,21 @@ describe("EFS preference parsing and subtag safety", () => {
     expect(
       select({ supported: ["den-DE", "en-001"], defaultLocale: "en-001", acceptLanguage: "de" }),
     ).toEqual({ kind: "selected", locale: "en-001", source: "default" });
-    expect(select({ supported: ["den"], defaultLocale: "den", acceptLanguage: "de" })).toEqual({
-      kind: "selected",
-      locale: "den",
-      source: "default",
-    });
+    // The bare-language `den` fixture is withdrawn: `den` is not publication-qualified, so it can
+    // never be a published representation and must not appear in a `supported` set.
+  });
+
+  it("accepts a bare-variant tag as a browser preference and refuses it as a publication", () => {
+    // L-3: a preference is never published and never becomes a representation, so `de-1996` is a
+    // legitimate thing for a browser to send even though it can never be authored as a Page.
+    expect(localeTagIssue("de-1996")).toBeNull();
+    expect(parseAcceptLanguage("de-1996, en;q=0.8")).toEqual(["de-1996", "en"]);
+    expect(publicationLocaleIssue("de-1996")?.kind).toBe("unqualified");
+    // With only qualified representations published, that preference resolves nothing and is never
+    // upgraded into `de-DE` by invention.
+    expect(
+      select({ supported: ["de-DE"], defaultLocale: "de-DE", acceptLanguage: "de-1996" }),
+    ).toEqual({ kind: "selected", locale: "de-DE", source: "default" });
   });
 
   it("preserves variants through syntax and negotiation", () => {

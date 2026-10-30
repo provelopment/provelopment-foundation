@@ -3,7 +3,9 @@ import { SafeMarkdownContent } from "@/components/site/safe-markdown-content";
 import { Heading } from "@/components/ui/heading";
 import { publicContactLinkResolver } from "@/adapters/connect/public-contact";
 import { EfsContactForm } from "@/components/efs/efs-contact-form";
+import { EfsScheduleStatus } from "@/components/efs/efs-schedule-status";
 import { assetUrl } from "@/core/efs/publication";
+import { publicScheduleInputs } from "@/core/efs/opening-schedule";
 
 import type { EfsView } from "@/app/[[...segments]]/efs-request";
 
@@ -29,6 +31,14 @@ export function EfsPageView({
   const address = valueOf("contact.address");
   const phone = valueOf("contact.phone");
   const openingHours = valueOf("openingHours");
+  /**
+   * COMPUTED OPENING STATUS (`D40` Decision A).
+   *
+   * `null` unless BOTH `openingSchedule` and `timezone` are effectively authored AND publicly
+   * projected. Absence, privacy and `null` suppression all yield `null` — and therefore no
+   * open/closed assertion anywhere in the output — which is the decision's whole point.
+   */
+  const scheduleInputs = publicScheduleInputs(view.properties);
   const rawMarkdown =
     view.source.format === "markdown"
       ? (view.source.body ?? "").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "")
@@ -134,6 +144,18 @@ export function EfsPageView({
                 <dd>{openingHours}</dd>
               </div>
             ) : null}
+            {scheduleInputs === null ? null : (
+              <div>
+                <dt className="font-semibold">Open now</dt>
+                <dd>
+                  <EfsScheduleStatus
+                    schedule={scheduleInputs.schedule}
+                    timeZone={scheduleInputs.timeZone}
+                    labels={{ open: "Open now", closed: "Closed now" }}
+                  />
+                </dd>
+              </div>
+            )}
           </dl>
           {withShell ? null : (
             <nav className="mt-10 flex flex-wrap gap-4 text-sm" aria-label="Languages">

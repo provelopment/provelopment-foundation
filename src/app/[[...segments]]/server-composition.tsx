@@ -80,6 +80,7 @@ import type { SiteConfig } from "@/config/site-config";
 import { effectiveSitePageConfig } from "@/config/site-page-config";
 import type { EfsView } from "./efs-request";
 import { publicPathBase, publicationOwnedBy } from "@/core/efs/publication";
+import { PUBLIC_FACT_KEYS, resolvePublicFacts } from "@/core/efs/public-facts";
 import { siteDescriptionForLocale } from "@/config/site-metadata";
 import { spokeSwitcherForRenderingSpoke } from "@/config/spoke-routing";
 import { buildLanguageAlternates, type LanguageAlternateLocale } from "@/core/locale";
@@ -1134,6 +1135,80 @@ export function efsShellPresentationConfig(
       .map(([, value]) => [site.code, value]),
   );
 
+  /**
+   * SOURCE PRECEDENCE (`D40` Decision C).
+   *
+   * This is the ONE place the ordering is applied, and it feeds BOTH surfaces: the shared shell
+   * (header, footer, contact block) reads this config, and so does the JSON-LD built from it. One
+   * resolution, so a contact value can never be displayed and advertised differently.
+   *
+   * The fallback values are the Spoke's own presentation configuration — exactly what renders
+   * today when the capsule declares nothing — so absent declarations change nothing. A private or
+   * `null`-suppressed declaration blocks both EFS output AND these fallbacks; that is decided in
+   * `resolvePublicFacts` by the CASCADE state, never by the public output.
+   */
+  const facts = resolvePublicFacts(view.properties, {
+    "brand.name": source.business.name ?? source.name,
+    "contact.name": source.business.name ?? source.name,
+    "contact.email": source.business.contact.email ?? source.contact.email,
+    "contact.phone": source.business.contact.phone ?? source.contact.phone,
+  });
+
+  /**
+   * A blocked declaration (`private` or explicit `null`) removes the fact from the public output
+   * AND refuses the configuration fallback. It is removed rather than overwritten with
+   * `undefined`, so the property is genuinely absent from the composed configuration.
+   */
+  const blocked = (key: (typeof PUBLIC_FACT_KEYS)[number]) => {
+    const state = facts.get(key).state;
+    return state === "private" || state === "suppressed";
+  };
+  const withoutFact = <T extends object>(base: T, key: keyof T): T => {
+    const rest: Record<string, unknown> = { ...(base as Record<string, unknown>) };
+    delete rest[key as string];
+    return rest as T;
+  };
+
+  /**
+   * The shell's own identity name.
+   *
+   * A denied BRAND NAME does not render — and, per `GEO-01-R02` §5, the shell then falls back to
+   * the EFS SiteID, exactly as a denied `site.label` already does (line above). That is the
+   * documented consequence of deny-by-default for a DISPLAY property, not an invented value.
+   */
+  const brandName =
+    facts.get("brand.name").state === "declared"
+      ? facts.get("brand.name").value
+      : blocked("brand.name")
+        ? view.site.id
+        : undefined;
+  const contactName =
+    facts.get("contact.name").state === "declared" ? facts.get("contact.name").value : undefined;
+
+  const businessContact = (() => {
+    let contact = { ...source.business.contact };
+    for (const key of ["contact.email", "contact.phone"] as const) {
+      const field = key === "contact.email" ? "email" : "phone";
+      const fact = facts.get(key);
+      if (fact.state === "declared" && fact.value !== undefined) contact[field] = fact.value;
+      else if (blocked(key)) contact = withoutFact(contact, field);
+    }
+    return contact;
+  })();
+
+  const siteContact = (() => {
+    let contact = { ...source.contact };
+    for (const key of ["contact.email", "contact.phone"] as const) {
+      const field = key === "contact.email" ? "email" : "phone";
+      const fact = facts.get(key);
+      if (fact.state === "declared" && fact.value !== undefined) contact[field] = fact.value;
+      // A blocked fact is withheld from the deployment-level contact too, so it cannot be reached
+      // through a second path.
+      else if (blocked(key)) contact = withoutFact(contact, field);
+    }
+    return contact;
+  })();
+
   return {
     ...source,
     url: new URL(view.canonical).origin,
@@ -1145,7 +1220,17 @@ export function efsShellPresentationConfig(
       view.binding.locales.some((locale) => localePathKey(locale) === entry.code),
     ),
     sitePageOverrides: overrides,
-    business: { ...source.business, timezone: undefined, locations: [] },
+    name: brandName ?? source.name,
+    contact: siteContact,
+    business: {
+      ...source.business,
+      timezone: undefined,
+      locations: [],
+      ...(brandName === undefined && contactName === undefined
+        ? {}
+        : { name: brandName ?? contactName }),
+      contact: businessContact,
+    },
     regions: {},
     pageBindings: [],
   };

@@ -15,6 +15,7 @@ import { readFileSync } from "node:fs";
 import { entityIdIssue } from "@/core/efs/identity";
 import { canonicalLocaleTag, localeTagIssue } from "@/core/efs/locales";
 import { resolveProperties, type PropertyBag } from "@/core/efs/properties";
+import { typedPropertyIssue } from "@/core/efs/property-contract";
 import {
   bindingIssues,
   normalizePrefix,
@@ -129,6 +130,15 @@ function propertyBag(value: unknown, label: string, issues: string[]): PropertyB
   if (!isRecord(value)) {
     issues.push(`${label} properties must be an object.`);
     return undefined;
+  }
+  // Typed keys carry a contract beyond the generic cascade validation (`D40` Decision A). A
+  // malformed `timezone` or `openingSchedule` fails HERE, before anything is published, rather
+  // than degrading into a missing value at render time.
+  for (const [key, declaration] of Object.entries(value)) {
+    if (declaration === null) continue; // explicit suppression: no value to validate
+    if (!isRecord(declaration)) continue; // the generic cascade reports the shape issue
+    const issue = typedPropertyIssue(key, declaration.value);
+    if (issue) issues.push(`${label}.properties["${key}"]: ${issue}`);
   }
   return value as PropertyBag;
 }

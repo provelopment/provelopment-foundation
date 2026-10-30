@@ -315,3 +315,214 @@ describe("EFS opening schedule — no input, no assertion", () => {
   });
 });
 
+
+describe("R02-A — overlap is judged on actual wall-clock coverage, not the authored day", () => {
+  it("rejects an overnight interval overlapped by the following day (Mon 22:00-02:00 + Tue 01:00-03:00)", () => {
+    const issue = efsOpeningScheduleIssue({
+      intervals: [
+        { days: ["mon"], open: "22:00", close: "02:00" },
+        { days: ["tue"], open: "01:00", close: "03:00" },
+      ],
+    });
+    expect(issue).toMatch(/overlaps/);
+    expect(issue).toMatch(/wall-clock coverage/);
+  });
+
+  it("rejects the Sunday→Monday boundary (Sun 23:00-02:00 + Mon 01:00-04:00)", () => {
+    expect(
+      efsOpeningScheduleIssue({
+        intervals: [
+          { days: ["sun"], open: "23:00", close: "02:00" },
+          { days: ["mon"], open: "01:00", close: "04:00" },
+        ],
+      }),
+    ).toMatch(/overlaps/);
+  });
+
+  it("rejects the wrap-around overlap declared in the other order", () => {
+    expect(
+      efsOpeningScheduleIssue({
+        intervals: [
+          { days: ["mon"], open: "01:00", close: "04:00" },
+          { days: ["sun"], open: "23:00", close: "02:00" },
+        ],
+      }),
+    ).toMatch(/overlaps/);
+  });
+
+  it("keeps legitimate adjacent intervals valid, same day and across days", () => {
+    expect(
+      efsOpeningScheduleIssue({
+        intervals: [
+          { days: ["mon"], open: "09:00", close: "12:00" },
+          { days: ["mon"], open: "12:00", close: "17:00" },
+        ],
+      }),
+    ).toBeNull();
+    // An overnight interval and the next day's interval that begins exactly when it ends.
+    expect(
+      efsOpeningScheduleIssue({
+        intervals: [
+          { days: ["mon"], open: "22:00", close: "02:00" },
+          { days: ["tue"], open: "02:00", close: "06:00" },
+        ],
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps legitimate non-overlapping overnight intervals valid", () => {
+    expect(
+      efsOpeningScheduleIssue({
+        intervals: [{ days: ["mon", "tue", "wed"], open: "22:00", close: "02:00" }],
+      }),
+    ).toBeNull();
+    // The same overnight window two days running does not collide with itself.
+    expect(
+      efsOpeningScheduleIssue({
+        intervals: [
+          { days: ["mon"], open: "22:00", close: "02:00" },
+          { days: ["tue"], open: "22:00", close: "02:00" },
+        ],
+      }),
+    ).toBeNull();
+    // Early morning on the same day as the evening interval that follows it.
+    expect(
+      efsOpeningScheduleIssue({
+        intervals: [
+          { days: ["mon"], open: "03:00", close: "06:00" },
+          { days: ["mon"], open: "22:00", close: "02:00" },
+        ],
+      }),
+    ).toBeNull();
+  });
+});
+
+
+describe("R02-A(2) — an exception and the overnight interval carried into it", () => {
+  it("preserves the released carry-over: an exception replaces its own day only", () => {
+    // Monday runs overnight into Tuesday; Tuesday declares its own shorter interval. The carry-over
+    // is NOT revoked (released engine behaviour), so 01:00 Tuesday is still open.
+    const schedule: EfsOpeningSchedule = {
+      intervals: [{ days: ["mon"], open: "22:00", close: "06:00" }],
+      exceptions: [{ date: "2026-07-14", open: "10:00", close: "12:00" }],
+    };
+    expect(efsOpeningScheduleIssue(schedule)).toBeNull();
+    // 2026-07-14 is a Tuesday.
+    expect(efsOpenStatusAt(schedule, "Europe/Berlin", berlinSummer(1, 0, 14))).toEqual({
+      open: true,
+      minutesRemaining: 300,
+    });
+    expect(efsOpenStatusAt(schedule, "Europe/Berlin", berlinSummer(11, 0, 14))).toEqual({
+      open: true,
+      minutesRemaining: 60,
+    });
+    // The exception REPLACED Tuesday's weekly hours, so 13:00 is closed.
+    expect(efsOpenStatusAt(schedule, "Europe/Berlin", berlinSummer(13, 0, 14))).toEqual({
+      open: false,
+    });
+  });
+
+  it("rejects a closure on a date the preceding overnight interval keeps open", () => {
+    const issue = efsOpeningScheduleIssue({
+      intervals: [{ days: ["mon"], open: "22:00", close: "02:00" }],
+      exceptions: [{ date: "2026-07-14", closed: true }],
+    });
+    expect(issue).toMatch(/already open after midnight/);
+    expect(issue).toMatch(/2026-07-13/);
+  });
+
+  it("rejects a closure carried over from an exceptional overnight interval", () => {
+    expect(
+      efsOpeningScheduleIssue({
+        intervals: [],
+        exceptions: [
+          { date: "2026-07-13", open: "22:00", close: "02:00" },
+          { date: "2026-07-14", closed: true },
+        ],
+      }),
+    ).toMatch(/already open after midnight/);
+  });
+
+  it("allows a closure when the preceding day carries nothing past midnight", () => {
+    expect(
+      efsOpeningScheduleIssue({
+        intervals: [{ days: ["mon"], open: "09:00", close: "17:00" }],
+        exceptions: [{ date: "2026-07-14", closed: true }],
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("R02-B — exception forms are exact, and contradictions are refused", () => {
+  it("rejects a closure that also declares opening times", () => {
+    expect(
+      efsOpeningScheduleIssue({
+        intervals: [],
+        exceptions: [{ date: "2026-12-24", closed: true, open: "10:00", close: "14:00" }],
+      }),
+    ).toMatch(/contradictory/);
+  });
+
+  it("rejects a partial interval", () => {
+    expect(
+      efsOpeningScheduleIssue({ intervals: [], exceptions: [{ date: "2026-12-24", open: "10:00" }] }),
+    ).toMatch(/only one of/);
+    expect(
+      efsOpeningScheduleIssue({
+        intervals: [],
+        exceptions: [{ date: "2026-12-24", close: "14:00" }],
+      }),
+    ).toMatch(/only one of/);
+  });
+
+  it("rejects closed:false, alone or alongside an interval", () => {
+    expect(
+      efsOpeningScheduleIssue({
+        intervals: [],
+        exceptions: [{ date: "2026-12-24", closed: false }],
+      }),
+    ).toMatch(/read as a closure/);
+    expect(
+      efsOpeningScheduleIssue({
+        intervals: [],
+        exceptions: [{ date: "2026-12-24", closed: false, open: "10:00", close: "14:00" }],
+      }),
+    ).toMatch(/redundant/);
+  });
+
+  it("rejects a bare date that states neither form", () => {
+    expect(
+      efsOpeningScheduleIssue({ intervals: [], exceptions: [{ date: "2026-12-24" }] }),
+    ).toMatch(/neither a closure nor a complete interval/);
+  });
+
+  it("refuses unexpected members instead of silently ignoring them", () => {
+    expect(efsOpeningScheduleIssue({ intervals: [], notes: "x" })).toMatch(
+      /not part of the accepted shape/,
+    );
+    expect(
+      efsOpeningScheduleIssue({
+        intervals: [{ days: ["mon"], open: "09:00", close: "17:00", zone: "X" }],
+      }),
+    ).toMatch(/not part of the accepted shape/);
+    expect(
+      efsOpeningScheduleIssue({
+        intervals: [],
+        exceptions: [{ date: "2026-12-24", closed: true, note: "x" }],
+      }),
+    ).toMatch(/not part of the accepted shape/);
+  });
+
+  it("accepts exactly the two declared forms", () => {
+    expect(
+      efsOpeningScheduleIssue({
+        intervals: [{ days: ["mon"], open: "09:00", close: "17:00" }],
+        exceptions: [
+          { date: "2026-12-25", closed: true },
+          { date: "2026-12-24", open: "10:00", close: "14:00" },
+        ],
+      }),
+    ).toBeNull();
+  });
+});
+

@@ -1090,6 +1090,18 @@ export async function layoutForContext(
 }
 
 /**
+ * How ONE brand/contact fact is applied to the composed presentation configuration
+ * (`D40` Decision C, corrected by `GEO-02-R02` C2).
+ *
+ *   - `set`   — a public EFS declaration supplies the value;
+ *   - `clear` — the fact is not publishable, so it is REMOVED and the configured value is refused
+ *               with it. This covers privacy, `null` suppression, and a declaration whose value is
+ *               not usable — none of which may be filled from configuration;
+ *   - `keep`  — nothing is declared at any level, so the configured value stands.
+ */
+type FactDecision = { readonly kind: "set"; readonly value: string } | { readonly kind: "clear" } | { readonly kind: "keep" };
+
+/**
  * EFS's shared-shell presentation configuration. It keeps the approved visual/navigation/dictionary
  * chrome but makes the EFS representation the ONLY locale authority: every site locale is explicit and
  * canonicalised from its declared tag, while regions, page-region bindings, required-Location policy and
@@ -1136,78 +1148,91 @@ export function efsShellPresentationConfig(
   );
 
   /**
-   * SOURCE PRECEDENCE (`D40` Decision C).
+   * SOURCE PRECEDENCE (`D40` Decision C, corrected by `GEO-02-R02` C1/C2).
    *
    * This is the ONE place the ordering is applied, and it feeds BOTH surfaces: the shared shell
    * (header, footer, contact block) reads this config, and so does the JSON-LD built from it. One
    * resolution, so a contact value can never be displayed and advertised differently.
    *
-   * The fallback values are the Spoke's own presentation configuration — exactly what renders
-   * today when the capsule declares nothing — so absent declarations change nothing. A private or
-   * `null`-suppressed declaration blocks both EFS output AND these fallbacks; that is decided in
-   * `resolvePublicFacts` by the CASCADE state, never by the public output.
+   * Each fact resolves to exactly one of three decisions:
+   *
+   *   - SET   — an effective PUBLIC declaration supplies the value;
+   *   - CLEAR — the cascade decided the fact is not publishable (private, `null`, or a declared
+   *             value that is not a usable string), so the fact is REMOVED and the configuration
+   *             fallback is refused with it;
+   *   - KEEP  — nothing is declared at any level, so the configuration value stands as-is.
+   *
+   * `contact.name` deliberately has NO fallback and no consumer here: it is contact-PERSON identity,
+   * and promoting it into the business name would relabel the business.
    */
   const facts = resolvePublicFacts(view.properties, {
-    "brand.name": source.business.name ?? source.name,
-    "contact.name": source.business.name ?? source.name,
+    "brand.name": source.name,
     "contact.email": source.business.contact.email ?? source.contact.email,
     "contact.phone": source.business.contact.phone ?? source.contact.phone,
   });
 
-  /**
-   * A blocked declaration (`private` or explicit `null`) removes the fact from the public output
-   * AND refuses the configuration fallback. It is removed rather than overwritten with
-   * `undefined`, so the property is genuinely absent from the composed configuration.
-   */
-  const blocked = (key: (typeof PUBLIC_FACT_KEYS)[number]) => {
-    const state = facts.get(key).state;
-    return state === "private" || state === "suppressed";
+  const decisionFor = (key: (typeof PUBLIC_FACT_KEYS)[number]): FactDecision => {
+    const fact = facts.get(key);
+    switch (fact.state) {
+      case "declared":
+        // A declaration occupies the precedence slot even when its value is unusable. Typed
+        // validation refuses such a value before serving; clearing here keeps the order total and
+        // stops it from silently re-opening the configuration fallback.
+        return fact.value === undefined ? { kind: "clear" } : { kind: "set", value: fact.value };
+      case "private":
+      case "suppressed":
+        return { kind: "clear" };
+      default:
+        return { kind: "keep" };
+    }
   };
+
   const withoutFact = <T extends object>(base: T, key: keyof T): T => {
     const rest: Record<string, unknown> = { ...(base as Record<string, unknown>) };
     delete rest[key as string];
     return rest as T;
   };
 
+  const applyTo = <T extends object>(base: T, key: keyof T, decision: FactDecision): T =>
+    decision.kind === "set"
+      ? { ...base, [key]: decision.value }
+      : decision.kind === "clear"
+        ? withoutFact(base, key)
+        : base;
+
   /**
-   * The shell's own identity name.
+   * The shell's own identity name, from `brand.name` only.
    *
-   * A denied BRAND NAME does not render — and, per `GEO-01-R02` §5, the shell then falls back to
-   * the EFS SiteID, exactly as a denied `site.label` already does (line above). That is the
-   * documented consequence of deny-by-default for a DISPLAY property, not an invented value.
+   * SET keeps the declaration; KEEP leaves the configured name untouched; CLEAR refuses both the
+   * declaration and the configured name, and the shell falls back to the EFS SiteID — the documented
+   * consequence of deny-by-default for a DISPLAY property (`GEO-01-R02` §5, as `site.label` already
+   * does above). It is never filled with a contact person's name.
    */
+  const brandDecision = decisionFor("brand.name");
   const brandName =
-    facts.get("brand.name").state === "declared"
-      ? facts.get("brand.name").value
-      : blocked("brand.name")
+    brandDecision.kind === "set"
+      ? brandDecision.value
+      : brandDecision.kind === "clear"
         ? view.site.id
-        : undefined;
-  const contactName =
-    facts.get("contact.name").state === "declared" ? facts.get("contact.name").value : undefined;
+        : source.name;
 
-  const businessContact = (() => {
-    let contact = { ...source.business.contact };
-    for (const key of ["contact.email", "contact.phone"] as const) {
-      const field = key === "contact.email" ? "email" : "phone";
-      const fact = facts.get(key);
-      if (fact.state === "declared" && fact.value !== undefined) contact[field] = fact.value;
-      else if (blocked(key)) contact = withoutFact(contact, field);
-    }
-    return contact;
-  })();
+  const businessName =
+    brandDecision.kind === "set"
+      ? brandDecision.value
+      : brandDecision.kind === "clear"
+        ? view.site.id
+        : source.business.name;
 
-  const siteContact = (() => {
-    let contact = { ...source.contact };
-    for (const key of ["contact.email", "contact.phone"] as const) {
-      const field = key === "contact.email" ? "email" : "phone";
-      const fact = facts.get(key);
-      if (fact.state === "declared" && fact.value !== undefined) contact[field] = fact.value;
-      // A blocked fact is withheld from the deployment-level contact too, so it cannot be reached
-      // through a second path.
-      else if (blocked(key)) contact = withoutFact(contact, field);
-    }
-    return contact;
-  })();
+  const businessContact = applyTo(
+    applyTo(source.business.contact, "email", decisionFor("contact.email")),
+    "phone",
+    decisionFor("contact.phone"),
+  );
+  const siteContact = applyTo(
+    applyTo(source.contact, "email", decisionFor("contact.email")),
+    "phone",
+    decisionFor("contact.phone"),
+  );
 
   return {
     ...source,
@@ -1220,15 +1245,13 @@ export function efsShellPresentationConfig(
       view.binding.locales.some((locale) => localePathKey(locale) === entry.code),
     ),
     sitePageOverrides: overrides,
-    name: brandName ?? source.name,
+    name: brandName,
     contact: siteContact,
     business: {
       ...source.business,
       timezone: undefined,
       locations: [],
-      ...(brandName === undefined && contactName === undefined
-        ? {}
-        : { name: brandName ?? contactName }),
+      name: businessName,
       contact: businessContact,
     },
     regions: {},

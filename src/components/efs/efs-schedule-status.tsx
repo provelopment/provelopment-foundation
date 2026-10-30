@@ -5,9 +5,11 @@ import { useSyncExternalStore } from "react";
 import { efsOpenStatusAt, type EfsOpeningSchedule } from "@/core/efs/opening-schedule";
 
 export interface EfsScheduleStatusLabels {
-  /** "Open now" */
+  /** The section heading, from `dictionary.business.hoursLabel` — never "Open now". */
+  readonly hoursLabel: string;
+  /** "Open" — from `dictionary.business.open`. */
   readonly open: string;
-  /** "Closed" */
+  /** "Closed" — from `dictionary.business.closed`. */
   readonly closed: string;
 }
 
@@ -62,7 +64,7 @@ export function EfsScheduleStatus({ schedule, timeZone, labels }: EfsScheduleSta
   const status = efsOpenStatusAt(schedule, timeZone, now);
 
   return (
-    <p className="mt-1 text-sm" data-efs-open={status.open ? "true" : "false"} data-efs-timezone={timeZone}>
+    <p className="text-sm" data-efs-open={status.open ? "true" : "false"} data-efs-timezone={timeZone}>
       <span className={status.open ? "font-medium text-success" : "text-muted-foreground"}>
         {status.open ? labels.open : labels.closed}
       </span>

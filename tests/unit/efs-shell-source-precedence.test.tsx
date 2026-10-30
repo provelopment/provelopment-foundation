@@ -1,12 +1,23 @@
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { efsShellPresentationConfig } from "@/app/[[...segments]]/server-composition";
 import type { EfsView } from "@/app/[[...segments]]/efs-request";
+import { StructuredData } from "@/components/site/structured-data";
 import type { SiteConfig } from "@/config/site-config";
 
 type Props = Record<string, { value: unknown; public?: boolean } | null>;
 
-/** A view whose effective property set is exactly the authored bag supplied. */
+const entityId = "e_00000000000000000000000003";
+
+/**
+ * A view whose effective property set is exactly the authored bag supplied.
+ *
+ * Deliberately NEUTRAL and explicitly authored, per the accepted `GEO-01` contract: a generic
+ * presentation profile key (`main`), a non-geographic publication prefix, and independently
+ * authored QUALIFIED language tags. Nothing here is a country, a market, a region or a bare
+ * language, and no retired public address is reproduced.
+ */
 function view(properties: Props): EfsView {
   const map = new Map(
     Object.entries(properties).map(([key, declaration]) => [
@@ -24,37 +35,40 @@ function view(properties: Props): EfsView {
   );
   return {
     publication: {
-      id: "north-publication",
-      spokeId: "north-spoke",
-      presentationSiteCode: "ww",
-      entityId: "e_00000000000000000000000003",
-      facetId: "north",
+      id: "main-publication",
+      spokeId: "main-spoke",
+      presentationSiteCode: "main",
+      entityId,
+      facetId: "acme",
       bindings: [],
     },
     binding: {
-      host: "north.example",
-      prefix: ["de"],
-      locales: ["de", "en"],
-      defaultLocale: "de",
+      host: "portal.example",
+      prefix: ["main"],
+      locales: ["de-DE", "en-001"],
+      defaultLocale: "en-001",
       siteMode: "closed",
     },
-    site: { id: "berlin", pages: [] },
-    facet: { id: "germany" },
-    page: { id: "frankfurt", route: ["frankfurt"] },
+    site: { id: "main", pages: [] },
+    facet: { id: "acme" },
+    page: { id: "about", route: ["about"] },
     properties: {
       get: (key: string) => map.get(key),
       publicEntries: () => [...map.values()].filter((entry) => entry.public),
     },
-    canonical: "https://north.example/de/en",
+    canonical: "https://portal.example/main/en-001/about",
   } as unknown as EfsView;
 }
 
 function source(): SiteConfig {
   const site = {
-    code: "ww",
-    label: "Worldwide",
-    locales: [{ path: "de", canonical: "de" }],
-    defaultLocale: "de",
+    code: "main",
+    label: "Main",
+    locales: [
+      { path: "de-de", canonical: "de-DE" },
+      { path: "en-001", canonical: "en-001" },
+    ],
+    defaultLocale: "en-001",
     fallback: true,
     isDefault: true,
     locationSelection: null,
@@ -65,8 +79,11 @@ function source(): SiteConfig {
     defaultSite: site,
     hubs: [],
     sitePageOverrides: {},
-    defaultLocale: "de",
-    locales: [{ code: "de", label: "Deutsch" }],
+    defaultLocale: "en-001",
+    locales: [
+      { code: "de-de", label: "Deutsch" },
+      { code: "en-001", label: "English" },
+    ],
     name: "Configured Brand",
     contact: { email: "deployment@example.com", phone: "+1 555 0100" },
     socialLinks: [],
@@ -134,11 +151,11 @@ describe("D40 Decision C — the EFS shell applies source precedence", () => {
       source(),
       view({ "brand.name": { value: "Hidden", public: false } }),
     )!;
-    expect(composed.name).toBe("berlin");
+    expect(composed.name).toBe("main");
     // `business.name` agrees with `siteConfig.name` rather than contradicting it. Leaving it unset
     // would make the JSON-LD fall back to `siteConfig.name` anyway (`structured-data.tsx`), so the
     // configured business name cannot leak into the blocked fact's place either way.
-    expect(composed.business.name).toBe("berlin");
+    expect(composed.business.name).toBe("main");
     expect(composed.business.name).not.toBe("Configured Business");
   });
 
@@ -157,7 +174,12 @@ describe("D40 Decision C — the EFS shell applies source precedence", () => {
     )!;
     // Language, route, publication and canonical identities are unchanged.
     expect(withOptional.sites[0].locales).toEqual(baseline.sites[0].locales);
-    expect(withOptional.sites[0].defaultLocale).toBe("de");
+    expect(withOptional.sites[0].defaultLocale).toBe("en-001");
+    // The published tags are the AUTHORED qualified tags, independently of the optional facts.
+    expect(withOptional.sites[0].locales.map((locale) => locale.canonical)).toEqual([
+      "de-DE",
+      "en-001",
+    ]);
     expect(withOptional.sites[0].publicPathBase).toEqual(baseline.sites[0].publicPathBase);
     expect(withOptional.defaultLocale).toBe(baseline.defaultLocale);
     expect(withOptional.url).toBe(baseline.url);
@@ -167,6 +189,102 @@ describe("D40 Decision C — the EFS shell applies source precedence", () => {
     // Branding and contact facts are untouched by those keys.
     expect(withOptional.name).toBe(baseline.name);
     expect(withOptional.business.contact).toEqual(baseline.business.contact);
+  });
+});
+
+
+describe("R02-C1 — contact identity and business identity are separate facts", () => {
+  it("never promotes a contact name into the business or brand name", () => {
+    const composed = efsShellPresentationConfig(
+      source(),
+      view({ "contact.name": { value: "Ada Lovelace", public: true } }),
+    )!;
+    // The business keeps its configured identity; the brand keeps its configured name.
+    expect(composed.business.name).toBe("Configured Business");
+    expect(composed.name).toBe("Configured Brand");
+    // And the contact person's name does not appear in either slot.
+    expect(composed.business.name).not.toBe("Ada Lovelace");
+    expect(composed.name).not.toBe("Ada Lovelace");
+  });
+
+  it("keeps brand and contact names independent when both are declared", () => {
+    const composed = efsShellPresentationConfig(
+      source(),
+      view({
+        "brand.name": { value: "Acme", public: true },
+        "contact.name": { value: "Ada Lovelace", public: true },
+      }),
+    )!;
+    expect(composed.name).toBe("Acme");
+    expect(composed.business.name).toBe("Acme");
+  });
+});
+
+describe("R02-C2 — a declared fact never re-opens the configuration fallback", () => {
+  it("refuses the configured value when a public declaration is not a usable string", () => {
+    // Typed validation rejects this at manifest load; the composition must still never treat it as
+    // "absent" and reinstate the configured value.
+    const composed = efsShellPresentationConfig(
+      source(),
+      view({ "brand.name": { value: 42, public: true } }),
+    )!;
+    expect(composed.name).toBe("main");
+    expect(composed.name).not.toBe("Configured Brand");
+    expect(composed.business.name).not.toBe("Configured Business");
+  });
+
+  it("refuses the configured value for a malformed public contact fact", () => {
+    const composed = efsShellPresentationConfig(
+      source(),
+      view({ "contact.email": { value: ["not", "a", "string"], public: true } }),
+    )!;
+    expect(composed.business.contact.email).toBeUndefined();
+    expect(composed.contact.email).toBeUndefined();
+  });
+});
+
+describe("R02-C3 — the same resolved fact reaches the metadata", () => {
+  it("publishes the EFS contact and brand in the JSON-LD, not the configured values", () => {
+    const composed = efsShellPresentationConfig(
+      source(),
+      view({
+        "brand.name": { value: "Capsule Brand", public: true },
+        "contact.email": { value: "capsule@example.com", public: true },
+        "contact.phone": { value: "+44 20 7946 0000", public: true },
+      }),
+    )!;
+    const markup = renderToStaticMarkup(
+      <StructuredData locale="en-001" siteConfig={composed} />,
+    );
+    expect(markup).toContain("Capsule Brand");
+    expect(markup).toContain("capsule@example.com");
+    expect(markup).toContain("+44 20 7946 0000");
+    // The configured values appear nowhere in the metadata.
+    expect(markup).not.toContain("Configured Business");
+    expect(markup).not.toContain("business@example.com");
+    expect(markup).not.toContain("+1 555 0200");
+  });
+
+  it("publishes no contact at all when the declaration is private", () => {
+    const composed = efsShellPresentationConfig(
+      source(),
+      view({ "contact.email": { value: "private@example.com", public: false } }),
+    )!;
+    const markup = renderToStaticMarkup(
+      <StructuredData locale="en-001" siteConfig={composed} />,
+    );
+    expect(markup).not.toContain("private@example.com");
+    expect(markup).not.toContain("business@example.com");
+    expect(markup).not.toContain("deployment@example.com");
+  });
+
+  it("publishes no contact at all when the declaration is suppressed", () => {
+    const composed = efsShellPresentationConfig(source(), view({ "contact.phone": null }))!;
+    const markup = renderToStaticMarkup(
+      <StructuredData locale="en-001" siteConfig={composed} />,
+    );
+    expect(markup).not.toContain("+1 555 0200");
+    expect(markup).not.toContain("+1 555 0100");
   });
 });
 

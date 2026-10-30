@@ -144,6 +144,10 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
   "tests/browser/scratch.mjs": "the guard: OS temp + `tests/browser/.report/` + the generated Spoke namespaces, refusing every other target",
   "tests/browser/matrix.mjs": "the synthetic deployment copy, `.report/`, OS temp and the generated Spoke namespaces a multi-Spoke scenario materialises — all via scratch.mjs",
   "tests/browser/cdp.mjs": "the headless-Chrome profile directory it created, under OS temp",
+  "tests/browser/efs-schedule.scenario.mjs":
+    "OS temp only — a disposable Installation it materialises under the OS temp directory (a COPY of the reference Spoke plus a " +
+    "generated Spokes declaration and a per-run schedule manifest) and removes in `finally`. The reference deployment, the " +
+    "reference capsule and every committed fixture are read-only to it (GEO-02-R02 F)",
   "tests/browser/multihost.scenario.mjs":
     "OS temp (its disposable two-Spoke Installation) and `public/spokes/<segment>/**` — the GENERATED " +
     "namespaces it materialises FROM THE CANONICAL ASSET PLAN (never by inventing files) and removes for the " +

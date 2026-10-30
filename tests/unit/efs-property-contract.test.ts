@@ -233,3 +233,47 @@ describe("EFS typed properties — refused at validation, never at render", () =
   });
 });
 
+
+describe("R02-C2 — the established string facts carry a typed contract", () => {
+  it("refuses a non-string brand or contact fact at every level", () => {
+    const invalid: Record<string, unknown>[] = [
+      { "brand.name": { value: 42 } },
+      { "contact.name": { value: ["Ada"] } },
+      { "contact.email": { value: 5 } },
+      { "contact.phone": { value: { number: "+1" } } },
+    ];
+    for (const level of ["entity", "facet", "site", "page", "representation"] as const) {
+      for (const bag of invalid) {
+        const result = validateEfsManifest(manifestAt(level, bag));
+        expect(result.ok, `${level} ${JSON.stringify(bag)}`).toBe(false);
+        expect(result.issues.join(" ")).toMatch(/must be a string/);
+      }
+    }
+  });
+
+  it("refuses an empty string fact", () => {
+    const result = validateEfsManifest(manifestAt("site", { "brand.name": { value: "   " } }));
+    expect(result.ok).toBe(false);
+    expect(result.issues.join(" ")).toMatch(/must not be empty/);
+  });
+
+  it("accepts valid string facts, and leaves unrelated keys on the generic rule", () => {
+    expect(
+      validateEfsManifest(
+        manifestAt("entity", {
+          "brand.name": { value: "Acme", public: true },
+          "contact.name": { value: "Ada", public: true },
+          "contact.email": { value: "ada@example.com", public: true },
+          "contact.phone": { value: "+44 20 7946 0000", public: true },
+        }),
+      ).ok,
+    ).toBe(true);
+    // `brand.logo` and `openingHours` are NOT string-typed facts: their established roles are
+    // unchanged, so the generic cascade validation still governs them.
+    expect(validateEfsManifest(manifestAt("site", { "brand.logo": { value: 7 } })).ok).toBe(true);
+    expect(
+      validateEfsManifest(manifestAt("site", { openingHours: { value: ["Mon-Fri 09:00-17:00"] } })).ok,
+    ).toBe(true);
+  });
+});
+

@@ -29,15 +29,21 @@
 import type { EffectiveProperties, PropertyLevel } from "@/core/efs/properties";
 
 /**
- * The established brand/contact facts that have a presentation-configuration fallback.
+ * The established brand/contact facts this module resolves.
+ *
+ * `contact.name` is contact-PERSON identity, a different semantic fact from business identity. It
+ * therefore has NO configuration fallback (`BusinessContact` declares no name) and must never be
+ * promoted into `business.name`/`brand.name`: doing so would relabel the business with a person's
+ * name. It is resolved and exposed so `D40`-C covers it, and consumed only by a proper contact-name
+ * consumer — of which there is none in the EFS shell today (`GEO-02-R02` C1).
  *
  * `brand.logo` is deliberately NOT here. It is an asset reference, and the EFS shell resolves
  * branding graphics through the asset catalog (binding-scoped `owner-assets` paths versus absolute
  * catalog URLs). Ordering those two representations is asset work, not source precedence, and
  * belongs with the `GEO-03` asset migration. Including it here would either break header resolution
  * or produce a JSON-LD logo that contradicts the header — the very contradiction `D40` Decision C
- * forbids. Its behaviour is therefore unchanged in `GEO-02`, which is the safe state: one existing
- * behaviour, not two competing ones.
+ * forbids. Its behaviour is therefore unchanged, which is the safe state: one existing behaviour,
+ * not two competing ones.
  */
 export const PUBLIC_FACT_KEYS = [
   "brand.name",

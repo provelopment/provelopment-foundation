@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 
 import { EfsPageView } from "@/components/efs/efs-page";
+import { dictionaryAccessForRuntimeContext } from "@/config/runtime-dictionaries";
 import {
   efsDescription,
   efsLanguageAlternates,
   efsRobots,
   efsTitle,
   efsViewForCurrentRequest,
+  type EfsView,
 } from "./efs-request";
 import { legacyTestRuntimeEnabled, missingEfsInstallation } from "./legacy-test-runtime";
 import { pageForContext, pageMetadataForContext, spokeServerComposition } from "./server-composition";
@@ -76,11 +78,41 @@ export async function generateMetadata({ params }: PageRouteProps): Promise<Meta
   );
 }
 
+/**
+ * The localized label pair for the computed opening status, read from the ESTABLISHED dictionary
+ * authority for this Page's OWN published representation.
+ *
+ * The locale is the representation's declared tag (`view.locale`) — never inferred from a timezone,
+ * a Site code or a country — and the dictionary profile is the publication's explicit presentation
+ * Site, exactly as the shared shell resolves it. If the dictionary cannot be bound, or its
+ * `business` section is absent, this returns `undefined` and the Page renders NO status at all
+ * rather than an English default. (`GEO-02-R02` D.)
+ */
+function efsScheduleStatusLabels(view: EfsView) {
+  try {
+    const dictionary = dictionaryAccessForRuntimeContext(view.context).get(
+      view.locale,
+      view.publication.presentationSiteCode,
+    );
+    const business = dictionary.business;
+    if (!business) return undefined;
+    return { hoursLabel: business.hoursLabel, open: business.open, closed: business.closed };
+  } catch {
+    return undefined;
+  }
+}
+
 export default async function PageRoute({ params }: PageRouteProps) {
   const segments = (await params).segments ?? [];
   const efs = await efsViewForCurrentRequest(segments);
   if (efs) {
-    return <EfsPageView view={efs} withShell={efs.publication.presentationSiteCode !== undefined} />;
+    return (
+      <EfsPageView
+        view={efs}
+        withShell={efs.publication.presentationSiteCode !== undefined}
+        statusLabels={efsScheduleStatusLabels(efs)}
+      />
+    );
   }
   if (!legacyTestRuntimeEnabled()) missingEfsInstallation();
   const { context, destination } = await requestPublicDestination(segments);

@@ -3,7 +3,7 @@ import { SafeMarkdownContent } from "@/components/site/safe-markdown-content";
 import { Heading } from "@/components/ui/heading";
 import { publicContactLinkResolver } from "@/adapters/connect/public-contact";
 import { EfsContactForm } from "@/components/efs/efs-contact-form";
-import { EfsScheduleStatus } from "@/components/efs/efs-schedule-status";
+import { EfsScheduleStatus, type EfsScheduleStatusLabels } from "@/components/efs/efs-schedule-status";
 import { assetUrl } from "@/core/efs/publication";
 import { publicScheduleInputs } from "@/core/efs/opening-schedule";
 
@@ -16,9 +16,17 @@ import type { EfsView } from "@/app/[[...segments]]/efs-request";
 export function EfsPageView({
   view,
   withShell = false,
+  statusLabels,
 }: {
   readonly view: EfsView;
   readonly withShell?: boolean;
+  /**
+   * Localized status labels from the ESTABLISHED locale/dictionary authority
+   * (`dictionary.business`), resolved by the caller for this Page's published representation.
+   * Absent means no dictionary binding was available, in which case NO status is rendered at all —
+   * never an English default and never a Site-derived language guess.
+   */
+  readonly statusLabels?: EfsScheduleStatusLabels;
 }) {
   const publicProperties = view.properties.publicEntries();
   const valueOf = (key: string) => publicProperties.find((entry) => entry.key === key)?.value;
@@ -144,14 +152,14 @@ export function EfsPageView({
                 <dd>{openingHours}</dd>
               </div>
             ) : null}
-            {scheduleInputs === null ? null : (
+            {scheduleInputs === null || statusLabels === undefined ? null : (
               <div>
-                <dt className="font-semibold">Open now</dt>
+                <dt className="font-semibold">{statusLabels.hoursLabel}</dt>
                 <dd>
                   <EfsScheduleStatus
                     schedule={scheduleInputs.schedule}
                     timeZone={scheduleInputs.timeZone}
-                    labels={{ open: "Open now", closed: "Closed now" }}
+                    labels={statusLabels}
                   />
                 </dd>
               </div>

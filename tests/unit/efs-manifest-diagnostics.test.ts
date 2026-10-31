@@ -208,4 +208,3 @@ describe("the reserved Open Graph image endpoint is refused as a Page route (R04
     expect(withRoute(["opengraph-image", "about"]).ok).toBe(true);
   });
 });
-

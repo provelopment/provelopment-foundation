@@ -525,4 +525,3 @@ describe("R02-B — exception forms are exact, and contradictions are refused", 
     ).toBeNull();
   });
 });
-

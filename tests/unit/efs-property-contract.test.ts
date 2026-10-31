@@ -276,4 +276,3 @@ describe("R02-C2 — the established string facts carry a typed contract", () =>
     ).toBe(true);
   });
 });
-

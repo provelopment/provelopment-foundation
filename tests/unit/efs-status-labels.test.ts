@@ -344,4 +344,3 @@ describe("R03-B/6 — the authored language is independent of Site, prefix, plac
     expect(labels?.hoursLabel).toBe("Oeffnungszeiten");
   });
 });
-

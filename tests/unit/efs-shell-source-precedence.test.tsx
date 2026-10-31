@@ -287,4 +287,3 @@ describe("R02-C3 — the same resolved fact reaches the metadata", () => {
     expect(markup).not.toContain("+1 555 0100");
   });
 });
-

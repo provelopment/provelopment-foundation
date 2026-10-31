@@ -485,4 +485,3 @@ export function publicScheduleInputs(properties: PropertyLookup): EfsScheduleInp
     timeZone: timezoneEntry.value as string,
   };
 }
-

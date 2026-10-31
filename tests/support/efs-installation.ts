@@ -51,36 +51,55 @@ function writeSpoke(root: string, locator: string, hostname: string): void {
 /**
  * Materialise an explicit Installation declaring exactly the supplied Spokes (flat or identified
  * with Hubs). The caller selects `root` as `FOUNDATION_DEPLOYMENT_ROOT` before loading runtime modules.
+ *
+ * CONSTRUCTION IS FAILURE-ATOMIC (`R04-C22-R03-R02`). This function allocates its root and then writes into it
+ * before returning, so a write that throws would leave an allocated root that NO caller can dispose — the caller
+ * never received the handle. The root is therefore removed here whenever population fails, and the ORIGINAL error
+ * is rethrown unchanged; if even that removal fails, both failures are reported rather than the leak being silent.
+ * After a successful return the root belongs to the caller, whose `cleanup()` removes it.
  */
 export function materializeEfsInstallation(spec: EfsInstallationSpec): DisposableEfsInstallation {
   const root = mkdtempSync(path.join(tmpdir(), "foundation-efs-installation-"));
-  const declarations: { id: string; root: string; spokeHubId?: string }[] = [];
 
-  if (spec.mode === "flat") {
-    for (const spoke of spec.spokes) {
-      const locator = `spokes/${spoke}`;
-      writeSpoke(root, locator, `${spoke}.fixture.test`);
-      declarations.push({ id: spoke, root: locator });
+  try {
+    const declarations: { id: string; root: string; spokeHubId?: string }[] = [];
+
+    if (spec.mode === "flat") {
+      for (const spoke of spec.spokes) {
+        const locator = `spokes/${spoke}`;
+        writeSpoke(root, locator, `${spoke}.fixture.test`);
+        declarations.push({ id: spoke, root: locator });
+      }
+      writeFileSync(
+        path.join(root, "spokes.json"),
+        `${JSON.stringify({ spokes: declarations }, null, 2)}\n`,
+        "utf8",
+      );
+    } else {
+      const hubs = spec.hubs.map((hub) => ({
+        id: hub.id,
+        spokes: hub.spokes.map((spoke) => {
+          const locator = `spokes/${hub.id}-${spoke}`;
+          writeSpoke(root, locator, `${hub.id}-${spoke}.fixture.test`);
+          return { id: spoke, root: locator };
+        }),
+      }));
+      writeFileSync(
+        path.join(root, "spokes.json"),
+        `${JSON.stringify({ spokeHubs: hubs }, null, 2)}\n`,
+        "utf8",
+      );
     }
-    writeFileSync(
-      path.join(root, "spokes.json"),
-      `${JSON.stringify({ spokes: declarations }, null, 2)}\n`,
-      "utf8",
-    );
-  } else {
-    const hubs = spec.hubs.map((hub) => ({
-      id: hub.id,
-      spokes: hub.spokes.map((spoke) => {
-        const locator = `spokes/${hub.id}-${spoke}`;
-        writeSpoke(root, locator, `${hub.id}-${spoke}.fixture.test`);
-        return { id: spoke, root: locator };
-      }),
-    }));
-    writeFileSync(
-      path.join(root, "spokes.json"),
-      `${JSON.stringify({ spokeHubs: hubs }, null, 2)}\n`,
-      "utf8",
-    );
+  } catch (error) {
+    try {
+      rmSync(root, { recursive: true, force: true });
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        "could not populate a disposable Installation AND could not remove the partially written root",
+      );
+    }
+    throw error;
   }
 
   return {
@@ -88,6 +107,7 @@ export function materializeEfsInstallation(spec: EfsInstallationSpec): Disposabl
     cleanup: () => rmSync(root, { recursive: true, force: true }),
   };
 }
+
 
 /**
  * Make `root` the deployment of THIS test process through the build authority's own override,

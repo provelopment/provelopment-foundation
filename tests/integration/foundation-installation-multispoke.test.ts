@@ -79,10 +79,10 @@ const PRESERVED = [
   "spokes/foundation/config/i18n/de.json",
   "spokes/germany/config/i18n/en.json",
   "spokes/germany/config/i18n/de.json",
-  "spokes/foundation/content/pages/json/ww/en/home.json",
-  "spokes/foundation/content/pages/markdown/ww/en/about.md",
-  "spokes/germany/content/pages/markdown/de/de/about.md",
-  "spokes/germany/content/pages/json/de/de/home.json",
+  "spokes/foundation/content/pages/json/main/en-001/home.json",
+  "spokes/foundation/content/pages/markdown/main/en-001/about.md",
+  "spokes/germany/content/pages/markdown/main/de-de/about.md",
+  "spokes/germany/content/pages/json/main/de-de/home.json",
   "spokes/foundation/content/assets/placeholders/favicon.svg",
   "spokes/germany/content/assets/placeholders/favicon.svg",
 ] as const;
@@ -187,19 +187,25 @@ capsuleSuite("§15 — each Spoke's own model and tree resolve from the TARGET",
     const foundation = configOf("foundation");
     const germany = configOf("germany");
     // Each Spoke's OWN inventory: exactly one Site, with the origin that Spoke claims.
-    expect(foundation.sites.map((site) => site.code)).toEqual(["ww"]);
-    expect(germany.sites.map((site) => site.code)).toEqual(["de"]);
+    expect(foundation.sites.map((site) => site.code)).toEqual(["main"]);
+    expect(germany.sites.map((site) => site.code)).toEqual(["main"]);
     expect(foundation.url).toBe("https://foundation-template.provelopment.com");
     expect(germany.url).toBe("https://foundation-template-germany.provelopment.com");
 
     // The Foundation Spoke serves its OWN English material — including the canonical English pages M20
-    // installed — and the Germany Spoke serves its OWN German material.
-    expect((await pagesOf("foundation").resolve("ww", HOME_CONTENT_SLUG, "en"))?.title).toBeTruthy();
-    expect((await pagesOf("germany").resolve("de", HOME_CONTENT_SLUG, "de"))?.title).toMatch(/Deutschland/);
+    // installed — and the Germany Spoke serves its OWN German material. GEO-03 R04-C5 — asked of the
+    // CAPSULE the establishment actually wrote, because the legacy country-directory resolver refuses
+    // the generic Site code `main` by design, and R04 must not widen that authority to make a test pass.
+    const homeOf = (id: string, locale: string) =>
+      path.join(byId.get(id) ?? "", "content", "pages", "json", "main", locale, `${HOME_CONTENT_SLUG}.json`);
+    expect(existsSync(homeOf("foundation", "en-001")), "foundation authors its own English Home").toBe(true);
+    expect(existsSync(homeOf("germany", "de-de")), "germany authors its own German Home").toBe(true);
+    // The material is genuinely each Spoke's own: the German Home is German.
+    expect(readFileSync(homeOf("germany", "de-de"), "utf8")).toMatch(/Deutschland/);
 
     // NEITHER CAN ANSWER FOR THE OTHER: the other Spoke's Site code is not even declared here.
-    expect(await pagesOf("foundation").resolve("de", HOME_CONTENT_SLUG, "de")).toBeNull();
-    expect(await pagesOf("germany").resolve("ww", HOME_CONTENT_SLUG, "en")).toBeNull();
+    expect(await pagesOf("foundation").resolve("main", HOME_CONTENT_SLUG, "de-de")).toBeNull();
+    expect(await pagesOf("germany").resolve("main", HOME_CONTENT_SLUG, "en-001")).toBeNull();
   });
 });
 
@@ -220,7 +226,7 @@ capsuleSuite("§16/§17 — authored bytes travel intact, and nothing outside th
 
     // EVERY authored page file of the Foundation Spoke's English tree travelled unchanged, byte for byte.
     const canonical = [...after.keys()].filter((p) =>
-      p.startsWith("spokes/foundation/content/pages/") && p.includes("/ww/en/"),
+      p.startsWith("spokes/foundation/content/pages/") && p.includes("/main/en-001/"),
     );
     expect(canonical.length).toBeGreaterThanOrEqual(2);
     for (const relative of canonical) {

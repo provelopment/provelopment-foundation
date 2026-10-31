@@ -104,7 +104,12 @@ describe("resolveSites refuses an incoherent site set", () => {
   });
 
   it("refuses an invalid code with the runtime message, not a generic schema error", () => {
-    expect(() => resolve([{ code: "canada" }])).toThrowError(/recognized two-letter country code/);
-    expect(() => resolve([{ code: "CA" }])).toThrowError(/must be lowercase/);
+    // `GEO-03` R04 — A SITE CODE IS A PRESENTATION IDENTITY. Any well-formed descriptive key is an
+    // authored choice, and a country-shaped word is simply one of those keys; the closed country list
+    // no longer governs authoring. What still governs is the grammar itself.
+    expect(() => resolve([{ code: "canada" }])).not.toThrow();
+    expect(() => resolve([{ code: "main" }])).not.toThrow();
+    expect(() => resolve([{ code: "CA" }])).toThrowError(/site id "CA"/);
+    expect(() => resolve([{ code: "my_office" }])).toThrowError(/site id "my_office"/);
   });
 });

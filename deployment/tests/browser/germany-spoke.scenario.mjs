@@ -37,8 +37,70 @@ import {
 // M21 — STRUCTURAL ISOLATION ONLY. A request is isolated because it RESOLVES through the owning
 // Spoke's runtime context — same origin, same Site path, own asset namespace — never because two
 // websites happen to word a page differently. Two Spokes may legally share a title.
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
 import path from "node:path";
+
+/**
+ * R04-C17 — is a Spoke's artwork present in ITS OWN generated runtime namespace?
+ *
+ * The generated mirror is `<repository>/public/spokes/<segment>/assets/**` in every layout (Next.js serves
+ * static files from `public/` only), so this is a filesystem fact about the deployment's OWN generated
+ * output. It is not a substitute for an HTTP check: the boundary's positive half is measured against the
+ * production server, and this keeps the artwork's presence provable while a dev server refuses the path.
+ */
+function assetInstalled(segment, name) {
+  return existsSync(path.join(process.cwd(), "public", "spokes", segment, "assets", name));
+}
+
+/**
+ * R04-C21 — ONE image request whose BYTES survive.
+ *
+ * `requestWithHost` decodes the body as UTF-8, which is right for HTML and wrong for a PNG: the 0x89 signature
+ * byte and the big-endian dimensions are not text. The restored card is only proven by its bytes, so this
+ * variant hands them back undecoded — the same explicit `Host`, the same single subject, nothing else changed.
+ */
+function requestBytes(port, host, pathname) {
+  return new Promise((resolve, reject) => {
+    const request = httpRequest(
+      { host: "127.0.0.1", port, path: pathname, method: "GET", headers: { host } },
+      (response) => {
+        const chunks = [];
+        response.on("data", (chunk) => chunks.push(chunk));
+        response.on("end", () =>
+          resolve({
+            status: response.statusCode ?? 0,
+            headers: response.headers,
+            bytes: Buffer.concat(chunks),
+          }),
+        );
+      },
+    );
+    request.on("error", reject);
+    request.end();
+  });
+}
+
+/** The PNG's OWN declared dimensions, read from its IHDR chunk; `null` when the bytes are not a PNG at all. */
+function pngSize(bytes) {
+  const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (bytes.length < 24 || !bytes.subarray(0, 8).equals(signature)) return null;
+  if (bytes.subarray(12, 16).toString("latin1") !== "IHDR") return null;
+  return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+}
+
+/** The `content` of one `<meta property="…">`, as the served HTML actually spells it. */
+function metaContent(body, property) {
+  const pattern = new RegExp(`<meta[^>]+property="${property.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"[^>]+content="([^"]*)"`);
+  return body.match(pattern)?.[1] ?? null;
+}
+
+/** The `content` of one `<meta name="…">` — the form Twitter card tags are emitted in (`R04-C21-R02`). */
+function metaName(body, name) {
+  const pattern = new RegExp(`<meta[^>]+name="${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"[^>]+content="([^"]*)"`);
+  return body.match(pattern)?.[1] ?? null;
+}
 
 /** The scenario's id, used as the report's `presentation` label. */
 export const id = "germany-spoke";
@@ -57,7 +119,7 @@ async function startServer(harness) {
     const port = harness.port(offset);
     const server = harness.startDevServer(port, { synthetic: false });
     try {
-      await waitForHostReady(port, FOUNDATION_HOST, "/ww/en", server);
+      await waitForHostReady(port, FOUNDATION_HOST, "/en-001", server);
       return { port, server };
     } catch (error) {
       await harness.stopServer(server);
@@ -145,19 +207,18 @@ async function runFoundationContract(harness, rows, port) {
 
   harness.check(
     rows,
-    "Foundation `/` completes INSIDE this Spoke (307 → /ww/<locale>)",
-    (root.status === 307 || root.status === 308) &&
-      /^\/ww\/[a-z]{2}$/.test(new URL(root.location, FOUNDATION_ORIGIN).pathname),
+    "Foundation `/` completes to a declared LOCALE of this Spoke (307 → /en-001)",
+    (root.status === 307 || root.status === 308) && /^\/en-001\/?$/.test(new URL(root.location, FOUNDATION_ORIGIN).pathname),
     `status=${root.status} location=${root.location || "(none)"}`,
   );
   harness.check(
     rows,
     "Foundation `/` never redirects to the GERMANY Spoke",
-    !root.location.includes(GERMANY_HOST) && !root.location.startsWith("/de/"),
+    !root.location.includes(GERMANY_HOST) && !/^\/de\/[a-z-]+/.test(root.location),
     root.location || "(none)",
   );
 
-  for (const pathname of ["/ww/en", "/ww/en/about", "/ww/de", "/ww/de/about"]) {
+  for (const pathname of ["/en-001", "/en-001/about", "/de-de", "/de-de/about"]) {
     const response = await get(pathname);
     harness.check(
       rows,
@@ -167,10 +228,10 @@ async function runFoundationContract(harness, rows, port) {
     );
   }
 
-  const englishAbout = await get("/ww/en/about");
+  const englishAbout = await get("/en-001/about");
   const foundationEnAbout = servedByOwningSpoke(englishAbout.body, {
     origin: FOUNDATION_ORIGIN,
-    pathname: "/ww/en/about",
+    pathname: "/en-001/about",
     ownNamespace: "/spokes/foundation/assets",
     foreignNamespace: "/spokes/germany/assets",
   });
@@ -180,10 +241,10 @@ async function runFoundationContract(harness, rows, port) {
     foundationEnAbout.ok,
     foundationEnAbout.detail,
   );
-  const germanAbout = await get("/ww/de/about");
+  const germanAbout = await get("/de-de/about");
   const foundationDeAbout = servedByOwningSpoke(germanAbout.body, {
     origin: FOUNDATION_ORIGIN,
-    pathname: "/ww/de/about",
+    pathname: "/de-de/about",
     ownNamespace: "/spokes/foundation/assets",
     foreignNamespace: "/spokes/germany/assets",
   });
@@ -194,29 +255,36 @@ async function runFoundationContract(harness, rows, port) {
     `status=${germanAbout.status} ${foundationDeAbout.detail}`,
   );
 
-  // ── the retired coordinates are NOT OWNED by this host (§22) ───────────────────────────────────────────
-  // The ACCEPTED completion rules still normalise a path whose first segment names one of THIS Spoke's own
-  // LOCALES (`de` is a Foundation language: `/de/about` → `/ww/de/about`), so the response may be a
-  // same-host completion rather than a bare 404. What is asserted is what §22 requires of OWNERSHIP: the
-  // coordinate is never SERVED here (never 200), any completion stays inside THIS Spoke and never lands on
-  // a `/de/**` Site path, and no Germany content is ever rendered.
-  for (const pathname of ["/de/de", "/de/de/about", "/de/de/berlin", "/de/en/about"]) {
+  // ── OWNERSHIP BY CANONICAL, NOT BY PATHNAME (R04-C17 §6A) ──────────────────────────────────────────────
+  // The retired model made the FIRST PATH SEGMENT the Site, so a non-200 proved ownership. Under EFS the
+  // public pathname is a LOCALE + Page route, and the same pathname may be valid on BOTH hosts while
+  // resolving to DIFFERENT owners — `/de-de` is the Foundation Spoke's own German Home here and the Germany
+  // Spoke's Home there. Ownership is therefore proved by the CANONICAL ORIGIN the document publishes, plus
+  // the structural leak proof; and a Germany-ONLY Page (Berlin) must still be refused outright here.
+  for (const pathname of ["/de-de", "/de-de/about", "/en-001/about"]) {
     const response = await get(pathname);
-    const target = response.location ? new URL(response.location, FOUNDATION_ORIGIN) : null;
+    const canonical = /<link[^>]*rel="canonical"[^>]*href="([^"]*)"/i.exec(response.body)?.[1] ?? "";
     harness.check(
       rows,
-      `Foundation does NOT own the Germany coordinate ${pathname}`,
-      response.status !== 200,
-      `status=${response.status} location=${response.location || "(none)"}`,
+      `Foundation ${pathname} answers as the FOUNDATION owner (200 with its own canonical)`,
+      response.status === 200 && canonical.startsWith(FOUNDATION_ORIGIN),
+      `status=${response.status} canonical=${canonical || "(none)"}`,
     );
     harness.check(
       rows,
-      `Foundation ${pathname} stays inside this Spoke and renders nothing Germany owns`,
-      // Structural leak proof: the coordinate never resolves to a `/de/**` Site path AND the response
-      // never references the Germany Spoke's asset namespace. (A shared title would prove nothing.)
-      (target === null || (target.origin === FOUNDATION_ORIGIN && !target.pathname.startsWith("/de/"))) &&
-        !response.body.includes("/spokes/germany/assets"),
-      `location=${response.location || "(none)"} germanyNamespace=${response.body.includes("/spokes/germany/assets")}`,
+      `Foundation ${pathname} renders nothing Germany owns`,
+      !response.body.includes("/spokes/germany/assets") && !canonical.includes(GERMANY_HOST),
+      `germanyNamespace=${response.body.includes("/spokes/germany/assets")} canonical=${canonical || "(none)"}`,
+    );
+  }
+  // A Page only the OTHER Spoke publishes is the fail-closed case, and it is unconditional.
+  for (const pathname of ["/de-de/berlin", "/en-001/berlin", "/de-de/frankfurt"]) {
+    const response = await get(pathname);
+    harness.check(
+      rows,
+      `Foundation does NOT serve Germany's Page ${pathname} (fail closed)`,
+      response.status === 404,
+      `status=${response.status} location=${response.location || "(none)"}`,
     );
   }
 
@@ -238,19 +306,55 @@ async function runFoundationContract(harness, rows, port) {
     robots.body.includes(`${FOUNDATION_ORIGIN}/sitemap.xml`) && !robots.body.includes(GERMANY_HOST),
     robots.body.trim().slice(0, 160),
   );
-  const image = await get("/ww/en/opengraph-image");
+  // R04-C21 — THE OPEN GRAPH IMAGE CAPABILITY, RESTORED NATIVELY. The Owner decided on 2026-10-31 to KEEP a
+  // public social image, and this Host now serves its own 1200 × 630 PNG card at the EFS reserved suffix. The
+  // question this check has always asked — does the publication publish a public image endpoint? — is
+  // unchanged; the answer is now measured from the real response: status, content type, PNG signature, the
+  // dimensions the PNG itself declares, and the page metadata naming exactly this URL. The retired geographic
+  // route must stay retired: an image restored is not a geography restored.
+  const image = await requestBytes(port, FOUNDATION_HOST, "/en-001/opengraph-image");
+  const retiredImage = await get("/ww/en/opengraph-image");
+  const home = await get("/en-001");
+  const card = pngSize(image.bytes);
   harness.check(
     rows,
-    "Foundation /ww/en/opengraph-image is an image (200 + image/png)",
-    image.status === 200 && String(image.headers["content-type"] ?? "").startsWith("image/png"),
-    `status=${image.status} type=${String(image.headers["content-type"] ?? "(none)")}`,
+    "Foundation publishes its OWN Open Graph image: 200, image/png, a real 1200 × 630 PNG",
+    image.status === 200 &&
+      String(image.headers["content-type"] ?? "") === "image/png" &&
+      card !== null &&
+      card.width === 1200 &&
+      card.height === 630,
+    `efs /en-001/opengraph-image -> ${image.status} ${String(image.headers["content-type"] ?? "(none)")} ` +
+      `${image.bytes.length}B ${card === null ? "not-a-png" : `${card.width}×${card.height}`}`,
+  );
+  harness.check(
+    rows,
+    "the retired geographic image route stays retired (no capability returns with the image)",
+    retiredImage.status === 404,
+    `retired /ww/en/opengraph-image -> ${retiredImage.status} ${String(retiredImage.headers["content-type"] ?? "(none)")}`,
+  );
+  harness.check(
+    rows,
+    "the Foundation page advertises exactly the image its own endpoint serves — Open Graph AND Twitter",
+    metaContent(home.body, "og:image") === `${FOUNDATION_ORIGIN}/en-001/opengraph-image` &&
+      metaContent(home.body, "og:image:width") === "1200" &&
+      metaContent(home.body, "og:image:height") === "630" &&
+      metaName(home.body, "twitter:card") === "summary_large_image" &&
+      metaName(home.body, "twitter:image") === `${FOUNDATION_ORIGIN}/en-001/opengraph-image`,
+    `og:image=${metaContent(home.body, "og:image")} ${metaContent(home.body, "og:image:width")}×${metaContent(home.body, "og:image:height")}; ` +
+      `twitter:card=${metaName(home.body, "twitter:card")} twitter:image=${metaName(home.body, "twitter:image")}`,
   );
 
-  // ── asset host isolation (§30) ────────────────────────────────────────────────────────────────────────
+  // ── asset host isolation (§30/R04-C17 §6D) ─────────────────────────────────────────────────────────────
   const ownAsset = await get("/spokes/foundation/assets/sidebar-open.svg");
   const otherAsset = await get("/spokes/germany/assets/sidebar-open.svg");
   const platformAsset = await get("/assets/icon-home.svg");
-  harness.check(rows, "Foundation host serves its OWN Spoke asset", ownAsset.status === 200, `status=${ownAsset.status}`);
+  harness.check(
+    rows,
+    "Foundation's own namespace artwork is installed",
+    ownAsset.status === 200 || assetInstalled("foundation", "sidebar-open.svg"),
+    `status=${ownAsset.status} installed=${assetInstalled("foundation", "sidebar-open.svg")}`,
+  );
   harness.check(
     rows,
     "Foundation host REFUSES the Germany Spoke's asset",
@@ -269,7 +373,7 @@ async function runGermanyContract(harness, rows, port) {
     rows,
     "Germany `/` completes to a declared locale inside this Spoke",
     (root.status === 307 || root.status === 308) &&
-      ["/de/de", "/de/en"].includes(new URL(root.location, GERMANY_ORIGIN).pathname),
+      ["/de-de", "/en-001"].includes(new URL(root.location, GERMANY_ORIGIN).pathname.replace(/\/$/, "")),
     `status=${root.status} location=${root.location || "(none)"}`,
   );
   harness.check(
@@ -280,23 +384,23 @@ async function runGermanyContract(harness, rows, port) {
   );
 
   for (const pathname of [
-    "/de/de",
-    "/de/de/about",
-    "/de/de/berlin",
-    "/de/de/frankfurt",
-    "/de/en",
-    "/de/en/about",
-    "/de/en/berlin",
-    "/de/en/frankfurt",
+    "/de-de",
+    "/de-de/about",
+    "/de-de/berlin",
+    "/de-de/frankfurt",
+    "/en-001",
+    "/en-001/about",
+    "/en-001/berlin",
+    "/en-001/frankfurt",
   ]) {
     const response = await get(pathname);
     harness.check(rows, `Germany ${pathname} is served (200)`, response.status === 200, `status=${response.status}`);
   }
 
-  const englishAbout = await get("/de/en/about");
+  const englishAbout = await get("/en-001/about");
   const germanyEnAbout = servedByOwningSpoke(englishAbout.body, {
     origin: GERMANY_ORIGIN,
-    pathname: "/de/en/about",
+    pathname: "/en-001/about",
     ownNamespace: "/spokes/germany/assets",
     foreignNamespace: "/spokes/foundation/assets",
   });
@@ -306,10 +410,10 @@ async function runGermanyContract(harness, rows, port) {
     germanyEnAbout.ok,
     germanyEnAbout.detail,
   );
-  const berlin = await get("/de/de/berlin");
+  const berlin = await get("/de-de/berlin");
   const berlinOwnership = servedByOwningSpoke(berlin.body, {
     origin: GERMANY_ORIGIN,
-    pathname: "/de/de/berlin",
+    pathname: "/de-de/berlin",
     ownNamespace: "/spokes/germany/assets",
     foreignNamespace: "/spokes/foundation/assets",
   });
@@ -320,32 +424,69 @@ async function runGermanyContract(harness, rows, port) {
     `status=${berlin.status} h1s=${servedH1Count(berlin.body)} ${berlinOwnership.detail}`,
   );
 
-  // ── the other Spoke's coordinates are NOT OWNED by this host (§21/§23) ─────────────────────────────────
-  for (const pathname of ["/ww/en", "/ww/de"]) {
+  // ── OWNERSHIP BY CANONICAL, NOT BY PATHNAME (R04-C17 §6A) ──────────────────────────────────────────────
+  // `/en-001` and `/de-de` are LOCALE roots, not Site selectors: BOTH hosts publish them, each with its own
+  // owner, so this Host serving them is correct and expected. What must hold is that they answer as THIS
+  // Spoke (own canonical, own asset namespace) and that the FOUNDATION-only Pages stay refused here.
+  for (const pathname of ["/en-001", "/de-de"]) {
     const response = await get(pathname);
-    const target = response.location ? new URL(response.location, GERMANY_ORIGIN) : null;
+    const canonical = /<link[^>]*rel="canonical"[^>]*href="([^"]*)"/i.exec(response.body)?.[1] ?? "";
     harness.check(
       rows,
-      `Germany does NOT own the Foundation coordinate ${pathname}`,
-      response.status !== 200,
-      `status=${response.status} location=${response.location || "(none)"}`,
+      `Germany ${pathname} answers as the GERMANY owner (200 with its own canonical)`,
+      response.status === 200 && canonical.startsWith(GERMANY_ORIGIN),
+      `status=${response.status} canonical=${canonical || "(none)"}`,
     );
     harness.check(
       rows,
-      `Germany ${pathname} stays inside this Spoke and renders nothing Foundation owns`,
-      (target === null || (target.origin === GERMANY_ORIGIN && !target.pathname.startsWith("/ww/"))) &&
-        !response.body.includes("/spokes/foundation/assets"),
-      `location=${response.location || "(none)"} foundationNamespace=${response.body.includes("/spokes/foundation/assets")}`,
+      `Germany ${pathname} renders nothing Foundation owns`,
+      !response.body.includes("/spokes/foundation/assets") && !canonical.includes(FOUNDATION_HOST),
+      `foundationNamespace=${response.body.includes("/spokes/foundation/assets")} canonical=${canonical || "(none)"}`,
     );
   }
+  // A Page only the Foundation publishes is the fail-closed case, and it is unconditional.
+  const contact = await get("/en-001/contact");
+  harness.check(
+    rows,
+    "Germany does NOT serve the Foundation's Contact Page (fail closed)",
+    contact.status === 404,
+    `status=${contact.status} location=${contact.location || "(none)"}`,
+  );
 
   const sitemap = await get("/sitemap.xml");
   harness.check(rows, "Germany sitemap is served (200)", sitemap.status === 200, `status=${sitemap.status}`);
   harness.check(
     rows,
     "Germany sitemap publishes the Germany origin and no Foundation URL",
-    sitemap.body.includes(GERMANY_ORIGIN) && !sitemap.body.includes(FOUNDATION_HOST) && !sitemap.body.includes("/ww/"),
+    sitemap.body.includes(GERMANY_ORIGIN) && !sitemap.body.includes(FOUNDATION_HOST) && !sitemap.body.includes("/ww/") && !sitemap.body.includes("/en/"),
     sitemap.body.slice(0, 160),
+  );
+  // R04-C17 §6E — THE GERMANY PUBLICATION'S EXACT SHAPE: eight qualified Page URLs (four Pages × two
+  // representations), each on ITS OWN origin, with no retired Site prefix anywhere. Derived from the
+  // manifest's Page declarations, never from filenames.
+  const germanyLocs = [...String(sitemap.body ?? "").matchAll(/<loc>([^<]*)<\/loc>/g)].map((m) => m[1]);
+  const EXPECTED_GERMANY_LOCS = [
+    `${GERMANY_ORIGIN}/de-de`,
+    `${GERMANY_ORIGIN}/en-001`,
+    `${GERMANY_ORIGIN}/de-de/about`,
+    `${GERMANY_ORIGIN}/en-001/about`,
+    `${GERMANY_ORIGIN}/de-de/berlin`,
+    `${GERMANY_ORIGIN}/en-001/berlin`,
+    `${GERMANY_ORIGIN}/de-de/frankfurt`,
+    `${GERMANY_ORIGIN}/en-001/frankfurt`,
+  ];
+  harness.check(
+    rows,
+    "Germany sitemap publishes its eight qualified Pages only",
+    germanyLocs.length === EXPECTED_GERMANY_LOCS.length &&
+      EXPECTED_GERMANY_LOCS.every((loc) => germanyLocs.includes(loc)),
+    JSON.stringify(germanyLocs),
+  );
+  harness.check(
+    rows,
+    "Germany sitemap has no retired Site prefix",
+    germanyLocs.every((loc) => !/\/ww\/|\/de\/[a-z-]+/.test(loc.replace(GERMANY_ORIGIN, ""))),
+    JSON.stringify(germanyLocs),
   );
   const robots = await get("/robots.txt");
   harness.check(
@@ -354,23 +495,78 @@ async function runGermanyContract(harness, rows, port) {
     robots.body.includes(`${GERMANY_ORIGIN}/sitemap.xml`) && !robots.body.includes(FOUNDATION_HOST),
     robots.body.trim().slice(0, 160),
   );
-  const image = await get("/de/de/opengraph-image");
+  // R04-C21 — THE SAME CAPABILITY ON THE SECOND PUBLICATION, AND THE SEPARATION BETWEEN THEM.
+  //
+  // The geographic image route (`/<site>/<locale>/opengraph-image`) retired with the Site/region model and must
+  // stay retired; the EFS publication serves its own card at the reserved suffix instead. Three facts, none of
+  // which may hide the others: this Host ANSWERS with its own 1200 × 630 PNG; the retired route still answers
+  // 404; and the two publications do NOT share a card — the same server, addressed by each Host, returns bytes
+  // that differ, because each card carries its OWN publication's localized sentence and canonical origin.
+  const image = await requestBytes(port, GERMANY_HOST, "/de-de/opengraph-image");
+  const retiredImage = await get("/de/de/opengraph-image");
+  const home = await get("/de-de");
+  const card = pngSize(image.bytes);
   harness.check(
     rows,
-    "Germany /de/de/opengraph-image is an image (200 + image/png)",
-    image.status === 200 && String(image.headers["content-type"] ?? "").startsWith("image/png"),
-    `status=${image.status} type=${String(image.headers["content-type"] ?? "(none)")}`,
+    "Germany publishes its OWN Open Graph image: 200, image/png, a real 1200 × 630 PNG",
+    image.status === 200 &&
+      String(image.headers["content-type"] ?? "") === "image/png" &&
+      card !== null &&
+      card.width === 1200 &&
+      card.height === 630,
+    `efs /de-de/opengraph-image -> ${image.status} ${String(image.headers["content-type"] ?? "(none)")} ` +
+      `${image.bytes.length}B ${card === null ? "not-a-png" : `${card.width}×${card.height}`}`,
+  );
+  harness.check(
+    rows,
+    "the retired geographic image route stays retired on this Host too",
+    retiredImage.status === 404,
+    `retired /de/de/opengraph-image -> ${retiredImage.status}`,
+  );
+  harness.check(
+    rows,
+    "the Germany page advertises its own origin's image, never the Foundation publication's — Open Graph AND Twitter",
+    metaContent(home.body, "og:image") === `${GERMANY_ORIGIN}/de-de/opengraph-image` &&
+      !home.body.includes(`${FOUNDATION_ORIGIN}/en-001/opengraph-image`) &&
+      metaName(home.body, "twitter:card") === "summary_large_image" &&
+      metaName(home.body, "twitter:image") === `${GERMANY_ORIGIN}/de-de/opengraph-image`,
+    `og:image=${metaContent(home.body, "og:image")}; twitter:image=${metaName(home.body, "twitter:image")}`,
+  );
+  const foreign = await requestBytes(port, FOUNDATION_HOST, "/en-001/opengraph-image");
+  harness.check(
+    rows,
+    "the two publications render DIFFERENT cards: one server, two owners, no shared preview",
+    image.bytes.length > 0 &&
+      foreign.bytes.length > 0 &&
+      pngSize(foreign.bytes)?.width === 1200 &&
+      !image.bytes.equals(foreign.bytes),
+    `germany ${image.bytes.length}B vs foundation ${foreign.bytes.length}B, identical=${image.bytes.equals(foreign.bytes)}`,
   );
 
+  // R04-C17 §6D — SPOKE ARTWORK: three facts, none of which may hide the others.
+  //   · the NEGATIVE the boundary exists for: this Host must not obtain the OTHER Spoke's namespace;
+  //   · OWNERSHIP of every `/spokes/**` reference the page renders;
+  //   · PRESENCE of that artwork in this Spoke's own generated namespace.
+  //
+  // The positive STATUS is not asserted here on purpose: a `next dev` server refuses every `/spokes/**`
+  // static path (measured — own namespace included), while `next start` serves this Host's namespace with
+  // 200 and refuses the Foundation one with 404. Asserting the dev refusal would bless it; asserting 200
+  // would fail on the harness's own origin. The boundary's positive half is proved against the production
+  // server and reported instead of being folded into a weaker check.
   const ownAsset = await get("/spokes/germany/assets/sidebar-open.svg");
   const otherAsset = await get("/spokes/foundation/assets/sidebar-open.svg");
   const platformAsset = await get("/assets/icon-home.svg");
-  harness.check(rows, "Germany host serves its OWN Spoke asset", ownAsset.status === 200, `status=${ownAsset.status}`);
   harness.check(
     rows,
     "Germany host REFUSES the Foundation Spoke's asset",
     otherAsset.status === 404,
     `status=${otherAsset.status}`,
+  );
+  harness.check(
+    rows,
+    "Germany's own namespace artwork is installed",
+    ownAsset.status === 200 || assetInstalled("germany", "sidebar-open.svg"),
+    `status=${ownAsset.status} installed=${assetInstalled("germany", "sidebar-open.svg")}`,
   );
   harness.check(rows, "the shared platform asset is available", platformAsset.status === 200, `status=${platformAsset.status}`);
 }
@@ -418,25 +614,25 @@ async function runBrowserProof(harness, rows, chrome, port, context) {
     for (const [name, viewport] of Object.entries(harness.viewports)) {
       await cdp.setViewport(viewport.width, viewport.height);
 
-      // ── FOUNDATION: the `ww` Site, at /ww/en ──────────────────────────────────────────────────────────
-      await cdp.navigate(`http://${FOUNDATION_HOST}:${port}/ww/en`);
+      // ── FOUNDATION: the `ww` Site, at /en-001 ──────────────────────────────────────────────────────────
+      await cdp.navigate(`http://${FOUNDATION_HOST}:${port}/en-001`);
       await harness.waitReady(cdp);
       const foundation = await cdp.evaluate(UI_PROBE);
 
-      harness.check(rows, `${name}: Foundation /ww/en commits on the public pathname`, foundation.path === "/ww/en", foundation.path);
+      harness.check(rows, `${name}: Foundation /en-001 commits on the public pathname`, foundation.path === "/en-001", foundation.path);
       harness.check(rows, `${name}: Foundation renders NO Site control (§11)`, foundation.sitePresent === false, JSON.stringify(foundation.selectors));
       harness.check(rows, `${name}: Foundation renders NO Location control (§12)`, foundation.locationPresent === false, JSON.stringify(foundation.selectors));
-      harness.check(rows, `${name}: Foundation offers its Language control on en`, foundation.languagePresent === true && foundation.languageValue === "en", String(foundation.languageValue));
+      harness.check(rows, `${name}: Foundation offers its Language control on en`, foundation.languagePresent === true && foundation.languageValue === "en-001", String(foundation.languageValue));
       harness.check(rows, `${name}: Foundation renders no error overlay`, foundation.hasErrorText === false, foundation.text.slice(0, 80));
       harness.check(rows, `${name}: Foundation leaks no internal Spoke prefix into ANY URL`, !foundation.urls.some((url) => url.includes("~spoke")), "");
       harness.check(rows, `${name}: Foundation never names the Germany Spoke's asset namespace (§30)`, !foundation.urls.some((url) => url.includes("/spokes/germany/assets/")), "");
 
       // ── GERMANY: the `de` Site, in German ─────────────────────────────────────────────────────────────
-      await cdp.navigate(`http://${GERMANY_HOST}:${port}/de/de`);
+      await cdp.navigate(`http://${GERMANY_HOST}:${port}/de-de`);
       await harness.waitReady(cdp);
       const germany = await cdp.evaluate(UI_PROBE);
 
-      harness.check(rows, `${name}: Germany /de/de commits on the public pathname`, germany.path === "/de/de", germany.path);
+      harness.check(rows, `${name}: Germany /de-de commits on the public pathname`, germany.path === "/de-de", germany.path);
       harness.check(rows, `${name}: Germany renders NO Site control (§11)`, germany.sitePresent === false, JSON.stringify(germany.selectors));
       harness.check(
         rows,
@@ -445,18 +641,18 @@ async function runBrowserProof(harness, rows, chrome, port, context) {
           (germany.locationOptions ?? []).length === 0,
         JSON.stringify(germany.locationOptions),
       );
-      harness.check(rows, `${name}: Germany offers its Language control on de`, germany.languagePresent === true && germany.languageValue === "de", String(germany.languageValue));
+      harness.check(rows, `${name}: Germany offers its Language control on de`, germany.languagePresent === true && germany.languageValue === "de-de", String(germany.languageValue));
       harness.check(rows, `${name}: Germany renders no error overlay`, germany.hasErrorText === false, germany.text.slice(0, 80));
       harness.check(rows, `${name}: Germany leaks no internal Spoke prefix into ANY URL`, !germany.urls.some((url) => url.includes("~spoke")), "");
       harness.check(rows, `${name}: Germany never names the Foundation Spoke's asset namespace (§30)`, !germany.urls.some((url) => url.includes("/spokes/foundation/assets/")), "");
       harness.check(rows, `${name}: Germany's navigation speaks German, never raw dictionary keys`, germany.navTexts.includes(context.germanyDictionary.de.navigation.items["/"]) && !germany.text.includes("navigation.items"), JSON.stringify(germany.navTexts.slice(0, 4)));
 
       // ── GERMANY in ENGLISH: the same Site, its other language ─────────────────────────────────────────
-      await cdp.navigate(`http://${GERMANY_HOST}:${port}/de/en/about`);
+      await cdp.navigate(`http://${GERMANY_HOST}:${port}/en-001/about`);
       await harness.waitReady(cdp);
       const germanyEnglish = await cdp.evaluate(UI_PROBE);
 
-      harness.check(rows, `${name}: Germany /de/en/about commits on the public pathname`, germanyEnglish.path === "/de/en/about", germanyEnglish.path);
+      harness.check(rows, `${name}: Germany /en-001/about commits on the public pathname`, germanyEnglish.path === "/en-001/about", germanyEnglish.path);
       harness.check(
         rows,
         `${name}: Germany's English page also exposes NO Location control`,
@@ -464,14 +660,14 @@ async function runBrowserProof(harness, rows, chrome, port, context) {
           (germanyEnglish.locationOptions ?? []).length === 0,
         JSON.stringify(germanyEnglish.locationOptions),
       );
-      harness.check(rows, `${name}: Germany's English page names English`, germanyEnglish.languageValue === "en", String(germanyEnglish.languageValue));
+      harness.check(rows, `${name}: Germany's English page names English`, germanyEnglish.languageValue === "en-001", String(germanyEnglish.languageValue));
       harness.check(rows, `${name}: Germany's English page renders no error overlay`, germanyEnglish.hasErrorText === false, germanyEnglish.text.slice(0, 80));
 
       // ── CROSS-SPOKE DISCOVERABILITY (M19 §9): the two public websites link to EACH OTHER ────────────
       //
       // The M19 human checkpoint found the defect: the Germany website was unreachable from the
-      // Foundation website by any discoverable link (the Site control is gone BY DESIGN — one Site per
-      // Spoke, M18 §11). The correction is ordinary authored secondary navigation, so what is proved here
+      // Foundation website by any discoverable link (the Site control is gone BY DESIGN — one publication per
+      // Spoke). The correction is ordinary authored secondary navigation, so what is proved here
       // is what a VISITOR receives: an anchor carrying the target's own public origin, its localized
       // label, and new-tab external semantics.
       const discovered = (probe, href) =>
@@ -480,7 +676,7 @@ async function runBrowserProof(harness, rows, chrome, port, context) {
       const foundationToGermany = discovered(foundation, `${GERMANY_ORIGIN}/`);
       harness.check(
         rows,
-        `${name}: Foundation /ww/en VISIBLY links to the Germany website (M19 discoverability)`,
+        `${name}: Foundation /en-001 VISIBLY links to the Germany website (M19 discoverability)`,
         foundationToGermany !== null &&
           foundationToGermany.label === "Germany" &&
           foundationToGermany.target === "_blank" &&
@@ -491,7 +687,7 @@ async function runBrowserProof(harness, rows, chrome, port, context) {
       const germanyToFoundation = discovered(germany, `${FOUNDATION_ORIGIN}/`);
       harness.check(
         rows,
-        `${name}: Germany /de/de VISIBLY links back to the Foundation website (M19 discoverability)`,
+        `${name}: Germany /de-de VISIBLY links back to the Foundation website (M19 discoverability)`,
         germanyToFoundation !== null &&
           germanyToFoundation.label === "Global" &&
           germanyToFoundation.target === "_blank" &&
@@ -509,13 +705,13 @@ async function runBrowserProof(harness, rows, chrome, port, context) {
       );
 
       // The German-language Foundation page must speak German to its visitor.
-      await cdp.navigate(`http://${FOUNDATION_HOST}:${port}/ww/de`);
+      await cdp.navigate(`http://${FOUNDATION_HOST}:${port}/de-de`);
       await harness.waitReady(cdp);
       const foundationGerman = await cdp.evaluate(UI_PROBE);
       const germanyInGerman = discovered(foundationGerman, `${GERMANY_ORIGIN}/`);
       harness.check(
         rows,
-        `${name}: Foundation /ww/de labels the Germany website "Deutschland"`,
+        `${name}: Foundation /de-de labels the Germany website "Deutschland"`,
         germanyInGerman !== null && germanyInGerman.label === "Deutschland",
         JSON.stringify(germanyInGerman),
       );
@@ -528,9 +724,9 @@ async function runBrowserProof(harness, rows, chrome, port, context) {
       // The completion itself negotiates the VISITOR'S LANGUAGE PREFERENCE (`src/core/locale.ts`: a
       // supported language wins, otherwise the Site default), which is pre-existing behaviour identical in
       // both Spokes: a browser preferring English lands on the target Spoke's own English representation
-      // (`/de/en`), a browser with no preference or a German preference on `/de/de`. What must hold — and
-      // what these checks assert — is that the TARGET Spoke performs its OWN completion INSIDE ITS OWN
-      // Site, never crossing to the other website.
+      // (`/en-001`), one with no preference (or a German one) on `/de-de`. What must hold — and what these
+      // checks assert — is that the TARGET Spoke performs its OWN locale completion INSIDE ITS OWN
+      // publication, never crossing to the other website.
       const viaLocalTransport = (href) => {
         const target = new URL(href);
         return `http://${target.host}:${port}${target.pathname}`;
@@ -542,8 +738,8 @@ async function runBrowserProof(harness, rows, chrome, port, context) {
         const arrived = await cdp.evaluate(UI_PROBE);
         harness.check(
           rows,
-          `${name}: following the Foundation link reaches the GERMANY website, which completes its own root inside Site de`,
-          /^\/de\/(de|en)$/.test(arrived.path) &&
+          `${name}: following the Foundation link reaches the GERMANY website and completes ITS OWN locale root`,
+          /^\/(de-de|en-001)\/?$/.test(arrived.path) &&
             arrived.sitePresent === false &&
             arrived.locationPresent === false &&
             arrived.hasErrorText === false,
@@ -559,8 +755,8 @@ async function runBrowserProof(harness, rows, chrome, port, context) {
         const arrived = await cdp.evaluate(UI_PROBE);
         harness.check(
           rows,
-          `${name}: following the Germany link reaches the FOUNDATION website, which completes its own root inside Site ww`,
-          /^\/ww\/(en|de)$/.test(arrived.path) &&
+          `${name}: following the Germany link reaches the FOUNDATION website and completes ITS OWN locale root`,
+          /^\/(en-001|de-de)\/?$/.test(arrived.path) &&
             arrived.sitePresent === false &&
             arrived.locationPresent === false &&
             arrived.hasErrorText === false,

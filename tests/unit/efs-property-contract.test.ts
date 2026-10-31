@@ -132,7 +132,7 @@ function manifestAt(
 ) {
   const bag = properties;
   const representation = {
-    locale: "en",
+    locale: "en-001",
     ...(level === "representation" ? { properties: bag } : {}),
   };
   const page = {
@@ -177,8 +177,8 @@ function manifestAt(
             siteIds: ["main"],
             siteMode: "closed",
             defaultSiteId: "main",
-            locales: ["en"],
-            defaultLocale: "en",
+            locales: ["en-001"],
+            defaultLocale: "en-001",
             canonical: true,
           },
         ],

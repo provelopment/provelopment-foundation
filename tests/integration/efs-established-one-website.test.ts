@@ -45,7 +45,7 @@ function publicationAuthoritySeed(): string {
   };
   config.site.url = "https://information.invalid";
   config.publication = { host: "synthetic.example.test" };
-  config.sites = [{ code: "ww", label: "Global" }];
+  config.sites = [{ code: "ww", label: "Global", locales: ["en-001"], defaultLocale: "en-001" }];
   config.defaultSite = "ww";
   delete config.business;
   writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
@@ -84,12 +84,12 @@ describe("an established one-website Installation serves through the one EFS run
     expect(established.result.seedSpokes).toEqual(["main"]);
 
     state.headers.set("host", "synthetic.example.test");
-    const view = await efs.efsViewForCurrentRequest(["ww", "en", "about"]);
+    const view = await efs.efsViewForCurrentRequest(["ww", "en-001", "about"]);
     expect(view?.publication.spokeId).toBe("main");
     expect(view?.context.id).toBe("main");
     expect(view?.site.id).toBe("ww");
     expect(view?.page.id).toBe("about");
-    expect(view?.canonical).toBe("https://synthetic.example.test/ww/en/about");
+    expect(view?.canonical).toBe("https://synthetic.example.test/ww/en-001/about");
 
     const manifest = JSON.parse(readFileSync(path.join(capsule, "efs", "manifest.json"), "utf8")) as {
       entities: { id: string }[];

@@ -173,51 +173,73 @@ export async function run(chrome, harness) {
       "sitemap advertises only public representations and no unlisted/nested Home duplicate",
       sitemap.status === 200 &&
         sitemap.body.includes("https://localhost/acme-co/en-001</loc>") &&
+        // The French Home is a PUBLIC representation, so it must be advertised at its authored address...
+        sitemap.body.includes("https://localhost/acme-co/fr-fr</loc>") &&
         sitemap.body.includes("/acme-co/en-001/guide</loc>") &&
-        sitemap.body.includes("/acme-co/fr/notice</loc>") &&
+        sitemap.body.includes("/acme-co/fr-fr/notice</loc>") &&
         !sitemap.body.includes("/en-001/home") &&
-        !sitemap.body.includes("/acme-co/fr/guide</loc>") &&
+        // ...while the unlisted French guide, the unlisted English notice, and the unlisted secret stay out of it.
+        !sitemap.body.includes("/acme-co/fr-fr/guide</loc>") &&
         !sitemap.body.includes("/acme-co/en-001/notice</loc>") &&
         !sitemap.body.includes("/secret</loc>") &&
-        !sitemap.body.includes("/products/detail"),
+        !sitemap.body.includes("/products/detail") &&
+        // The OBSOLETE unqualified French spelling is not a public address at all (GEO-03 re-tagged it `fr-FR`).
+        !sitemap.body.includes("/acme-co/fr/"),
       `status=${sitemap.status}`,
     );
 
     const guideEnglish = await request(`${origin}/acme-co/en-001/guide`);
-    const guideFrench = await request(`${origin}/acme-co/fr/guide`);
+    // The fixture's French representation is authored as `fr-FR`, whose path key is `fr-fr`; `/fr/guide` is not it.
+    const guideFrench = await request(`${origin}/acme-co/fr-fr/guide`);
     harness.check(
       rows,
       "an unlisted French representation remains directly reachable without being advertised",
       guideEnglish.status === 200 &&
         guideFrench.status === 200 &&
         guideFrench.body.includes("Guide français non répertorié") &&
-        guideFrench.body.includes("https://localhost/acme-co/fr/guide") &&
-        !/hreflang=["']fr["']/i.test(guideEnglish.body) &&
-        !/hreflang=["']fr["']/i.test(guideFrench.body),
-      `en=${guideEnglish.status} fr=${guideFrench.status}`,
+        guideFrench.body.includes("https://localhost/acme-co/fr-fr/guide") &&
+        // No `fr-FR` alternate on EITHER sibling: an unlisted representation is never an advertisement.
+        !/hrefLang=["']fr-FR["']/i.test(guideEnglish.body) &&
+        !/hrefLang=["']fr-FR["']/i.test(guideFrench.body),
+      `en=${guideEnglish.status} fr=${guideFrench.status} ` +
+        `frCanonical=${guideFrench.body.match(/rel="canonical" href="([^"]+)/)?.[1] ?? "none"}`,
     );
     harness.check(
       rows,
       "an unlisted response carries noindex, nofollow",
-      /<meta[^>]+name=["']robots["'][^>]*content=["']noindex,\s*nofollow["']/i.test(
-        guideFrench.body,
-      ),
-      guideFrench.body.match(/<meta[^>]+name=["']robots["'][^>]*>/i)?.[0] ?? "no robots meta",
+      // The directive must come from the AUTHORED representation's own 200 — never from a 404 for some other
+      // address, which would prove nothing about the unlisted representation the row names.
+      guideFrench.status === 200 &&
+        /<meta[^>]+name=["']robots["'][^>]*content=["']noindex,\s*nofollow["']/i.test(guideFrench.body),
+      `status=${guideFrench.status} ` +
+        (guideFrench.body.match(/<meta[^>]+name=["']robots["'][^>]*>/i)?.[0] ?? "no robots meta"),
     );
 
     const noticeEnglish = await request(`${origin}/acme-co/en-001/notice`);
-    const noticeFrench = await request(`${origin}/acme-co/fr/notice`);
+    const noticeFrench = await request(`${origin}/acme-co/fr-fr/notice`);
     harness.check(
       rows,
       "a public French representation survives an unlisted English sibling, with no x-default",
       noticeEnglish.status === 200 &&
         noticeFrench.status === 200 &&
-        /hreflang=["']fr["']/i.test(noticeEnglish.body) &&
-        !/hreflang=["']en-001["']/i.test(noticeEnglish.body) &&
-        !/hreflang=["']x-default["']/i.test(noticeEnglish.body) &&
-        !/hreflang=["']x-default["']/i.test(noticeFrench.body),
+        noticeFrench.body.includes("https://localhost/acme-co/fr-fr/notice") &&
+        /hrefLang=["']fr-FR["']/i.test(noticeEnglish.body) &&
+        // The English sibling is unlisted, so neither side may advertise it, and no default may be invented.
+        !/hrefLang=["']en-001["']/i.test(noticeEnglish.body) &&
+        !/hrefLang=["']en-001["']/i.test(noticeFrench.body) &&
+        !/hrefLang=["']x-default["']/i.test(noticeEnglish.body) &&
+        !/hrefLang=["']x-default["']/i.test(noticeFrench.body),
       `en=${noticeEnglish.status} fr=${noticeFrench.status}`,
     );
+    // A legacy spelling is not an alias: the obsolete `/fr/` address must neither serve nor redirect to `fr-fr`.
+    const legacyFrench = await request(`${origin}/acme-co/fr/guide`);
+    harness.check(
+      rows,
+      "the obsolete unqualified French address neither serves nor redirects to the authored one",
+      legacyFrench.status !== 200 && !(legacyFrench.location ?? "").includes("/acme-co/fr-fr"),
+      `status=${legacyFrench.status} location=${legacyFrench.location ?? "-"}`,
+    );
+
 
     const secretEnglish = await request(`${origin}/acme-co/en-001/secret`);
     harness.check(

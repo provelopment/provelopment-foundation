@@ -25,18 +25,28 @@ describe("controlled reference Installation conversion (R02)", () => {
         publication.presentationSiteCode,
       ]),
     ).toEqual([
-      ["foundation", "ww"],
-      ["germany", "de"],
+      ["foundation", "main"],
+      ["germany", "main"],
     ]);
   });
 
   it("preserves the released URL grammar through explicit bindings", () => {
     const bindings = loaded.manifest?.publications.flatMap((publication) => publication.bindings) ?? [];
-    expect(bindings.map((binding) => [binding.host, binding.prefix.join("/"), binding.locales.join(",")])).toEqual([
-      ["foundation-template.provelopment.com", "ww", "en,de"],
-      ["provelopment-foundation.vercel.app", "ww", "en,de"],
-      ["foundation-template-germany.provelopment.com", "de", "de,en"],
+    // GEO-03 — the released grammar is preserved by DECLARING it, not by inheriting it from geography:
+    // every binding serves at the publication root (no geographic prefix survives), and each declares
+    // the two PUBLICATION-QUALIFIED locales in its own preference order. Locale tags are stored in
+    // their canonical lowercase form, which is what the qualification contract compares against.
+    expect(
+      bindings.map((binding) => [binding.host, binding.prefix.length, binding.locales.join(",")]),
+    ).toEqual([
+      ["foundation-template.provelopment.com", 0, "en-001,de-DE"],
+      ["provelopment-foundation.vercel.app", 0, "en-001,de-DE"],
+      ["foundation-template-germany.provelopment.com", 0, "de-DE,en-001"],
     ]);
+    // No binding may reintroduce a geographic prefix.
+    for (const binding of bindings) {
+      expect(binding.prefix, `${binding.host} serves at the root`).toEqual([]);
+    }
   });
 
   it("has one source for every declared representation and no geographic scheduling", () => {
@@ -59,8 +69,8 @@ describe("controlled reference Installation conversion (R02)", () => {
   it("declares exactly the released authored Pages and representations", () => {
     const authored: string[] = [];
     for (const [spoke, site] of [
-      ["foundation", "ww"],
-      ["germany", "de"],
+      ["foundation", "main"],
+      ["germany", "main"],
     ] as const) {
       for (const mode of ["json", "markdown"]) {
         const root = join(DEPLOYMENT, "spokes", spoke, "content", "pages", mode, site);

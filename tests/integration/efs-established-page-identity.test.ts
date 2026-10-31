@@ -98,10 +98,10 @@ describe("Page identity and established EFS integrity (R07)", () => {
             "capsule",
             manifest.entities[0].id,
             "main",
-            "ww",
+            "main",
             "pages",
             pageId,
-            "en.json",
+            "en-001.json",
           ),
           "utf8",
         ),
@@ -112,23 +112,23 @@ describe("Page identity and established EFS integrity (R07)", () => {
     selectEfsInstallation(capsule);
     vi.resetModules();
     const efs = await import("@/app/[[...segments]]/efs-request");
-    const nestedView = await efs.efsViewForCurrentRequest(["ww", "en", "company", "team"]);
-    const flatView = await efs.efsViewForCurrentRequest(["ww", "en", "company-team"]);
+    const nestedView = await efs.efsViewForCurrentRequest(["main", "en-001", "company", "team"]);
+    const flatView = await efs.efsViewForCurrentRequest(["main", "en-001", "company-team"]);
     expect(nestedView?.page.id).toBe(nested?.id);
     expect(flatView?.page.id).toBe(flat?.id);
     expect(nestedView === null ? "" : efs.efsTitle(nestedView)).toBe("Nested Team (EN)");
     expect(flatView === null ? "" : efs.efsTitle(flatView)).toBe("Flat Company Team (EN)");
 
-    const nestedGerman = await efs.efsViewForCurrentRequest(["ww", "de", "company", "team"]);
+    const nestedGerman = await efs.efsViewForCurrentRequest(["main", "de-de", "company", "team"]);
     expect(nestedGerman?.page.id).toBe(nested?.id);
     expect(nestedGerman === null ? "" : efs.efsTitle(nestedGerman)).toBe("Nested Team (DE)");
 
     const home = byRoute.get("home");
-    expect(home?.fallbackLocaleKey).toBe("en");
-    const homeView = await efs.efsViewForCurrentRequest(["ww", "en"]);
+    expect(home?.fallbackLocaleKey).toBe("en-001");
+    const homeView = await efs.efsViewForCurrentRequest(["main", "en-001"]);
     expect(homeView?.page.id).toBe(home?.id);
-    expect(homeView?.alternates.map((alternate) => alternate.hreflang)).toEqual(["en"]);
-    await expect(efs.efsViewForCurrentRequest(["ww", "de"])).rejects.toThrow("REDIRECT:/ww/en/");
+    expect(homeView?.alternates.map((alternate) => alternate.hreflang)).toEqual(["en-001"]);
+    await expect(efs.efsViewForCurrentRequest(["main", "de-de"])).rejects.toThrow("REDIRECT:/main/en-001/");
 
     const second = await establishInstallationFromDirectories({
       release: SYNTHETIC_RELEASE_IDENTITY,
@@ -200,10 +200,10 @@ describe("Page identity and established EFS integrity (R07)", () => {
         "capsule",
         manifest.entities[0].id,
         "main",
-        "ww",
+        "main",
         "pages",
         flat?.id ?? "",
-        "en.json",
+        "en-001.json",
       ),
       { force: true },
     );

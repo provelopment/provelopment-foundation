@@ -4,8 +4,10 @@ import { EfsPageView } from "@/components/efs/efs-page";
 import {
   efsDescription,
   efsLanguageAlternates,
+  efsOpenGraphImage,
   efsRobots,
   efsTitle,
+  efsTwitterCard,
   efsViewForCurrentRequest,
 } from "./efs-request";
 import { efsScheduleStatusLabels } from "./efs-status-labels";
@@ -53,6 +55,12 @@ export async function generateMetadata({ params }: PageRouteProps): Promise<Meta
   const efs = await efsViewForCurrentRequest(segments);
   if (efs) {
     const robots = efsRobots(efs);
+    // R04-C21 — the owner-scoped social card the reserved endpoint serves for this site/locale root. It is
+    // `undefined` exactly when that endpoint would refuse, so the HTML never advertises an image that 404s.
+    // R04-C21-R02 — it is resolved from the ROOT card itself, not from this Page's own cascade, so the URL,
+    // the alt and the refusal condition are the root's on every Page (F2), and the released Twitter card
+    // carries the SAME image (F4).
+    const image = await efsOpenGraphImage(efs);
     return {
       title: efsTitle(efs),
       description: efsDescription(efs),
@@ -66,7 +74,9 @@ export async function generateMetadata({ params }: PageRouteProps): Promise<Meta
         description: efsDescription(efs),
         url: efs.canonical,
         locale: efs.locale,
+        ...(image === undefined ? {} : { images: [image] }),
       },
+      ...(image === undefined ? {} : { twitter: efsTwitterCard(efs, image.url) }),
     };
   }
   if (!legacyTestRuntimeEnabled()) missingEfsInstallation();

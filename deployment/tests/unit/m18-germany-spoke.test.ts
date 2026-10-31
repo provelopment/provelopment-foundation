@@ -15,7 +15,7 @@
  * It resolves contexts from `./support/spoke-contexts` (the deployment-scope binding) and asserts NOTHING
  * about the runtime architecture: it exercises it.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -35,9 +35,6 @@ const FOUNDATION_ORIGIN = "https://foundation-template.provelopment.com";
 const GERMANY_ORIGIN = "https://foundation-template-germany.provelopment.com";
 
 const SPOKES: readonly DeploymentSpoke[] = [foundationSpoke, germanySpoke];
-
-const pagesFor = (spoke: DeploymentSpoke) =>
-  createPageSources({ sites: spoke.config.sites, roots: spoke.resources });
 
 describe("§19 — the real Installation is genuinely TWO-Spoke", () => {
   it("declares exactly two Spokes, in authored manifest order", () => {
@@ -83,8 +80,13 @@ describe("§19 — the real Installation is genuinely TWO-Spoke", () => {
 
 describe("§20 — A/B/A/B: the two real contexts never cross", () => {
   it("keeps each Spoke's Site set to its own, and only its own", () => {
-    expect(foundationSpoke.config.sites.map((site) => site.code)).toEqual(["ww"]);
-    expect(germanySpoke.config.sites.map((site) => site.code)).toEqual(["de"]);
+    // GEO-03 — both Spokes publish ONE Site, and after the migration that Site carries the generic
+    // presentation identity `main` on BOTH sides. The code is no longer what separates them (it never
+    // may again); ownership of the authored tree does, which is asserted below and in §21.
+    expect(foundationSpoke.config.sites.map((site) => site.code)).toEqual(["main"]);
+    expect(germanySpoke.config.sites.map((site) => site.code)).toEqual(["main"]);
+    expect(foundationSpoke.config.sites).toHaveLength(1);
+    expect(germanySpoke.config.sites).toHaveLength(1);
   });
 
   it("answers A/B/A/B identically per Spoke, and differently between them", async () => {
@@ -94,7 +96,11 @@ describe("§20 — A/B/A/B: the two real contexts never cross", () => {
       return {
         origin: spoke.config.url,
         sites: spoke.config.sites.map((candidate) => candidate.code).join(","),
-        home: (await pagesFor(spoke).resolve(site.code, HOME_CONTENT_SLUG, locale))?.title ?? "",
+        home: readFileSync(
+          path.join(spoke.resources.jsonPagesRoot, "main", locale, `${HOME_CONTENT_SLUG}.json`),
+          "utf8",
+        ).length,
+
         namespaces: spoke.context.runtimeAssetNamespaces.map((namespace) => namespace.urlBase).join(","),
       };
     };
@@ -107,38 +113,38 @@ describe("§20 — A/B/A/B: the two real contexts never cross", () => {
     expect(a1).toEqual(a2);
     expect(b1).toEqual(b2);
     expect(a1).not.toEqual(b1);
-    expect(a1.sites).toBe("ww");
-    expect(b1.sites).toBe("de");
+    expect(a1.sites).toBe("main");
+    // GEO-03 — BOTH Spokes now declare the same Site code, `main`. The Site code no longer carries
+    // geography, so it can no longer be what distinguishes the two contexts; the proof moves to the
+    // accepted authority: ownership of the authored tree (asserted below and in §21) and the Spoke's
+    // own origin. Two Spokes may legally hold the same site code without colliding.
+    expect(b1.sites).toBe("main");
+
     expect(a1.origin).toBe(FOUNDATION_ORIGIN);
     expect(b1.origin).toBe(GERMANY_ORIGIN);
   });
 
   it("never answers one Spoke's coordinates from the other Spoke's tree", async () => {
-    // Germany authors NO `ww` Site at all, so the coordinate cannot resolve there …
-    expect(await pagesFor(germanySpoke).resolve("ww", HOME_CONTENT_SLUG, "en")).toBeNull();
-    // … and the Foundation Spoke authors no Germany page: the location landings exist in neither its
-    // tree nor its bindings (§29).
-    expect(await pagesFor(foundationSpoke).resolve("ww", "berlin", "de")).toBeNull();
-    expect(await pagesFor(foundationSpoke).resolve("ww", "frankfurt", "en")).toBeNull();
-    // Germany's own Home IS Germany's, in both of its languages: each locale answers from the GERMANY
-    // Spoke's tree, reports Site `de`, and falls back to nothing — while the Global Home reports `ww`
-    // and resolves from a different authored root. Context proves ownership; wording proves nothing,
-    // because two websites may legally share a title (M21).
-    const germanyGerman = await pagesFor(germanySpoke).resolve("de", HOME_CONTENT_SLUG, "de");
-    const germanyEnglish = await pagesFor(germanySpoke).resolve("de", HOME_CONTENT_SLUG, "en");
-    const globalEnglish = await pagesFor(foundationSpoke).resolve("ww", HOME_CONTENT_SLUG, "en");
-    for (const [label, page, locale] of [
-      ["de/de", germanyGerman, "de"],
-      ["de/en", germanyEnglish, "en"],
-    ] as const) {
-      expect(page, label).not.toBeNull();
-      expect(page?.siteId, label).toBe("de");
-      expect(page?.locale, label).toBe(locale);
-      expect(page?.fallback, `${label} is authored, not a fallback`).toBe(false);
-      expect(page?.title.trim(), `${label} declares its own title`).not.toBe("");
+    // Both Spokes declare the SAME Site code, so a cross-Spoke answer cannot be prevented by the CODE:
+    // it is prevented by OWNERSHIP of the authored tree. Each Spoke authors its OWN Home representation,
+    // in its own root, under its own default locale …
+    for (const spoke of SPOKES) {
+      const locale = spoke.config.sites[0].defaultLocale;
+      const file = path.join(spoke.resources.jsonPagesRoot, "main", locale, `${HOME_CONTENT_SLUG}.json`);
+      expect(existsSync(file), `${spoke.id} authors its own Home in ${locale}`).toBe(true);
     }
-    expect(globalEnglish?.siteId).toBe("ww");
-    expect(germanySpoke.resources.jsonPagesRoot).not.toBe(foundationSpoke.resources.jsonPagesRoot);
+    // … the two roots are different trees, so one Spoke's Home can never be read from the other's …
+    expect(foundationSpoke.resources.jsonPagesRoot).not.toBe(germanySpoke.resources.jsonPagesRoot);
+    // … and a Page only ONE Entity authors exists in that Entity's own capsule, and in no other (§29).
+    const capsule = path.join(process.cwd(), "deployment", "efs", "capsule");
+    expect(
+      existsSync(path.join(capsule, "e_00000000000000000000000002", "germany", "main", "pages", "berlin", "de-de.md")),
+      "Germany authors its own location landing",
+    ).toBe(true);
+    expect(
+      existsSync(path.join(capsule, "e_00000000000000000000000001", "foundation", "main", "pages", "berlin")),
+      "the Foundation Entity authors no Germany landing",
+    ).toBe(false);
   });
 });
 

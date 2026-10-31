@@ -71,7 +71,7 @@ describe("EFS authoring diagnostics (S3-E3-R01)", () => {
   });
 
   it("reports an open binding without two Sites and an unsupported default locale", () => {
-    const result = validateEfsManifest(manifest({ siteMode: "open", defaultLocale: "de" }));
+    const result = validateEfsManifest(manifest({ siteMode: "open", defaultLocale: "de-DE" }));
     expect(result.ok).toBe(false);
     expect(result.issues.join(" ")).toMatch(/at least two Sites/);
     expect(result.issues.join(" ")).toMatch(/default locale is not supported/);
@@ -162,3 +162,50 @@ describe("EFS authoring diagnostics (S3-E3-R01)", () => {
     expect(validateEfsManifest(reserved).issues.join(" ")).toMatch(/reserved implicit Spoke/);
   });
 });
+
+describe("the reserved Open Graph image endpoint is refused as a Page route (R04-C21-R02 F3)", () => {
+  /** The fixture manifest with exactly one Page at the supplied route. */
+  const withRoute = (route: string[], binding: Record<string, unknown> = {}) => {
+    const document = manifest(binding) as Record<string, unknown>;
+    const entities = document.entities as { facets: { sites: { pages: unknown[] }[] }[] }[];
+    entities[0].facets[0].sites[0].pages = [
+      { id: "candidate", route, representations: [{ locale: "en-001" }] },
+    ];
+    return validateEfsManifest(document);
+  };
+
+  it("rejects a Page route that IS the reserved segment, naming the reason", () => {
+    const result = withRoute(["opengraph-image"]);
+    expect(result.ok).toBe(false);
+    const joined = result.issues.join(" ");
+    expect(joined).toContain('may not end in the reserved Open Graph image segment "opengraph-image"');
+    expect(joined).toContain("pages[0].route");
+  });
+
+  it("rejects a NESTED route ending in the reserved segment — it would be intercepted too", () => {
+    expect(withRoute(["about", "opengraph-image"]).ok).toBe(false);
+    expect(withRoute(["locations", "berlin", "opengraph-image"]).ok).toBe(false);
+  });
+
+  it("rejects it for a SITE-OPEN binding as well, where the URL is /<prefix>/<site>/<locale>/…", () => {
+    const entities = manifest({}) as Record<string, unknown>;
+    // Two Sites on an open binding is the accepted shape; the collision rule is independent of it.
+    const open = withRoute(["opengraph-image"], {
+      siteMode: "open",
+      siteIds: ["main", "outlet"],
+      defaultSiteId: "main",
+    });
+    expect(entities).toBeDefined();
+    expect(open.ok).toBe(false);
+    expect(open.issues.join(" ")).toContain("reserved Open Graph image segment");
+  });
+
+  it("leaves every unrelated route valid, including one that merely CONTAINS the word", () => {
+    expect(withRoute(["about"]).ok).toBe(true);
+    expect(withRoute(["opengraph-image-gallery"]).ok).toBe(true);
+    expect(withRoute(["gallery", "opengraph-image-gallery"]).ok).toBe(true);
+    // Only the TERMINAL segment collides: the dispatch matches the suffix, not the word.
+    expect(withRoute(["opengraph-image", "about"]).ok).toBe(true);
+  });
+});
+

@@ -13,16 +13,28 @@
  */
 import type { ReactElement } from "react";
 
-import type { OpenGraphImageModel } from "./opengraph-model";
+/**
+ * WHAT THE IMAGE NEEDS TO KNOW — and nothing else.
+ *
+ * `GEO-03` R04-C21 adds a THIRD boundary that draws this same card (the EFS-native reserved endpoint), so the
+ * parameter is stated as the presentation-neutral minimum rather than as one caller's model: three strings
+ * that are already resolved, authorized and localized by whoever composes them. Any caller with these three
+ * facts composes the ONE view, and no caller can make this file decide a fact it does not hold.
+ */
+export interface OpenGraphImageContent {
+  /** The owning publication's public brand name. */
+  readonly siteName: string;
+  /** The localized sentence the card carries. */
+  readonly tagline: string;
+  /** The canonical public identity the card carries. */
+  readonly imageUrl: string;
+}
 
-/** The image's fixed platform size. */
-export const OPEN_GRAPH_IMAGE_SIZE = { width: 1200, height: 630 } as const;
-
-/** The image's fixed content type. */
-export const OPEN_GRAPH_IMAGE_CONTENT_TYPE = "image/png";
+/** The image's fixed platform size and content type — ONE definition, shared by every boundary. */
+export { OPEN_GRAPH_IMAGE_CONTENT_TYPE, OPEN_GRAPH_IMAGE_SIZE } from "@/config/efs/image-path";
 
 /** The branded preview: the context's name, its localized tagline and its canonical origin. */
-export function openGraphImageElement(model: OpenGraphImageModel): ReactElement {
+export function openGraphImageElement(model: OpenGraphImageContent): ReactElement {
   return (
     <div
       style={{

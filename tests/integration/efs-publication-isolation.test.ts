@@ -39,7 +39,7 @@ function page(root: string, entityId: string, facet: string, site: string, title
   const directory = join(root, "capsule", entityId, facet, site, "pages", "home");
   mkdirSync(directory, { recursive: true });
   writeFileSync(
-    join(directory, "en.json"),
+    join(directory, "en-001.json"),
     JSON.stringify({
       schemaVersion: 1,
       title,
@@ -63,7 +63,7 @@ function request(root: string, host: string) {
   process.env.FOUNDATION_EFS_MANIFEST = join(root, "efs", "manifest.json");
   process.env.FOUNDATION_EFS_CAPSULE = join(root, "capsule");
   state.headers.set("host", host);
-  return efsViewForCurrentRequest(["en"]);
+  return efsViewForCurrentRequest(["en-001"]);
 }
 
 function publication(
@@ -88,8 +88,8 @@ function publication(
         siteIds: ["main"],
         siteMode: "closed" as const,
         defaultSiteId: "main",
-        locales: ["en"],
-        defaultLocale: "en",
+        locales: ["en-001"],
+        defaultLocale: "en-001",
         canonical: true,
       },
     ],
@@ -109,7 +109,7 @@ function entity(id: string, facetIds: readonly string[], brand: string) {
             {
               id: "home",
               route: ["home"],
-              representations: [{ locale: "en" }],
+              representations: [{ locale: "en-001" }],
             },
           ],
         },
@@ -182,7 +182,9 @@ describe("EFS publication isolation and many-to-many ownership (R04)", () => {
     expect(two?.publication.spokeId).toBe("spoke-two");
     expect(one?.source.data.title).toBe(two?.source.data.title);
     expect(one?.properties.toRecord()).toEqual(two?.properties.toRecord());
-    expect(one?.canonical).toBe("https://one.example/en");
-    expect(two?.canonical).toBe("https://two.example/en");
+    expect(one?.canonical).toBe("https://one.example/en-001");
+    // R04-C16 — the SAME qualified representation contract on the second Spoke: publication qualification
+    // decides the locale path key, and it cannot differ from one publication to the next.
+    expect(two?.canonical).toBe("https://two.example/en-001");
   });
 });

@@ -198,13 +198,20 @@ async function proveLocale({ cdp, origin, path, check, rows, locale, markers, ex
   );
 }
 
-/** Both visitor locales of ONE reference Site, through a real browser. */
+/**
+ * Both visitor representations of ONE published Contact Page, through a real browser.
+ *
+ * R04-C18 — THE EFS PUBLIC REPRESENTATIONS, not the retired geographic routes: this Spoke publishes Contact
+ * at `/en-001/contact` and `/de-de/contact`, where the first segment is the locale PATH KEY and not a Site
+ * selector. The dictionary FILES keep their authored names (`en.json`, `de.json`) — storage naming and public
+ * route identity are different things, and only the route moved.
+ */
 export async function proveContactForm({ cdp, origin, check, rows, copy, forbidden }) {
   await cdp.setViewport(1280, 900);
   await proveLocale({
     cdp,
     origin,
-    path: "/ww/en/contact",
+    path: "/en-001/contact",
     check,
     rows,
     locale: "en",
@@ -214,7 +221,7 @@ export async function proveContactForm({ cdp, origin, check, rows, copy, forbidd
   await proveLocale({
     cdp,
     origin,
-    path: "/ww/de/contact",
+    path: "/de-de/contact",
     check,
     rows,
     locale: "de",

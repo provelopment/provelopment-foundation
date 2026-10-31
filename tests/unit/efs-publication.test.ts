@@ -78,7 +78,7 @@ describe("EFS publication and routing (D31 / O-4, O-5)", () => {
 
   it("redirects an entry address to the explicit default Site and selected locale", () => {
     const managed = loadedBindings().find((binding) => binding.id === "managed-acme")!;
-    expect(entryRedirectPath(managed, { cookie: "fr" })).toBe("/acme-co/jakarta/fr/");
+    expect(entryRedirectPath(managed, { cookie: "fr-FR" })).toBe("/acme-co/jakarta/fr-fr/");
     expect(entryRedirectPath(managed, { acceptLanguage: "de" })).toBe("/acme-co/jakarta/en-001/");
   });
 
@@ -121,7 +121,7 @@ describe("EFS publication and routing (D31 / O-4, O-5)", () => {
         route: ["home"],
         representations: [
           { locale: "en-001", visibility: "public" },
-          { locale: "fr", visibility: "public" },
+          { locale: "fr-FR", visibility: "public" },
         ],
       },
       {
@@ -133,7 +133,7 @@ describe("EFS publication and routing (D31 / O-4, O-5)", () => {
     ]);
     expect(entries.map((entry) => entry.loc)).toEqual([
       "https://my.provelopment.com/acme-co/jakarta/en-001",
-      "https://my.provelopment.com/acme-co/jakarta/fr",
+      "https://my.provelopment.com/acme-co/jakarta/fr-fr",
     ]);
   });
 

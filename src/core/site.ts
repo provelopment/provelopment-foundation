@@ -7,7 +7,13 @@ import {
 } from "./location-selection";
 import { isRegionBoundToLocale } from "./regional-pages";
 import type { PageRegionBinding } from "./region";
-import { defaultSiteLabel, isSiteCode, normalizeSiteCode, siteCodeIssue, WORLDWIDE_SITE_CODE } from "./site-code";
+import {
+  defaultSiteLabel,
+  isSiteCode,
+  normalizeSiteCode,
+  WORLDWIDE_SITE_CODE,
+} from "./site-code";
+import { siteIdIssue } from "./site-identity";
 import {
   isLocalePathKey,
   resolveSiteLocale,
@@ -55,7 +61,15 @@ import {
  * Framework-neutral: pure data + types only.
  */
 
-/** The site a deployment gets when it declares none: the Worldwide / Global site. */
+/**
+ * The site a deployment gets when it declares none: the Worldwide / Global site.
+ *
+ * `GEO-03` R04 deliberately leaves this alone. The presentation identity has no implicit default — an
+ * absent `presentationSiteCode` means no shared shell, and a declared one must name a Site its owning
+ * Spoke really declares — but THIS is the legacy single-site resolver ('Foundation-S1'), which a
+ * deployment may still use without declaring a `sites` block. Retiring the worldwide site identity
+ * from the geographic runtime is `GEO-04`'s work, not the reference migration's.
+ */
 export const IMPLICIT_SITE_CODE = WORLDWIDE_SITE_CODE;
 
 /** One site as an adopter declares it; everything except `code` has a documented default. */
@@ -179,7 +193,7 @@ export function resolveSites(options: ResolveSitesOptions): SiteSet {
 
   const seenCodes = new Set<string>();
   const sites = declared.map((raw) => {
-    const codeIssue = siteCodeIssue(raw.code);
+    const codeIssue = siteIdIssue(raw.code);
     if (codeIssue !== null) issues.push(codeIssue);
     const code = normalizeSiteCode(raw.code);
     if (seenCodes.has(code)) issues.push(`duplicate site "${code}"`);

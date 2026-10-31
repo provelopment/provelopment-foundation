@@ -14,12 +14,17 @@
  * assertion is about a real Installation the accepted authorities resolve, not about a stub.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 
-import { materializeMultihostInstallation, spokeNamespacePlan } from "../support/multihost-installation.mjs";
+import { materializeMultihostInstallation } from "../support/multihost-installation.mjs";
+import {
+  captureProductionStateManifest,
+  productionStateDrift,
+} from "../support/production-state-manifest";
 
-const fixture = materializeMultihostInstallation({ repositoryRoot: process.cwd() });
+const repositoryRoot = process.cwd();
+const fixture = materializeMultihostInstallation({ repositoryRoot });
 const savedRoot = process.env.FOUNDATION_DEPLOYMENT_ROOT;
 
 /** The two-Spoke Installation's OWN routing description, exactly as the build inlines it. */
@@ -49,40 +54,99 @@ afterEach(() => {
 
 afterAll(() => {
   fixture.cleanup();
+  // R04-C16 §4.6/§4.7 — cleanup is PROVED, not assumed, and the proof is ATTRIBUTABLE: the disposable runtime
+  // tree is gone with the Installation, and none of this suite's repository namespace directories exists.
+  expect(existsSync(runtimeBase), "the disposable runtime tree outlived the fixture").toBe(false);
+  const drift = productionStateDrift(
+    sharedRuntimeBefore,
+    captureProductionStateManifest(repositoryRoot, SHARED_RUNTIME_SURFACES),
+  );
+  expect(
+    drift,
+    `this suite disturbed the repository's generated runtime tree: ${drift.join(", ")}`,
+  ).toEqual([]);
+  for (const surface of SHARED_RUNTIME_SURFACES) {
+    expect(existsSync(path.join(repositoryRoot, surface)), surface).toBe(false);
+  }
 });
 
 /**
- * The GENERATED namespace files each Spoke needs (`public/spokes/<segment>/assets/**`), materialised for the
- * duration of this suite and removed afterwards.
+ * R04-C16 — THE REPOSITORY'S GENERATED RUNTIME TREE IS NOT THIS SUITE'S FIXTURE SPACE.
  *
- * The FILES come from the CANONICAL asset plan (`spokeNamespacePlan` → `buildPlan`), which is the same plan
- * `assets:sync` installs and the build-time catalog is derived from — so this suite can never install artwork
- * the runtime inventory does not publish (FOUNDATION-MULTISITE-M16/M17).
+ * This suite used to materialise `public/spokes/<segment>/assets/**` in the REPOSITORY for the duration of the
+ * run. That copy is generated output, but the repository's copy is *shared*: `deployment/tests/unit/
+ * asset-install` and `asset-taxonomy-mirror` assert the byte-identity of exactly that tree, so while this
+ * suite wrote and then recursively removed the directories, those suites failed — a verification defect in
+ * the harness, not a defect in the asset mirror (C15 grouped evidence).
  *
- * The context-bound composition asserts that a configured icon LEAF has a matching asset file, so a test that
- * renders a context must give that context the namespace the platform would have generated — exactly what the
- * browser scenario does. Nothing here is authored state: both directories are generated output, git-ignored,
- * and only the two disposable segments are touched.
+ * The same experiment now runs inside the DISPOSABLE Installation instead: the canonical plan is installed into
+ * `<fixture>/public/**`, and the composition is handed a context whose OWN namespaces point there. That is the
+ * seam M13 already establishes — "a resolver built from that context's own `runtimeAssetNamespaces`" — so the
+ * real composition, the real validator and the real diagnostics are exercised, and nothing about the shared
+ * repository tree is touched. `fixture.cleanup()` removes the whole tree, on success and on failure alike, and
+ * the repository's generated tree is measured before and after to PROVE this suite neither adds nor removes a
+ * file there (§4.7).
  */
-const generatedRoot = path.join(process.cwd(), "public", "spokes");
-const created: string[] = [];
+/**
+ * R04-C16 §4.7 — THE REPOSITORY'S SHARED RUNTIME STATE, MEASURED SOUNDLY.
+ *
+ * The surfaces are this suite's OWN namespace directories, because those are the only repository paths this
+ * fixture could ever create (the fixture's Spoke segments are unique to it). A whole-tree diff of
+ * `public/**` would be UNSOUND here: other suites legitimately write into that shared tree while this file
+ * runs in parallel, so a change would be attributed to this suite without evidence. Scoping the comparison to
+ * the namespaces this suite owns keeps the proof attributable — and the platform mirror is already guarded by
+ * the deployment asset suites and the runtime integrity gate.
+ */
+const SHARED_RUNTIME_SURFACES = fixture.spokes.map((spoke) =>
+  path.join("public", "spokes", spoke.segment),
+);
+const sharedRuntimeBefore = captureProductionStateManifest(repositoryRoot, SHARED_RUNTIME_SURFACES);
+/** The disposable runtime base: inside the Installation this suite owns, never the repository. */
+const runtimeBase = path.join(fixture.root, "public");
 
-beforeAll(() => {
-  for (const spoke of fixture.spokes) {
-    const directory = path.join(generatedRoot, spoke.segment, "assets");
+/**
+ * Install the CANONICAL asset plan into the disposable runtime base.
+ *
+ * The rows are the same plan `assets:sync` installs and the build-time catalog is derived from, and each row's
+ * `to` is relative to its namespace directory — so what lands here is exactly what the platform would have
+ * generated, only somewhere the repository cannot see.
+ */
+beforeAll(async () => {
+  const { buildPlan, runtimeNamespaces } = await import("../../scripts/sync-runtime-assets.mjs");
+  const rows = buildPlan(fixture.root);
+  for (const namespace of runtimeNamespaces(fixture.root)) {
+    const directory = path.join(runtimeBase, namespace.directory);
     mkdirSync(directory, { recursive: true });
-    for (const { from, to } of spokeNamespacePlan(fixture.root, spoke.id)) {
-      copyFileSync(from, path.join(directory, to));
+    for (const row of rows.filter((candidate) => candidate.namespace === namespace.key)) {
+      const target = path.join(directory, row.to);
+      // A plan row's `from` is relative to the INSTALLATION root (a Spoke authors its own tree there).
+      const source = path.isAbsolute(row.from) ? row.from : path.join(fixture.root, row.from);
+      mkdirSync(path.dirname(target), { recursive: true });
+      copyFileSync(source, target);
     }
-    created.push(path.join(generatedRoot, spoke.segment));
   }
 });
 
-afterAll(() => {
-  for (const directory of created) {
-    if (existsSync(directory)) rmSync(directory, { recursive: true, force: true });
-  }
-});
+/**
+ * The REAL context, with its artwork namespaces re-based onto the disposable tree.
+ *
+ * Nothing else about the context is synthesised: identity, segment, hostname claims, config and resources all
+ * still come from the accepted runtime authority, so the composition judges the same context it always did.
+ */
+function withDisposableRuntimeNamespaces<T extends { runtimeAssetNamespaces: readonly { directory: string }[] }>(
+  context: T,
+): T {
+  return {
+    ...context,
+    runtimeAssetNamespaces: context.runtimeAssetNamespaces.map((namespace) => ({
+      ...namespace,
+      directory: path.join(
+        runtimeBase,
+        path.relative(path.join(repositoryRoot, "public"), namespace.directory),
+      ),
+    })),
+  };
+}
 
 describe("a MULTI-Spoke Installation", () => {
   it("resolves each claimed hostname to ITS OWN context", async () => {
@@ -152,7 +216,19 @@ describe("a MULTI-Spoke Installation", () => {
 
     const inventories = [];
     for (const segment of ["alpha", "beta"]) {
-      const context = runtimeContextForSegment(segment); if (context === null) throw new Error("no context for " + segment);
+      const real = runtimeContextForSegment(segment); if (real === null) throw new Error("no context for " + segment);
+      // R04-C16 — the composition judges THIS context's own namespaces (M13), so re-basing them onto the
+      // disposable Installation is enough: no file is written under the repository's `public/` tree.
+      const context = withDisposableRuntimeNamespaces(real);
+      // Both halves are asserted, so a relocation that silently did nothing cannot pass: every namespace the
+      // composition will read is INSIDE the disposable tree, and it is actually populated.
+      expect(
+        context.runtimeAssetNamespaces.every((namespace) => namespace.directory.startsWith(runtimeBase)),
+        `a namespace still points at the repository: ${context.runtimeAssetNamespaces.map((n) => n.directory).join(", ")}`,
+      ).toBe(true);
+      for (const namespace of context.runtimeAssetNamespaces) {
+        expect(existsSync(namespace.directory), namespace.directory).toBe(true);
+      }
       const params = await staticParamsForContext(spokeServerComposition(context));
       inventories.push({
         segment,

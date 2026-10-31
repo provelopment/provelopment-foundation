@@ -124,9 +124,28 @@ describe("site-specific configuration is refused when it is invalid", () => {
     ).toThrowError(/sites\.0\.navigation\.0\.position/);
   });
 
-  it("refuses an arbitrary site code (no `main`, no country names) with an actionable message", () => {
-    expect(() => parseSiteConfig({ sites: [{ code: "main" }] })).toThrowError(
-      /recognized two-letter country code/,
+  it("accepts a descriptive presentation code and refuses a malformed one", () => {
+    // `GEO-03` R04 §6 — a Spoke Site code is a PRESENTATION IDENTITY governed by the one generic
+    // descriptive-key grammar, so the reference's own neutral profile `main` is valid here. The
+    // retired spellings need no special ban: they are simply ordinary keys.
+    // R04-C12 §4 — the old form declared ONLY a Site, so it failed on five unrelated required fields
+    // (site, i18n, contact, socialLinks, navigation) and could not establish anything about the identity.
+    // A complete configuration now carries the case, and only the Site declaration changes between the
+    // acceptance and the refusals, so a rejection here can only be about the Site identity itself.
+    const complete = {
+      site: { url: "https://example.com", name: "Test", tagline: "Test", description: "Test" },
+      i18n: { locales: [{ code: "en", label: "English" }], defaultLocale: "en" },
+      contact: { email: "hello@example.com" },
+      socialLinks: [],
+      navigation: [{ label: "Home", href: "/" }],
+    };
+    // The control: this very configuration is valid with an ordinary country code, so acceptance below
+    // is not an accident of a lax parse.
+    expect(() => parseSiteConfig({ ...complete, sites: [{ code: "ca" }] })).not.toThrow();
+    expect(() => parseSiteConfig({ ...complete, sites: [{ code: "main" }] })).not.toThrow();
+    expect(() => parseSiteConfig({ ...complete, sites: [{ code: "Main" }] })).toThrowError(/site id "Main"/);
+    expect(() => parseSiteConfig({ ...complete, sites: [{ code: "my_office" }] })).toThrowError(
+      /site id "my_office"/,
     );
   });
 });

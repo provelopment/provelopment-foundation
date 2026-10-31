@@ -18,7 +18,7 @@ describe("EFS ordinary establishment and capsule portability (S3-E3-R01)", () =>
         facetId: "acme",
         siteId: "main",
         host: "www.acme.example",
-        locales: ["en-001", "fr"],
+        locales: ["en-001", "fr-FR"],
         defaultLocale: "en-001",
         title: "Acme",
       },
@@ -31,7 +31,7 @@ describe("EFS ordinary establishment and capsule portability (S3-E3-R01)", () =>
     ).toHaveLength(2);
     expect(established.files.map((file) => file.path)).toEqual([
       `${established.entityId}/acme/main/pages/home/en-001.json`,
-      `${established.entityId}/acme/main/pages/home/fr.json`,
+      `${established.entityId}/acme/main/pages/home/fr-fr.json`,
     ]);
   });
 

@@ -4,10 +4,13 @@ import { EfsPageView } from "@/components/efs/efs-page";
 import {
   efsDescription,
   efsLanguageAlternates,
+  efsOpenGraphImage,
   efsRobots,
   efsTitle,
+  efsTwitterCard,
   efsViewForCurrentRequest,
 } from "./efs-request";
+import { efsScheduleStatusLabels } from "./efs-status-labels";
 import { legacyTestRuntimeEnabled, missingEfsInstallation } from "./legacy-test-runtime";
 import { pageForContext, pageMetadataForContext, spokeServerComposition } from "./server-composition";
 import { requestPublicDestination } from "./request-context";
@@ -52,6 +55,12 @@ export async function generateMetadata({ params }: PageRouteProps): Promise<Meta
   const efs = await efsViewForCurrentRequest(segments);
   if (efs) {
     const robots = efsRobots(efs);
+    // R04-C21 — the owner-scoped social card the reserved endpoint serves for this site/locale root. It is
+    // `undefined` exactly when that endpoint would refuse, so the HTML never advertises an image that 404s.
+    // R04-C21-R02 — it is resolved from the ROOT card itself, not from this Page's own cascade, so the URL,
+    // the alt and the refusal condition are the root's on every Page (F2), and the released Twitter card
+    // carries the SAME image (F4).
+    const image = await efsOpenGraphImage(efs);
     return {
       title: efsTitle(efs),
       description: efsDescription(efs),
@@ -65,7 +74,9 @@ export async function generateMetadata({ params }: PageRouteProps): Promise<Meta
         description: efsDescription(efs),
         url: efs.canonical,
         locale: efs.locale,
+        ...(image === undefined ? {} : { images: [image] }),
       },
+      ...(image === undefined ? {} : { twitter: efsTwitterCard(efs, image.url) }),
     };
   }
   if (!legacyTestRuntimeEnabled()) missingEfsInstallation();
@@ -80,7 +91,13 @@ export default async function PageRoute({ params }: PageRouteProps) {
   const segments = (await params).segments ?? [];
   const efs = await efsViewForCurrentRequest(segments);
   if (efs) {
-    return <EfsPageView view={efs} withShell={efs.publication.presentationSiteCode !== undefined} />;
+    return (
+      <EfsPageView
+        view={efs}
+        withShell={efs.publication.presentationSiteCode !== undefined}
+        statusLabels={efsScheduleStatusLabels(efs)}
+      />
+    );
   }
   if (!legacyTestRuntimeEnabled()) missingEfsInstallation();
   const { context, destination } = await requestPublicDestination(segments);

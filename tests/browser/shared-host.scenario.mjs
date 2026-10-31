@@ -100,9 +100,14 @@ async function waitForSharedHost(port, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   let last = "no attempt";
   while (Date.now() < deadline) {
-    const probe = await request({ port, pathname: "/alpha/en-001/home" });
-    if (probe.status === 200) return;
-    last = "status=" + probe.status;
+    // The readiness coordinate is a PUBLISHED Spoke's Home LOCALE ROOT — the only public address that Home has
+    // (GEO-03 R04-C23; the reserved `home` segment is refused, so waiting on it could only ever time out).
+    // A bare `200` is not readiness either: the answer must carry THIS Spoke's own marker, so an unrelated
+    // server, or a different publication on the same Host, cannot stand in for the shared host under test.
+    const probe = await request({ port, pathname: "/alpha/en-001" });
+    const intended = probe.body.includes(MEMBERS[0].marker);
+    if (probe.status === 200 && intended) return;
+    last = "status=" + probe.status + " intended-publication=" + intended;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   throw new Error("shared host never served /alpha: " + last);
@@ -228,7 +233,9 @@ export async function run(chrome, harness) {
 
     for (const prefix of PUBLISHED) {
       const index = PUBLISHED.indexOf(prefix);
-      const page = await request({ port, pathname: "/" + prefix + "/en-001/home" });
+      // The published Home of THIS Spoke, at its declared prefix and locale — the locale root, which is Home's
+      // only public address (GEO-03 R04-C23).
+      const page = await request({ port, pathname: "/" + prefix + "/en-001" });
       const marker = MEMBERS[index].marker;
       harness.check(
         rows,
@@ -239,7 +246,7 @@ export async function run(chrome, harness) {
       const leaked = MEMBERS.some((member) => member.marker !== marker && page.body.includes(member.marker + " Home"));
       harness.check(rows, prefix + ": no other owner's home marker leaks", !leaked, "isolated");
     }
-    const second = await request({ port, pathname: "/alpha-second/en-001/home" });
+    const second = await request({ port, pathname: "/alpha-second/en-001" });
     harness.check(
       rows,
       "a Spoke publishing two Entities serves the second at its own prefix",
@@ -259,8 +266,8 @@ export async function run(chrome, harness) {
     // (`spokeNamespacePlan`) and never re-derived here. Each Spoke's config names its own namespace (see
     // `nameOwnNamespaces`), so the rendered shell is what points a browser at the artwork - and the BYTES
     // are what we judge, not a marker string.
-    const alphaHome = await request({ port, pathname: "/alpha/en-001/home" });
-    const betaHome = await request({ port, pathname: "/beta/en-001/home" });
+    const alphaHome = await request({ port, pathname: "/alpha/en-001" });
+    const betaHome = await request({ port, pathname: "/beta/en-001" });
     harness.check(
       rows,
       "no document references ANOTHER owner's presentation namespace",
@@ -293,6 +300,40 @@ export async function run(chrome, harness) {
       (await request({ port, pathname: "/spokes/hub+group-one+omega/assets/favicon.svg" })).status !== 200,
       "foreign namespace",
     );
+    // THE ADDRESS IS PART OF THE AUTHORIZATION (R04-C24). The reserved tree is a LITERAL path: a case variant of it
+    // must not reach the generated files through a case-insensitive filesystem, where it would hand an owner's
+    // artwork to a Host whose publication never named that owner. The control is the SAME file, served by the
+    // namespace's own claim, so this can never pass merely because the file is missing.
+    const alphaLogoDeclared = await request({
+      port,
+      pathname: "/spokes/" + segments.alpha + "/assets/logo-header.svg",
+    });
+    const alphaLogoFolded = await request({
+      port,
+      pathname: "/SPOKES/" + segments.alpha + "/assets/logo-header.svg",
+    });
+    harness.check(
+      rows,
+      "a case variant of the reserved asset tree is refused, while its declared spelling serves",
+      alphaLogoDeclared.status === 200 &&
+        alphaLogoDeclared.body.includes("Alpha") &&
+        alphaLogoFolded.status !== 200,
+      "declared=" + alphaLogoDeclared.status + " variant=" + alphaLogoFolded.status,
+    );
+    // The unpublished Spoke's namespace IS on disk — the synchronizer writes every DECLARED Spoke — so the
+    // refusals below are about authorization, not about an absent file, and they must hold for every spelling.
+    for (const pathname of [
+      "/spokes/" + segments.zeta + "/assets/favicon.svg",
+      "/SPOKES/" + segments.zeta + "/assets/favicon.svg",
+    ]) {
+      const answer = await request({ port, pathname });
+      harness.check(
+        rows,
+        "an UNPUBLISHED Spoke's asset is refused in every spelling: " + pathname,
+        answer.status !== 200,
+        "status=" + answer.status,
+      );
+    }
 
     const rootPath = await request({ port, pathname: "/" });
     harness.check(
@@ -302,18 +343,21 @@ export async function run(chrome, harness) {
       "status=" + rootPath.status,
     );
 
-    const unpublished = await request({ port, pathname: "/zeta/en-001/home" });
+    // The refusals below are about a PUBLICATION, a HOST or a PREFIX — never about the reserved `home` segment —
+    // so each probes a Home at its locale ROOT. Asking for the reserved suffix here would pass for the wrong
+    // reason: `/home` is refused whether or not the Spoke, Host or prefix is valid (GEO-03 R04-C23-R02).
+    const unpublished = await request({ port, pathname: "/zeta/en-001" });
     harness.check(rows, "a declared but UNPUBLISHED Spoke serves nothing", unpublished.status !== 200, "status=" + unpublished.status);
 
-    const nearMiss = await request({ port, pathname: "/alphax/en-001/home" });
+    const nearMiss = await request({ port, pathname: "/alphax/en-001" });
     harness.check(rows, "a near-miss prefix (/alphax) is not /alpha", nearMiss.status !== 200, "status=" + nearMiss.status);
 
-    const foreign = await request({ port, pathname: "/alpha/en-001/home", host: "foreign.example.test" });
+    const foreign = await request({ port, pathname: "/alpha/en-001", host: "foreign.example.test" });
     harness.check(rows, "an unknown host is refused", foreign.status !== 200, "status=" + foreign.status);
 
     const forged = await request({
       port,
-      pathname: "/alpha/en-001/home",
+      pathname: "/alpha/en-001",
       headers: { [SPOKE_SELECTION_HEADER]: "epsilon" },
     });
     harness.check(

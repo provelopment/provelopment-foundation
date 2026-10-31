@@ -71,12 +71,17 @@ describe("EFS localization target (D31 / O-2)", () => {
     const page = {
       pageId: "home",
       fallbackLocaleKey: "en-001",
-      representations: [{ locale: "en-001" }, { locale: "fr" }, { locale: "fr-CA" }],
+      representations: [{ locale: "en-001" }, { locale: "fr-FR" }, { locale: "fr-CA" }],
     };
-    expect(resolveRepresentation(page, "fr", { allowFallback: true })).toEqual({
-      kind: "render",
-      representation: { locale: "fr" },
-    });
+    // `GEO-03` R04 — a bare language no longer selects among several regional representations of the
+    // same language. The runtime canonicalises the address instead of guessing, so the capability this
+    // test protects ("never invents one") is unchanged: the redirect must name a representation the
+    // Page actually declares.
+    const resolved = resolveRepresentation(page, "fr", { allowFallback: true });
+    expect(resolved.kind).toBe("redirect");
+    if (resolved.kind === "redirect") {
+      expect(["en-001", "fr-FR", "fr-CA"]).toContain(resolved.representation.locale);
+    }
     expect(resolveRepresentation(page, "fr-CA", { allowFallback: true })).toEqual({
       kind: "render",
       representation: { locale: "fr-CA" },
@@ -110,7 +115,7 @@ describe("EFS localization target (D31 / O-2)", () => {
       fallbackLocaleKey: "en-001",
       representations: [
         { locale: "en-001", visibility: "unlisted" as const },
-        { locale: "fr", visibility: "public" as const },
+        { locale: "fr-FR", visibility: "public" as const },
       ],
     };
     expect(resolveRepresentation(page, "fr-CA", { allowFallback: true })).toEqual({

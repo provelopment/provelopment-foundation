@@ -270,6 +270,47 @@ function establishedEfsIssues(
     }
   }
 
+  // 4f. PRESENTATION IDENTITY COHERENCE (`GEO-03` R04 §6). A publication's shared shell names a Site
+  //     that its OWNING Spoke declares, and that fact is established here — before any adoption record,
+  //     digest or materialisation — rather than discovered while a Page renders. An absent
+  //     `presentationSiteCode` stays valid: it means the EFS-only document boundary, no shared shell.
+  const siteCodesBySpoke = new Map<string, Set<string>>();
+  for (const spoke of declaredSpokes) {
+    const configPath = `${spoke.locator.replace(/\/+$/, "")}/site.config.json`;
+    const configFile = files.find((file) => file.path === configPath);
+    if (configFile === undefined) continue; // reported by the per-Spoke configuration check (4d)
+    try {
+      const authored: unknown = JSON.parse(new TextDecoder().decode(configFile.bytes));
+      if (typeof authored === "object" && authored !== null) {
+        const sites = (authored as { sites?: unknown }).sites;
+        if (Array.isArray(sites)) {
+          const codes = new Set<string>();
+          for (const site of sites) {
+            const code =
+              typeof site === "object" && site !== null ? (site as { code?: unknown }).code : undefined;
+            if (typeof code === "string") codes.add(code);
+          }
+          siteCodesBySpoke.set(spoke.id, codes);
+        }
+      }
+    } catch {
+      // JSON validity is the configuration check's diagnosis, not this one's.
+    }
+  }
+  for (const publication of manifest.publications) {
+    const presentationCode = publication.presentationSiteCode;
+    if (presentationCode === undefined) continue;
+    const declaredCodes = siteCodesBySpoke.get(publication.spokeId);
+    if (declaredCodes === undefined) continue; // no configuration to compare against (legacy seed)
+    if (!declaredCodes.has(presentationCode)) {
+      issues.push(
+        `publication "${publication.id}" selects presentation Site "${presentationCode}", which Spoke ` +
+          `"${publication.spokeId}" does not declare — a presentation identity must name a Site of its ` +
+          "own owner",
+      );
+    }
+  }
+
   const seenSourcePaths = new Set<string>();
   for (const entity of manifest.entities) {
     for (const facet of entity.facets) {

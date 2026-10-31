@@ -6,9 +6,16 @@
  * tag in conventional case (`fr-CA`); URL path keys are the lowercase spelling (`fr-ca`).
  * `en-001` is a valid regional locale key and not a worldwide Site identity.
  *
- * An explicit valid locale always wins. Locale-less entry uses, in order, a valid explicit
- * visitor cookie, a supported `Accept-Language` preference, then the declared default. No
- * geo-IP, location or Site-name inference exists.
+ * An explicit valid locale always wins, exact-only. Locale-less entry uses, in order, a valid
+ * explicit visitor cookie, a supported `Accept-Language` preference, then the declared default. A
+ * preference resolves exactly first, and otherwise selects a sole authored representation whose
+ * whole subtag sequence extends it (`GEO-03` R03). No geo-IP, location or Site-name inference
+ * exists, and no published locale is ever synthesized, extended, truncated or inferred.
+ *
+ * Publication qualification is a SEPARATE concern from syntax: `de` is a valid language tag and
+ * still unfit to name a published representation, because it does not say which authored
+ * representation is meant. `publicationLocaleIssue` reports that distinction; syntax acceptance
+ * does not imply it, and this module never repairs a tag into qualification.
  *
  * A missing translation may use only an explicitly authored representation of the SAME Page.
  * The result is a truthful temporary redirect to the actual representation's URL, or 404 —
@@ -103,6 +110,60 @@ function findSupported(index: Map<string, string>, candidate: string): string | 
   return index.get(candidate.trim().toLowerCase());
 }
 
+/**
+ * The complete subtag sequence of a locale tag, canonical-cased. Used only after `localeTagIssue`
+ * has accepted the value; a malformed tag is never decomposed.
+ */
+function localeSubtags(value: unknown): readonly string[] {
+  return canonicalLocaleTag(value).split("-");
+}
+
+/**
+ * Authored representations for which the preference's COMPLETE subtag sequence is a proper prefix
+ * (`GEO-01` R02 §3.7, corrected by R03 §3.4).
+ *
+ * Comparison is subtag by subtag and never a character-string prefix: `de` must not select `den`,
+ * and `en-0` must not select `en-001`. Only a whole trailing subtag may be added by the authored
+ * representation — nothing is synthesized, extended, truncated or inferred. Iteration is in the
+ * authored `supported` order, so equal-scoring candidates resolve identically on every call.
+ */
+function qualifiedCandidates(index: Map<string, string>, preference: string): readonly string[] {
+  const preferenceSubtags = localeSubtags(preference).map((subtag) => subtag.toLowerCase());
+  const matches: string[] = [];
+  for (const canonical of index.values()) {
+    const candidateSubtags = canonical.toLowerCase().split("-");
+    if (candidateSubtags.length <= preferenceSubtags.length) continue;
+    if (preferenceSubtags.every((subtag, position) => candidateSubtags[position] === subtag)) {
+      matches.push(canonical);
+    }
+  }
+  return matches;
+}
+
+/**
+ * Resolve ONE preference: exact authored match first, then a sole qualifying representation, then
+ * the declared default only when it is itself a qualifying candidate (§3.3–§3.7). `undefined` means
+ * "this preference does not resolve" and the caller continues with the next preference.
+ */
+function resolvePreference(
+  index: Map<string, string>,
+  defaultLocale: string,
+  preference: string,
+): string | undefined {
+  // A malformed preference must never reach decomposition, and must never fail the request.
+  if (localeTagIssue(preference.trim()) !== null) return undefined;
+  const exact = findSupported(index, preference);
+  if (exact) return exact;
+  const candidates = qualifiedCandidates(index, preference.trim());
+  if (candidates.length === 1) return candidates[0];
+  if (candidates.length === 0) return undefined;
+  const declaredDefault = candidates.find(
+    (candidate) => candidate.toLowerCase() === defaultLocale.toLowerCase(),
+  );
+  return declaredDefault ?? undefined;
+}
+
+
 /** Parse `Accept-Language` into supported-shaped tags, highest q first, original order on ties. */
 export function parseAcceptLanguage(header: string | null | undefined): readonly string[] {
   if (!header) return [];
@@ -145,8 +206,13 @@ export function cookieLocalePreference(cookieHeader: string | undefined): string
 /**
  * Select the locale for a locale-less binding entry.
  *
- * `explicit` is only supplied when the visitor actually authored a locale segment; it wins and
- * fails closed when unsupported. Cookie and `Accept-Language` are preferences, not assumptions.
+ * `explicit` is only supplied when the visitor actually authored a locale segment; it wins, is
+ * exact-only, and fails closed when unsupported — an address is never silently re-pointed.
+ *
+ * Cookie and `Accept-Language` are preferences, not assumptions. Each preference is tried exactly
+ * first and then against authored representations it is a complete-subtag prefix of (`GEO-01` R02
+ * §3.7). A sole qualifying candidate is selected; when several qualify, only the declared default
+ * may be chosen, and it must be one of them; otherwise the next preference is tried.
  */
 export function selectEntryLocale(input: {
   readonly supported: readonly string[];
@@ -171,13 +237,13 @@ export function selectEntryLocale(input: {
   if (input.cookie !== undefined) {
     const preference = cookieLocalePreference(input.cookie);
     if (preference !== undefined) {
-      const selected = findSupported(index, preference);
+      const selected = resolvePreference(index, fallback, preference);
       if (selected) return { kind: "selected", locale: selected, source: "cookie" };
     }
   }
 
   for (const preference of parseAcceptLanguage(input.acceptLanguage)) {
-    const selected = findSupported(index, preference);
+    const selected = resolvePreference(index, fallback, preference);
     if (selected) return { kind: "selected", locale: selected, source: "accept-language" };
   }
 
@@ -235,4 +301,47 @@ export function advertisedHreflang(
       hreflang: canonicalLocaleTag(representation.locale),
       localeKey: localePathKey(representation.locale),
     }));
+}
+
+/**
+ * Why a tag may not identify a PUBLISHED representation (`GEO-01` R02 §3.2, `GEO-03` R03 §4).
+ *
+ * Two distinct failures, deliberately not collapsed into one boolean: a value can be a perfectly
+ * valid language tag and still be unfit to publish as a representation, because a bare language —
+ * or a language with variants and nothing else — does not say WHICH authored representation is
+ * meant. `de` is a language, not a publication address; `de-DE` and `zh-Hans` are.
+ */
+export type PublicationLocaleIssue =
+  | { readonly kind: "malformed"; readonly reason: string }
+  | { readonly kind: "unqualified"; readonly reason: string };
+
+/**
+ * Diagnose publication qualification without repairing the tag.
+ *
+ * Qualification is the presence of an explicitly authored SCRIPT or REGION subtag:
+ * `en-001`, `de-DE`, `zh-Hans` and `de-DE-1996` qualify; `de`, `de-1996` and `sl-rozaj-biske` do
+ * not. Variants qualify nothing on their own, and nothing here synthesizes, defaults, extends,
+ * truncates or geographically infers a subtag — an unqualified tag is reported, never completed.
+ *
+ * This predicate is NOT yet wired into manifest loading: the reference Installation still declares
+ * unqualified tags, and stricter publication validation belongs to the atomic R04 re-tag so that a
+ * reference that is valid today cannot be invalidated before its replacements exist.
+ */
+export function publicationLocaleIssue(value: unknown): PublicationLocaleIssue | null {
+  const malformed = localeTagIssue(value);
+  if (malformed) return { kind: "malformed", reason: malformed };
+  const qualifiers = localeSubtags(value).slice(1);
+  const qualified = qualifiers.some(
+    (subtag) => /^[a-z]{4}$/i.test(subtag) || /^([a-z]{2}|\d{3})$/i.test(subtag),
+  );
+  if (qualified) return null;
+  return {
+    kind: "unqualified",
+    reason: `"${String(value)}" is a valid language tag but declares no script or region, so it cannot identify a published representation.`,
+  };
+}
+
+/** True only for a syntactically valid tag that also carries an authored script or region. */
+export function isPublicationQualifiedLocale(value: unknown): boolean {
+  return publicationLocaleIssue(value) === null;
 }

@@ -189,23 +189,30 @@ const RESERVED_HOME_ROUTE = "home";
 /**
  * The declared Page addressed by an incoming Page-route suffix.
  *
- * The empty suffix addresses the reserved authored Home Page; the literal suffix `home` does NOT, because it names
- * that document's internal identity rather than a public address. The refusal lives HERE — at the one shared boundary
- * that Page rendering and contact-form hosting both use — so no caller (a GET, a POST, or an alternate request shape)
- * can recover the reserved document through its private name. Only the EXACT suffix is reserved: an ordinary authored
- * route that merely contains the word is untouched.
+ * `D43` — PAGE-ROUTE CASE IS NOT IDENTITY. Every segment is compared through the same ordinary lowercase
+ * normalization, so `/about-us`, `/About-Us` and `/abouT-uS` resolve the same authored Page. The comparison is
+ * still whole-route: the same segment COUNT and every folded segment must match, so casing never enlarges what
+ * is published and a different word stays a different address.
+ *
+ * The empty suffix addresses the reserved authored Home Page; the literal suffix `home` does NOT, because it
+ * names that document's internal identity rather than a public address. The refusal lives HERE — at the one
+ * shared boundary that Page rendering and contact-form hosting both use — so no caller (a GET, a POST, or an
+ * alternate request shape) can recover the reserved document through its private name, and `D43` makes the
+ * reservation case-insensitive: `/home`, `/HOME` and `/HoMe` are all refused. Only the whole suffix is
+ * reserved: an ordinary authored route that merely contains the word is untouched.
  */
 function pageForRoute(site: EfsSiteDeclaration, route: readonly string[]): EfsPageDeclaration | undefined {
-  if (route.length === 1 && route[0] === RESERVED_HOME_ROUTE) return undefined;
-  const wanted = route.length === 0 ? [RESERVED_HOME_ROUTE] : route;
+  if (route.length === 1 && route[0]!.toLowerCase() === RESERVED_HOME_ROUTE) return undefined;
+  const wanted = (route.length === 0 ? [RESERVED_HOME_ROUTE] : route).map((segment) => segment.toLowerCase());
   return site.pages.find(
     (page) =>
-      page.route.length === wanted.length && page.route.every((segment, index) => segment === wanted[index]),
+      page.route.length === wanted.length &&
+      page.route.every((segment, index) => segment.toLowerCase() === wanted[index]),
   );
 }
 
 function publicRoute(page: EfsPageDeclaration): readonly string[] {
-  return page.route.length === 1 && page.route[0] === RESERVED_HOME_ROUTE ? [] : page.route;
+  return page.route.length === 1 && page.route[0]!.toLowerCase() === RESERVED_HOME_ROUTE ? [] : page.route;
 }
 
 /** Load and strictly validate ONE declared representation, or fail with its actionable reason. */
@@ -543,17 +550,21 @@ export async function efsViewForCurrentRequest(
   }
 
   /**
-   * `D40` DECISION B — the publication, Site, Page and representation are established above, so a request
-   * whose binding prefix, Site selector or locale path key differs from the declaration ONLY in case now has
-   * exactly one canonical address. ONE `308`, ONE `Location`: the authored platform spelling, the visitor's
-   * own Page-route text and their original query string, unchanged.
+   * `D40` DECISION B (platform segments only), AS NARROWED BY `D43` — the publication, Site, Page and
+   * representation are established above, so a request whose binding prefix, Site selector or locale path key
+   * differs from the declaration ONLY in case now has exactly one canonical address. ONE `308`, ONE
+   * `Location`: the authored platform spelling, the LOWERCASE canonical Page route and the original query.
+   *
+   * A request that differs only in PAGE-route case is never here at all: `caseCorrectedAddress` reports
+   * nothing to correct, and the folded Page lookup above already served it. Sending it through this redirect
+   * would be the Page-only 308 `D43` forbids.
    *
    * `permanentRedirect` is the platform's 308. The entry-completion and same-Page fallback redirects above
    * keep their existing 307 meaning, and nothing below can be reached by a case variant.
    */
   if (correction) {
     const query = (await requestHeader(EFS_REQUEST_QUERY_HEADER)) ?? "";
-    permanentRedirect(`/${correction.platformSegments.join("/")}${correction.pageRouteText}${query}`);
+    permanentRedirect(`/${correction.platformSegments.join("/")}${correction.pageRoute}${query}`);
   }
 
   const actual = representation.representation;

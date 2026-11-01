@@ -332,17 +332,18 @@ export function parseContentRoute(binding: EfsBinding, remaining: readonly strin
 }
 
 /**
- * `D40` DECISION B — THE CANONICAL SPELLING OF A MATCHED ADDRESS
- * ==============================================================
+ * `D40` DECISION B, AS NARROWED BY `D43` — THE CANONICAL SPELLING OF A MATCHED ADDRESS
+ * ===================================================================================
  *
  * A visitor can reach a publication whose binding PREFIX, Site SELECTOR or LOCALE PATH KEY differs from the
  * declaration only in case. Those three are platform-authored addresses — the platform chooses their
  * spelling — so exactly one canonical spelling exists and a single `308` may point at it.
  *
- * Everything after them is the authored PAGE ROUTE, and its capitalization is CONTENT: `About-Us` and
- * `about-us` are two different Page names (`pageForRoute` compares them exactly). This function therefore
- * carries the request's own Page-route TEXT, sliced out of `pathname` without decoding, normalizing or
- * re-encoding a single character, and the caller must re-emit it verbatim.
+ * Everything after them is the authored PAGE ROUTE, and since `D43` its capitalization is NOT identity:
+ * `About-Us`, `about-us` and `abouT-uS` address the same Page, which is why a Page-only case difference is
+ * served normally and never redirected. The canonical public spelling of a Page route is its LOWERCASE form
+ * (`contentSegments`), and that is what this function carries in `pageRoute`, so the ONE platform `308` that
+ * may still be required lands directly on the canonical Page address instead of a second, Page-only hop.
  *
  * It answers only "is this the same published address in the wrong case?". An unclaimed host, an unmatched
  * or undeclared prefix, an undeclared Site, an unsupported locale, or a path with no locale segment at all
@@ -356,8 +357,8 @@ export interface CaseCorrectedAddress {
   readonly binding: EfsBinding;
   /** The authored spelling of the address's platform segments: prefix, Site when open, locale path key. */
   readonly platformSegments: readonly string[];
-  /** The request's Page-route text, verbatim from the request path (empty at a locale root). */
-  readonly pageRouteText: string;
+  /** The Page route in its ONE canonical public spelling: every segment lowercased, empty at a locale root. */
+  readonly pageRoute: string;
 }
 
 /** The single authored value a request segment folds to, or `null` when the declaration is ambiguous. */
@@ -375,14 +376,15 @@ function authoredValue<T>(
 }
 
 /**
- * The request path's OWN text after its first `count` segments, with a single trailing separator removed.
+ * The request path's own Page-route text after its first `count` segments, lowercased — `D43`'s ONE canonical
+ * public spelling of a Page route.
  *
- * Sliced, never rebuilt: the path handed in is the address authority's bytes, so the Page route a visitor
- * typed survives a casing redirect character for character. The trailing separator is dropped because it
- * terminates the platform segments rather than spelling a Page, and re-emitting it would ask the router for
- * a second, trailing-slash redirect.
+ * Sliced out of the address authority's bytes and then folded, so a redirect target carries the canonical
+ * address in a single hop while the platform's escaping is otherwise left as it arrived. The trailing
+ * separator is dropped because it terminates the platform segments rather than spelling a Page, and
+ * re-emitting it would ask the router for a second, trailing-slash redirect.
  */
-function pageRouteTextOf(pathname: string, count: number): string {
+function pageRouteOf(pathname: string, count: number): string {
   let index = 0;
   let separators = 0;
   while (index < pathname.length && separators <= count) {
@@ -391,7 +393,7 @@ function pageRouteTextOf(pathname: string, count: number): string {
   }
   const rest = pathname.slice(index);
   const trimmed = rest.endsWith("/") ? rest.slice(0, -1) : rest;
-  return trimmed.length === 0 ? "" : `/${trimmed.replace(/^\/+/, "")}`;
+  return trimmed.length === 0 ? "" : `/${trimmed.replace(/^\/+/, "").toLowerCase()}`;
 }
 
 /** The authored capitalization of a matched address, or `null` when nothing but case differs (or nothing matches). */
@@ -467,7 +469,7 @@ export function caseCorrectedAddress(
   return {
     binding: chosen.binding,
     platformSegments: platform,
-    pageRouteText: pageRouteTextOf(raw, cursor),
+    pageRoute: pageRouteOf(raw, cursor),
   };
 }
 
@@ -512,12 +514,21 @@ export function publicPathBase(binding: EfsBinding, siteId: string): readonly st
   return [...normalizePrefix(binding.prefix), ...(binding.siteMode === "open" ? [siteId] : [])];
 }
 
-/** Build the canonical content suffix (prefix + Site when open + locale + Page route). */
+/**
+ * Build the canonical content suffix (prefix + Site when open + locale + Page route).
+ *
+ * `D43` — THE ONE PUBLIC PAGE-ROUTE SPELLING. A Page route's letter case is not identity, so its canonical
+ * public spelling is the lowercase form of each declared segment: `About-Us` is published at `/about-us` and
+ * every canonical URL, `hreflang` alternate, navigation link and sitemap `loc` built here says so. Only the
+ * Page route is folded: the binding prefix, the Site selector and the locale key keep their declared platform
+ * spelling, because `D40`/`D43` leave that naming contract exactly as it was. The authored declaration and the
+ * Page's source path are untouched — this is output, never authoring.
+ */
 export function contentSegments(binding: EfsBinding, route: EfsContentRoute): readonly string[] {
   return [
     ...publicPathBase(binding, route.siteId),
     route.localeKey,
-    ...route.pageRoute,
+    ...route.pageRoute.map((segment) => segment.toLowerCase()),
   ];
 }
 

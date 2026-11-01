@@ -208,3 +208,95 @@ describe("the reserved Open Graph image endpoint is refused as a Page route (R04
     expect(withRoute(["opengraph-image", "about"]).ok).toBe(true);
   });
 });
+
+/**
+ * `D43` (`R04-C32`) — A PAGE ROUTE'S LETTER CASE IS NOT IDENTITY.
+ *
+ * The Owner's rule is simple: `About-Us`, `about-us` and `abouT-uS` are the same authored Page, so a Site may
+ * declare that address once and an author keeps full freedom over the words and the capitalization they type.
+ * Validation is where two declarations with one address must be refused, because at request time there is
+ * nothing left to choose between them.
+ */
+describe("Page-route case is not identity (D43)", () => {
+  /** The fixture manifest with exactly these Pages in its one Site. */
+  const withPages = (pages: readonly { id: string; route: string[] }[]) => {
+    const document = manifest({}) as Record<string, unknown>;
+    const entities = document.entities as { facets: { sites: { pages: unknown[] }[] }[] }[];
+    entities[0].facets[0].sites[0].pages = pages.map((page) => ({
+      id: page.id,
+      route: page.route,
+      representations: [{ locale: "en-001" }],
+    }));
+    return validateEfsManifest(document);
+  };
+
+  it("accepts the authored words in ANY permitted capitalization", () => {
+    // The platform does not demand lowercase authoring: these declarations are valid as written.
+    expect(withPages([{ id: "home", route: ["home"] }, { id: "about-us", route: ["About-Us"] }]).ok).toBe(true);
+    expect(withPages([{ id: "home", route: ["home"] }, { id: "our-story", route: ["Our-Story"] }]).ok).toBe(true);
+    expect(
+      withPages([{ id: "home", route: ["home"] }, { id: "design", route: ["Services", "Design"] }]).ok,
+    ).toBe(true);
+  });
+
+  it("rejects two Pages whose complete routes are equal once case is ignored", () => {
+    const result = withPages([
+      { id: "home", route: ["home"] },
+      { id: "about-us", route: ["about-us"] },
+      { id: "about-us-upper", route: ["About-US"] },
+    ]);
+    expect(result.ok).toBe(false);
+    const joined = result.issues.join(" ");
+    // The diagnostic names the colliding declaration's exact path and says why, instead of picking a winner.
+    expect(joined).toContain("pages[2].route");
+    expect(joined).toContain("more than once");
+    expect(joined).toContain("letter case is not identity");
+  });
+
+  it("keeps different words, different segment counts and different Sites apart", () => {
+    expect(
+      withPages([
+        { id: "home", route: ["home"] },
+        { id: "about-us", route: ["about-us"] },
+        { id: "our-story", route: ["our-story"] },
+        { id: "design", route: ["services", "design"] },
+        { id: "design-flat", route: ["design"] },
+      ]).ok,
+    ).toBe(true);
+
+    // The same route in an INDEPENDENT Site is a different publication address, so it stays valid.
+    const document = manifest({ siteMode: "open", siteIds: ["main", "outlet"], defaultSiteId: "main" }) as Record<
+      string,
+      unknown
+    >;
+    const entities = document.entities as { facets: { sites: { id: string; pages: unknown[] }[] }[] }[];
+    entities[0].facets[0].sites = [
+      { id: "main", pages: [{ id: "about", route: ["about"], representations: [{ locale: "en-001" }] }] },
+      { id: "outlet", pages: [{ id: "about", route: ["About"], representations: [{ locale: "en-001" }] }] },
+    ];
+    expect(validateEfsManifest(document).ok).toBe(true);
+  });
+
+  it("lets only the one internal Home Page claim the case-insensitive home address", () => {
+    // The accepted internal declaration is untouched…
+    expect(withPages([{ id: "home", route: ["home"] }]).ok).toBe(true);
+    // …and a DIFFERENT Page cannot take that address under another capitalization.
+    const claimed = withPages([
+      { id: "home", route: ["home"] },
+      { id: "landing", route: ["HOME"] },
+    ]);
+    expect(claimed.ok).toBe(false);
+    expect(claimed.issues.join(" ")).toContain("reserved internal Home address");
+  });
+
+  it("refuses the reserved image route in any capitalization, and nothing else", () => {
+    expect(withPages([{ id: "home", route: ["home"] }, { id: "shot", route: ["OpenGraph-Image"] }]).ok).toBe(false);
+    expect(withPages([{ id: "home", route: ["home"] }, { id: "shot", route: ["gallery", "OPENGRAPH-IMAGE"] }]).ok).toBe(
+      false,
+    );
+    // A route that merely CONTAINS the word is still an ordinary route.
+    expect(withPages([{ id: "home", route: ["home"] }, { id: "shot", route: ["opengraph-image-gallery"] }]).ok).toBe(
+      true,
+    );
+  });
+});

@@ -201,7 +201,7 @@ describe("matched-address capitalization (D40 Decision B)", () => {
     expect(corrected?.binding.id).toBe("managed-acme");
     // All three platform segments corrected in ONE answer: no chain of second redirects.
     expect(corrected?.platformSegments).toEqual(["acme-co", "jakarta", "en-001"]);
-    expect(corrected?.pageRouteText).toBe("/about");
+    expect(corrected?.pageRoute).toBe("/about");
   });
 
   it("corrects a locale path key alone, in both authored modes of addressing", () => {
@@ -209,7 +209,7 @@ describe("matched-address capitalization (D40 Decision B)", () => {
     const dedicated = caseCorrectedAddress("www.acme-co.com", "/Fr-CA/about", loadedBindings());
     expect(dedicated?.binding.id).toBe("dedicated-acme");
     expect(dedicated?.platformSegments).toEqual(["fr-ca"]);
-    expect(dedicated?.pageRouteText).toBe("/about");
+    expect(dedicated?.pageRoute).toBe("/about");
 
     // The address segment is the lowercase PATH KEY, so `/fr-CA` is a case variant of `fr-ca` even though the
     // authored tag is `fr-CA`: the redirect corrects the ADDRESS, and `canonicalUrl` still derives from the key.
@@ -224,14 +224,15 @@ describe("matched-address capitalization (D40 Decision B)", () => {
     })).toBe("https://www.acme-co.com/fr-ca/about");
   });
 
-  it("carries the visitor's Page-route text verbatim, never normalizing its case", () => {
+  it("carries the Page route in its ONE canonical lowercase spelling (D43)", () => {
     const corrected = caseCorrectedAddress(
       "my.provelopment.com",
       "/Acme-Co/Jakarta/En-001/Products/Detail",
       loadedBindings(),
     );
-    // Capitalized, nested and non-lowercase route segments are the AUTHOR's spelling, not the platform's.
-    expect(corrected?.pageRouteText).toBe("/Products/Detail");
+    // The platform 308 must land on the canonical address in a single hop, so the Page route it carries is the
+    // lowercase public spelling — never the capitalization the visitor typed or the manifest authored.
+    expect(corrected?.pageRoute).toBe("/products/detail");
   });
 
   it("serves an already canonical address and never redirects it", () => {
@@ -239,7 +240,7 @@ describe("matched-address capitalization (D40 Decision B)", () => {
     expect(caseCorrectedAddress("www.acme-co.com", "/en-001/about", loadedBindings())).toBeNull();
     // A trailing separator terminates the platform segments: it is not a Page and must not become one.
     const trailing = caseCorrectedAddress("my.provelopment.com", "/ACME-CO/Jakarta/EN-001/", loadedBindings());
-    expect(trailing?.pageRouteText).toBe("");
+    expect(trailing?.pageRoute).toBe("");
   });
 
   it("refuses every address that is not a case variant of a published one", () => {
@@ -415,5 +416,72 @@ describe("the selection is a property of the PATH, never of declaration order (I
         "https://my.provelopment.com/tenant-a/en-001/services/design",
       );
     }
+  });
+});
+
+/**
+ * `D43` (`R04-C32`) — THE PUBLIC PAGE-ROUTE SPELLING AND THE REDIRECT IT IMPLIES.
+ *
+ * A Page route's letter case is not identity, so the canonical public path is the lowercase form of every
+ * declared segment, and a request that differs ONLY in Page-route case is served rather than redirected.
+ */
+describe("public Page routes are lowercase; Page-only case is served (D43)", () => {
+  const managed = () => loadedBindings().find((binding) => binding.id === "managed-acme")!;
+  const dedicated = () => loadedBindings().find((binding) => binding.id === "dedicated-acme")!;
+
+  it("publishes the authored words at a lowercase Page path, leaving platform spelling alone", () => {
+    const segment = contentSegments(managed(), {
+      siteId: "jakarta",
+      locale: "en-001",
+      localeKey: "en-001",
+      // The AUTHOR's capitalization, exactly as a manifest declares it.
+      pageRoute: ["About-Us"],
+    });
+    expect(segment).toEqual(["acme-co", "jakarta", "en-001", "about-us"]);
+    expect(
+      canonicalUrl(managed(), {
+        siteId: "jakarta",
+        locale: "en-001",
+        localeKey: "en-001",
+        pageRoute: ["About-Us"],
+      }),
+    ).toBe("https://my.provelopment.com/acme-co/jakarta/en-001/about-us");
+  });
+
+  it("folds every segment of a nested route and keeps the locale root as the Home address", () => {
+    expect(
+      canonicalUrl(dedicated(), {
+        siteId: "jakarta",
+        locale: "fr-CA",
+        localeKey: "fr-ca",
+        pageRoute: ["Services", "Design"],
+      }),
+    ).toBe("https://www.acme-co.com/fr-ca/services/design");
+    expect(
+      canonicalUrl(dedicated(), { siteId: "jakarta", locale: "fr-CA", localeKey: "fr-ca", pageRoute: [] }),
+    ).toBe("https://www.acme-co.com/fr-ca");
+  });
+
+  it("does NOT correct a Page-only case difference — there is no Page-only redirect", () => {
+    // The platform segments are already canonical, so nothing but a Page's spelling differs: the request is
+    // served by the folded Page lookup, and a 308 here would be exactly what D43 forbids.
+    expect(caseCorrectedAddress("my.provelopment.com", "/acme-co/jakarta/en-001/About", loadedBindings())).toBeNull();
+    expect(caseCorrectedAddress("my.provelopment.com", "/acme-co/jakarta/en-001/aBouT", loadedBindings())).toBeNull();
+  });
+
+  it("still answers ONE platform 308, and its target carries the lowercase Page route", () => {
+    const mixed = caseCorrectedAddress("my.provelopment.com", "/ACME-CO/Jakarta/EN-001/About-Us", loadedBindings());
+    expect(mixed?.platformSegments).toEqual(["acme-co", "jakarta", "en-001"]);
+    // One hop lands on the canonical address: authored platform spelling plus the lowercase Page route.
+    expect(mixed?.pageRoute).toBe("/about-us");
+    // The platform spelling in the target keeps its declared case — D43 does not lowercase the platform.
+    expect(
+      canonicalUrl(managed(), {
+        siteId: "jakarta",
+        locale: "en-001",
+        localeKey: "en-001",
+        pageRoute: ["About-Us"],
+      }),
+    ).toContain("/en-001/");
   });
 });

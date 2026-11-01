@@ -92,15 +92,70 @@ export async function run(chrome, harness) {
       `${spaced.status} ${JSON.stringify(spaced.location)}`,
     );
 
-    // ── 4. A Page route's case is CONTENT: refused, never corrected ─────────────────────────────
-    refuses("casing.pageRoute.caseRefused", await request(FOUNDATION_HOST, "/de-de/About"));
-    // …and a casing correction may not RESCUE an address whose Page does not exist.
-    refuses("casing.pageRoute.notRescued", await request(FOUNDATION_HOST, "/DE-DE/About"));
+    // ── 4. A Page route's case is NOT identity (`D43`): served, never redirected ──────────────────
+    // The authored Page is `/de-de/about`, so every spelling of that route must reach the SAME Page with a
+    // lowercase canonical — and none of them may earn a second 308.
+    const pageVariant = await request(FOUNDATION_HOST, "/de-de/About");
+    check(rows, "casing.pageRoute.caseServed", pageVariant.status === 200, String(pageVariant.status));
+    check(rows, "casing.pageRoute.caseServed.noLocation", pageVariant.location === "", pageVariant.location);
+    // The canonical names the LOWERCASE Page route on the publication's own origin, whatever casing was typed.
+    const canonicalOf = (body) => (body.match(/<link rel="canonical" href="([^"]+)"/) ?? ["", "(none)"])[1];
+    check(
+      rows,
+      "casing.pageRoute.caseServed.lowercaseCanonical",
+      canonicalOf(pageVariant.body) === `https://${FOUNDATION_HOST}/de-de/about`,
+      canonicalOf(pageVariant.body),
+    );
+    const shoutedVariant = await request(FOUNDATION_HOST, "/de-de/ABOUT");
+    check(rows, "casing.pageRoute.shoutedServed", shoutedVariant.status === 200, String(shoutedVariant.status));
+    check(
+      rows,
+      "casing.pageRoute.shoutedServed.lowercaseCanonical",
+      canonicalOf(shoutedVariant.body) === `https://${FOUNDATION_HOST}/de-de/about`,
+      canonicalOf(shoutedVariant.body),
+    );
+
+    // …and every spelling is the SAME Page: same title, same canonical, same language identity.
+    const canonicalAbout = await request(FOUNDATION_HOST, "/de-de/about");
+    const titleOf = (body) => (body.match(/<title>([^<]*)<\/title>/) ?? ["", "(none)"])[1];
+    check(
+      rows,
+      "casing.pageRoute.samePage",
+      canonicalAbout.status === 200 &&
+        titleOf(canonicalAbout.body) === titleOf(pageVariant.body) &&
+        titleOf(pageVariant.body) === titleOf(shoutedVariant.body) &&
+        canonicalOf(pageVariant.body) === canonicalOf(canonicalAbout.body) &&
+        canonicalOf(shoutedVariant.body) === canonicalOf(canonicalAbout.body),
+      `${titleOf(pageVariant.body)} | ${titleOf(shoutedVariant.body)} | ${titleOf(canonicalAbout.body)}`,
+    );
+    // The lowercase Page links the page GENERATES are the same in every spelling (navigation, alternates).
+    const aboutLinksOf = (body) => (body.match(/href="\/de-de\/about"/g) ?? []).length;
+    check(
+      rows,
+      "casing.pageRoute.sameGeneratedLinks",
+      aboutLinksOf(pageVariant.body) === aboutLinksOf(canonicalAbout.body) && aboutLinksOf(canonicalAbout.body) > 0,
+      `${aboutLinksOf(pageVariant.body)} vs ${aboutLinksOf(canonicalAbout.body)}`,
+    );
+
+    // ── 4b. A PLATFORM variant still redirects exactly once, and its target carries the lowercase Page route
+    redirectsOnce("casing.platformWithPageCase", await request(FOUNDATION_HOST, "/DE-DE/About"), "/de-de/about");
+    const landedOnce = await request(FOUNDATION_HOST, "/de-de/about");
+    check(rows, "casing.platformWithPageCase.landsOn200", landedOnce.status === 200, String(landedOnce.status));
 
     // ── 5. Unpublished addresses stay refused: no casing redirect to some other resource ────────
     refuses("casing.refused.unsupportedLocale", await request(FOUNDATION_HOST, "/fr-FR/about"));
     refuses("casing.refused.retiredAddress", await request(FOUNDATION_HOST, "/ww/de/about"));
     refuses("casing.refused.unknownPage", await request(FOUNDATION_HOST, "/de-de/nope"));
+    // `D43` folds LETTER CASE only: a different word is still a different address, at any capitalization.
+    refuses("casing.refused.caseDoesNotInventPages", await request(FOUNDATION_HOST, "/de-de/Aboutt"));
+
+    // ── 5b. The reserved internal Home route stays private in EVERY capitalization (`D43`) ───────
+    // The public Home is the locale root; the internal document is never reachable through its own name.
+    refuses("casing.home.lowercase", await request(FOUNDATION_HOST, "/de-de/home"));
+    refuses("casing.home.upper", await request(FOUNDATION_HOST, "/de-de/HOME"));
+    refuses("casing.home.mixed", await request(FOUNDATION_HOST, "/de-de/HoMe"));
+    const localeRoot = await request(FOUNDATION_HOST, "/de-de");
+    check(rows, "casing.home.localeRootServed", localeRoot.status === 200, String(localeRoot.status));
 
     // ── 6. Owners stay apart on their own hosts ─────────────────────────────────────────────────
     refuses("casing.isolation.germanyPageOnFoundationHost", await request(FOUNDATION_HOST, "/de-de/berlin"));

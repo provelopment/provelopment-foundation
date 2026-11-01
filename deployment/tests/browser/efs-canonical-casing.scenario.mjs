@@ -79,18 +79,26 @@ export async function run(chrome, harness) {
       await request(FOUNDATION_HOST, query),
       query.replace("/EN-001", "/en-001"),
     );
-    // ── 3b. MEASURED PLATFORM LIMIT (not this redirect's behaviour) ──────────────────────────────
-    // Next.js parses the request URL with `URLSearchParams` BEFORE the edge proxy runs, so a query that
-    // spells a space as `%20` reaches every boundary as `+`. Both spellings mean the same query value, so
-    // the meaning survives; the BYTES are the platform's and no D40-B code can recover them. Pinned so a
-    // future Next version that preserves them is noticed rather than assumed.
-    const spaced = await request(FOUNDATION_HOST, "/EN-001/contact?c=a%20b");
-    check(
-      rows,
-      "casing.query.spaceAsPlatformPlus",
-      spaced.status === 308 && spaced.location === "/en-001/contact?c=a+b",
-      `${spaced.status} ${JSON.stringify(spaced.location)}`,
-    );
+    // ── 3b. STRICT BYTES (`R04-C34`): the spellings a query re-serialiser rewrites ────────────────
+    // A `URLSearchParams` round-trip maps a space to `+`, appends `=` to a bare key, drops an empty `?`,
+    // upper-cases percent hex and decodes unreserved escapes. `skipProxyUrlNormalize` hands the proxy the
+    // visitor's OWN request target instead of a rebuilt one, so each row below must come back EXACTLY as it
+    // was sent. These are asserted positively: a regression to the re-serialised form fails here.
+    const byteExact = [
+      ["casing.query.space", "/EN-001/contact?c=a%20b", "/en-001/contact?c=a%20b"],
+      ["casing.query.plus", "/EN-001/contact?c=a+b", "/en-001/contact?c=a+b"],
+      ["casing.query.literalPlus", "/EN-001/contact?c=a%2Bb", "/en-001/contact?c=a%2Bb"],
+      ["casing.query.bareKey", "/EN-001/contact?x", "/en-001/contact?x"],
+      ["casing.query.bareAndEmpty", "/EN-001/contact?x&y=", "/en-001/contact?x&y="],
+      ["casing.query.empty", "/EN-001/contact?", "/en-001/contact?"],
+      ["casing.query.percentHexCase", "/EN-001/contact?f=%2f&g=%2F", "/en-001/contact?f=%2f&g=%2F"],
+      ["casing.query.unreservedEscapes", "/EN-001/contact?r=%7E&s=%41", "/en-001/contact?r=%7E&s=%41"],
+      ["casing.query.escapedPercent", "/EN-001/contact?p=%2520", "/en-001/contact?p=%2520"],
+      ["casing.query.platformAndPageCase", "/DE-DE/About?c=a%20b", "/de-de/about?c=a%20b"],
+    ];
+    for (const [label, sent, expected] of byteExact) {
+      redirectsOnce(label, await request(FOUNDATION_HOST, sent), expected);
+    }
 
     // ── 4. A Page route's case is NOT identity (`D43`): served, never redirected ──────────────────
     // The authored Page is `/de-de/about`, so every spelling of that route must reach the SAME Page with a

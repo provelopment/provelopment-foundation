@@ -30,6 +30,25 @@ const nextConfig: NextConfig = {
    */
   devIndicators: false,
   /**
+   * THE VISITOR'S OWN REQUEST TARGET REACHES THE BOUNDARY (`D40` Decision B, `R04-C34`)
+   * ==============================================================================
+   *
+   * A casing redirect must carry the visitor's ORIGINAL query text — every percent-escape spelling, the
+   * order of keys, repeated keys, a literal `+`, a bare key and even an empty `?` — byte for byte.
+   * `src/proxy.ts` already forwards that text from `request.url` (`rawQueryOf`), but by default Next.js does
+   * not hand the proxy the request it received: it REBUILDS the middleware URL from the parsed query
+   * through `URLSearchParams` (`runMiddleware`, `next-server.js`), which decodes and re-serialises it.
+   * Measured in both `next dev` and `next start` before this option — `?c=a%20b` arrived as `?c=a+b`, `?x`
+   * as `?x=`, a bare `?` vanished, `%2f` became `%2F` and `%41` became `A`.
+   *
+   * `skipProxyUrlNormalize` is the platform's own control for exactly this: the proxy is handed the
+   * request's `initURL` — the unmodified request target — instead of the rebuilt one. It changes the URL
+   * STRING given to middleware/proxy only. Routing, the matcher below, trailing-slash handling,
+   * RSC/flight dispatch, the App Router and every response this application builds were re-measured
+   * unchanged with it enabled, so the visitor's bytes reach the boundary and the ONE `308` carries them.
+   */
+  skipProxyUrlNormalize: true,
+  /**
    * THE PINNED MODULE'S NODENEXT SPECIFIERS (FOUNDATION-RELEASE-CANDIDATE-A1)
    * =======================================================================
    *

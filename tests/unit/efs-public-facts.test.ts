@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { resolveProperties, type PropertyOwner } from "@/core/efs/properties";
-import { PUBLIC_FACT_KEYS, resolvePublicFacts } from "@/core/efs/public-facts";
+import { PUBLIC_FACT_KEYS, ownerAssetReference, resolvePublicFacts } from "@/core/efs/public-facts";
 
 const entity = "e_00000000000000000000000000";
 
@@ -114,5 +114,93 @@ describe("D40 Decision C — source precedence, keyed on the cascade", () => {
       configured,
     );
     expect(suppressed.get("contact.email").state).toBe("suppressed");
+  });
+});
+
+/**
+ * `D40` DECISION C (`R04-C31`) — THE LOGO'S PRECEDENCE AND ITS FORM
+ * =================================================================
+ *
+ * `brand.logo` is artwork, so it needs two answers: WHETHER anything may be published (the cascade, proved
+ * here exactly as for every other fact) and WHETHER the declared bytes are owner-bound artwork at all (the
+ * form check). Neither answer may ever produce configured or foreign artwork, and a declaration owns the
+ * precedence slot even when it publishes nothing.
+ */
+describe("D40 Decision C — the logo is a cascade fact with its own form", () => {
+  const configuredWithLogo = { ...configured, "brand.logo": "https://www.example.com/assets/logo.svg" };
+
+  it("publishes a declared public logo and refuses the configured artwork", () => {
+    const facts = resolvePublicFacts(
+      effective({ "brand.logo": { value: "/brand/logo.svg", public: true } }),
+      configuredWithLogo,
+    );
+    expect(facts.get("brand.logo")).toMatchObject({
+      value: "/brand/logo.svg",
+      state: "declared",
+      originLevel: "entity",
+    });
+  });
+
+  it("refuses the configured logo when the declaration is private or suppressed", () => {
+    const priv = resolvePublicFacts(
+      effective({ "brand.logo": { value: "/brand/private.svg", public: false } }),
+      configuredWithLogo,
+    );
+    expect(priv.get("brand.logo")).toMatchObject({ value: undefined, state: "private" });
+    // A `null` child blocks a public ancestor: the block is inherited suppression, not absence.
+    const suppressed = resolvePublicFacts(
+      effective(
+        { "brand.logo": { value: "/brand/logo.svg", public: true } },
+        { "brand.logo": null },
+      ),
+      configuredWithLogo,
+    );
+    expect(suppressed.get("brand.logo")).toMatchObject({ value: undefined, state: "suppressed" });
+  });
+
+  it("falls back to the configured logo ONLY when no level declares one", () => {
+    const facts = resolvePublicFacts(effective({}), configuredWithLogo);
+    expect(facts.get("brand.logo")).toMatchObject({
+      value: "https://www.example.com/assets/logo.svg",
+      state: "fallback",
+    });
+    const none = resolvePublicFacts(effective({}));
+    expect(none.get("brand.logo").state).toBe("absent");
+  });
+
+  it("takes the nearest declaration when a child overrides an ancestor", () => {
+    const facts = resolvePublicFacts(
+      effective(
+        { "brand.logo": { value: "/brand/entity.svg", public: true } },
+        { "brand.logo": { value: "/brand/page.svg", public: true } },
+      ),
+      configuredWithLogo,
+    );
+    expect(facts.get("brand.logo")).toMatchObject({ value: "/brand/page.svg", originLevel: "representation" });
+  });
+});
+
+describe("D40 Decision C — ownerAssetReference is the ONE form check", () => {
+  it("accepts an owner-bound relative reference, with or without a leading separator", () => {
+    expect(ownerAssetReference("/brand/logo.svg")).toBe("brand/logo.svg");
+    expect(ownerAssetReference("brand/logo.svg")).toBe("brand/logo.svg");
+    expect(ownerAssetReference("/brand/nested/mark.svg")).toBe("brand/nested/mark.svg");
+  });
+
+  it("refuses anything that is not owner-bound artwork", () => {
+    // Another origin, a protocol-relative address, a non-http scheme, a traversal, an encoded separator,
+    // a foreign separator, an empty segment, and an empty value: each publishes nothing at all.
+    expect(ownerAssetReference("https://www.example.com/assets/logo.svg")).toBeUndefined();
+    expect(ownerAssetReference("//www.example.com/logo.svg")).toBeUndefined();
+    expect(ownerAssetReference("javascript:alert(1)")).toBeUndefined();
+    expect(ownerAssetReference("../../etc/passwd")).toBeUndefined();
+    expect(ownerAssetReference("/brand/../logo.svg")).toBeUndefined();
+    expect(ownerAssetReference("/brand%2Flogo.svg")).toBeUndefined();
+    expect(ownerAssetReference("brand\\logo.svg")).toBeUndefined();
+    expect(ownerAssetReference("/brand//logo.svg")).toBeUndefined();
+    expect(ownerAssetReference("/")).toBeUndefined();
+    expect(ownerAssetReference("")).toBeUndefined();
+    expect(ownerAssetReference("   ")).toBeUndefined();
+    expect(ownerAssetReference(undefined)).toBeUndefined();
   });
 });

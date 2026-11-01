@@ -26,6 +26,7 @@
  * no new typing and no second resolver is introduced. Pure functions: no I/O, no React.
  */
 
+import { normalizePrefix } from "@/core/efs/publication";
 import type { EffectiveProperties, PropertyLevel } from "@/core/efs/properties";
 
 /**
@@ -37,16 +38,18 @@ import type { EffectiveProperties, PropertyLevel } from "@/core/efs/properties";
  * name. It is resolved and exposed so `D40`-C covers it, and consumed only by a proper contact-name
  * consumer — of which there is none in the EFS shell today (`GEO-02-R02` C1).
  *
- * `brand.logo` is deliberately NOT here. It is an asset reference, and the EFS shell resolves
- * branding graphics through the asset catalog (binding-scoped `owner-assets` paths versus absolute
- * catalog URLs). Ordering those two representations is asset work, not source precedence, and
- * belongs with the `GEO-03` asset migration. Including it here would either break header resolution
- * or produce a JSON-LD logo that contradicts the header — the very contradiction `D40` Decision C
- * forbids. Its behaviour is therefore unchanged, which is the safe state: one existing behaviour,
- * not two competing ones.
+ * `brand.logo` IS a fact of this mechanism (`D40` Decision C, `R04-C31`), and it is a STRING fact in
+ * exactly the sense above: the precedence question — declared, private, suppressed or absent — is the same
+ * question, answered once, from the same cascade. What differs is the FORM of the value (`D40` §3.2): an
+ * EFS logo names artwork the owner published in its own capsule, so it is a relative reference that
+ * `assetUrl()` turns into the binding's `owner-assets` address, while a configured Spoke logo is served
+ * through that Spoke's existing runtime asset catalog. `ownerAssetReference()` below is that one form check;
+ * each consumer applies the representation it is responsible for, so the header, the page and the
+ * metadata cannot disagree about WHICH source won, or about whether anything may be published at all.
  */
 export const PUBLIC_FACT_KEYS = [
   "brand.name",
+  "brand.logo",
   "contact.name",
   "contact.email",
   "contact.phone",
@@ -84,6 +87,36 @@ export type PublicFactFallback = Readonly<Partial<Record<PublicFactKey, string |
 
 function usable(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+/**
+ * The owner-bound reference a declared `brand.logo` names, or `undefined` when it names none.
+ *
+ * An EFS `brand.logo` is artwork the OWNER published inside its own capsule, so the only publishable form is
+ * a relative reference that `assetUrl()` turns into this binding's `owner-assets` address. Everything else is
+ * refused rather than resolved (`D40` §3.2, §3.3):
+ *
+ *   · an absolute or protocol-relative URL would send the visitor, or the metadata, to an arbitrary origin;
+ *   · a traversal (`.`/`..`), an encoded separator (`%2F`), a backslash or an empty segment would address a
+ *     file the owner did not publish under that name;
+ *   · an empty value is nothing to publish.
+ *
+ * A refusal yields NO logo — never the configured artwork and never another owner's artwork. That is why this
+ * is a FORM check and not a fallback trigger: the caller decides publication from the cascade, and this
+ * function only answers whether the declared bytes may be pointed at.
+ */
+export function ownerAssetReference(value: string | undefined): string | undefined {
+  const trimmed = usable(value);
+  if (trimmed === undefined) return undefined;
+  if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(trimmed)) return undefined;
+  const parts = trimmed.replace(/^\//, "").split("/");
+  if (parts.some((part) => part.length === 0)) return undefined;
+  try {
+    const segments = normalizePrefix(parts);
+    return segments.length === 0 ? undefined : segments.join("/");
+  } catch {
+    return undefined;
+  }
 }
 
 /**

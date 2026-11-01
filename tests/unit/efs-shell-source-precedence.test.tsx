@@ -1,8 +1,9 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { efsShellPresentationConfig } from "@/app/[[...segments]]/server-composition";
+import { efsResolvedBrandLogo, efsShellPresentationConfig } from "@/app/[[...segments]]/server-composition";
 import type { EfsView } from "@/app/[[...segments]]/efs-request";
+import { EfsPageView } from "@/components/efs/efs-page";
 import { StructuredData } from "@/components/site/structured-data";
 import type { SiteConfig } from "@/config/site-config";
 
@@ -285,5 +286,148 @@ describe("R02-C3 — the same resolved fact reaches the metadata", () => {
     );
     expect(markup).not.toContain("+1 555 0200");
     expect(markup).not.toContain("+1 555 0100");
+  });
+});
+
+/**
+ * `D40` DECISION C (`R04-C31`) — THE BRAND LOGO: ONE DECISION, EVERY CONSUMER
+ * =========================================================================
+ *
+ * `brand.logo` is artwork, not a string fact, so it gets its own matrix: the CASCADE decides whether anything
+ * may be published, and the declaration's FORM decides whether the bytes may be pointed at. This suite drives
+ * the ONE composition that the rendered HTML and the metadata both read, so a state that publishes art in the
+ * header and nothing in the JSON-LD — or the reverse — cannot pass.
+ */
+const ORIGIN = "https://portal.example";
+const EFS_LOGO_PATH = "/main/owner-assets/brand/logo.svg";
+const CONFIGURED = "https://configured.example/assets";
+
+/** A Spoke that DOES ship its own artwork: the losing source in every case but `absent`. */
+function sourceWithLogo(): SiteConfig {
+  return {
+    ...source(),
+    assets: {
+      logo: `${CONFIGURED}/logo-header.svg`,
+      logoCompact: `${CONFIGURED}/logo-compact.svg`,
+      logoFooter: `${CONFIGURED}/logo-footer.svg`,
+    },
+    logo: `${CONFIGURED}/logo-legacy.svg`,
+  } as unknown as SiteConfig;
+}
+
+/** The same view, completed with what only the SHELL-FREE page reads. */
+function pageView(properties: Props): EfsView {
+  return {
+    ...view(properties),
+    locale: "en-001",
+    alternates: [],
+    navigation: [],
+    entity: { id: entityId },
+    context: { runtimeSegment: "main", siteConfig: { communication: undefined } },
+    source: { format: "json", data: { title: "About" }, document: undefined },
+  } as unknown as EfsView;
+}
+
+const structuredMarkup = (composed: SiteConfig) =>
+  renderToStaticMarkup(<StructuredData locale="en-001" siteConfig={composed} />);
+
+describe("D40 Decision C — the brand logo keeps ONE decision across HTML and metadata", () => {
+  it("publishes the owner-bound EFS artwork and drops every configured logo surface", () => {
+    const v = view({ "brand.logo": { value: "/brand/logo.svg", public: true } });
+    const composed = efsShellPresentationConfig(sourceWithLogo(), v)!;
+
+    // The METADATA form is the canonical absolute owner-assets URL …
+    expect(composed.assets?.logo).toBe(`${ORIGIN}${EFS_LOGO_PATH}`);
+    // … the HTML form is the same decision as a same-origin path …
+    expect(efsResolvedBrandLogo(v)).toBe(EFS_LOGO_PATH);
+    // … and the losing source's primary, compact, footer and legacy artwork are all withdrawn, so no
+    // viewport and no metadata channel can resurrect the configured brand.
+    expect(composed.assets?.logoCompact).toBeUndefined();
+    expect(composed.assets?.logoFooter).toBeUndefined();
+    expect(composed.logo).toBeUndefined();
+
+    const markup = structuredMarkup(composed);
+    expect(markup).toContain(`${ORIGIN}${EFS_LOGO_PATH}`);
+    expect(markup).not.toContain("configured.example");
+  });
+
+  it("keeps the configured logo, compact and footer artwork when NOTHING declares a logo", () => {
+    const v = view({});
+    const composed = efsShellPresentationConfig(sourceWithLogo(), v)!;
+
+    expect(composed.assets?.logo).toBe(`${CONFIGURED}/logo-header.svg`);
+    expect(composed.assets?.logoCompact).toBe(`${CONFIGURED}/logo-compact.svg`);
+    expect(composed.assets?.logoFooter).toBe(`${CONFIGURED}/logo-footer.svg`);
+    expect(composed.logo).toBe(`${CONFIGURED}/logo-legacy.svg`);
+    // Nothing overrides the configured path, so the header resolves it exactly as before this decision.
+    expect(efsResolvedBrandLogo(v)).toBeUndefined();
+    expect(structuredMarkup(composed)).toContain(`${CONFIGURED}/logo-header.svg`);
+  });
+});
+
+
+describe("D40 Decision C — a blocked or refused declaration publishes nothing anywhere", () => {
+  it("publishes NOTHING when the declaration is private — the configured artwork is not resurrected", () => {
+    const v = view({ "brand.logo": { value: "/brand/private.svg", public: false } });
+    const composed = efsShellPresentationConfig(sourceWithLogo(), v)!;
+
+    expect(composed.assets?.logo).toBeUndefined();
+    expect(composed.assets?.logoCompact).toBeUndefined();
+    expect(composed.assets?.logoFooter).toBeUndefined();
+    expect(composed.logo).toBeUndefined();
+    expect(efsResolvedBrandLogo(v)).toBeUndefined();
+
+    // The metadata must not leak the private reference, the configured artwork, or a made-up logo.
+    const markup = structuredMarkup(composed);
+    expect(markup).not.toContain("/brand/private.svg");
+    expect(markup).not.toContain("configured.example");
+    expect(markup).not.toContain("logo");
+  });
+
+  it("publishes NOTHING when the declaration suppresses the inherited logo", () => {
+    const v = view({ "brand.logo": null });
+    const composed = efsShellPresentationConfig(sourceWithLogo(), v)!;
+
+    expect(composed.assets?.logo).toBeUndefined();
+    expect(composed.assets?.logoCompact).toBeUndefined();
+    expect(efsResolvedBrandLogo(v)).toBeUndefined();
+    expect(structuredMarkup(composed)).not.toContain("configured.example");
+  });
+
+  it("refuses a declared logo that is not owner-bound artwork, and never falls back", () => {
+    // A declaration occupies the precedence slot even when it may not be pointed at: another origin here,
+    // a traversal there. Neither publishes configured art, another owner's art, or a broken address.
+    for (const value of ["https://elsewhere.example/logo.svg", "../../secrets/logo.svg"]) {
+      const v = view({ "brand.logo": { value, public: true } });
+      const composed = efsShellPresentationConfig(sourceWithLogo(), v)!;
+      expect(composed.assets?.logo).toBeUndefined();
+      expect(composed.assets?.logoCompact).toBeUndefined();
+      expect(efsResolvedBrandLogo(v)).toBeUndefined();
+      const markup = structuredMarkup(composed);
+      expect(markup).not.toContain("configured.example");
+      expect(markup).not.toContain("elsewhere.example");
+    }
+  });
+
+  it("agrees with the shell-free EFS Page in every state", () => {
+    // The shell-free document resolves the SAME reference through the SAME form check, so the two render modes
+    // cannot disagree about which source won, or about whether anything may be published at all.
+    const published = renderToStaticMarkup(
+      <EfsPageView view={pageView({ "brand.logo": { value: "/brand/logo.svg", public: true } })} />,
+    );
+    expect(published).toContain(`src="${EFS_LOGO_PATH}"`);
+
+    const blocked = renderToStaticMarkup(
+      <EfsPageView view={pageView({ "brand.logo": { value: "/brand/private.svg", public: false } })} />,
+    );
+    expect(blocked).not.toContain("<img");
+
+    const refused = renderToStaticMarkup(
+      <EfsPageView
+        view={pageView({ "brand.logo": { value: "https://elsewhere.example/logo.svg", public: true } })}
+      />,
+    );
+    expect(refused).not.toContain("<img");
+    expect(refused).not.toContain("elsewhere.example");
   });
 });

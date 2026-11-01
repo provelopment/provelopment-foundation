@@ -5,6 +5,7 @@ import { publicContactLinkResolver } from "@/adapters/connect/public-contact";
 import { EfsContactForm } from "@/components/efs/efs-contact-form";
 import { EfsScheduleStatus, type EfsScheduleStatusLabels } from "@/components/efs/efs-schedule-status";
 import { assetUrl } from "@/core/efs/publication";
+import { ownerAssetReference } from "@/core/efs/public-facts";
 import { publicScheduleInputs } from "@/core/efs/opening-schedule";
 
 import type { EfsView } from "@/app/[[...segments]]/efs-request";
@@ -32,10 +33,14 @@ export function EfsPageView({
   const valueOf = (key: string) => publicProperties.find((entry) => entry.key === key)?.value;
   const siteName = valueOf("brand.name");
   const logo = valueOf("brand.logo");
-  const logoPath =
-    typeof logo === "string" && logo.trim().length > 0 && !/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(logo.trim())
-      ? assetUrl(view.binding, logo)
-      : undefined;
+  /**
+   * `D40` Decision C (`R04-C31`) — the SAME form check the shared shell applies, so the shell-free document
+   * and the shelled one can never disagree about whether the declared reference is publishable artwork. A
+   * reference that is not owner-bound (an absolute URL, a traversal, an encoded separator) publishes nothing
+   * — never the configured artwork, and never another owner's.
+   */
+  const logoReference = ownerAssetReference(typeof logo === "string" ? logo : undefined);
+  const logoPath = logoReference === undefined ? undefined : assetUrl(view.binding, logoReference);
   const address = valueOf("contact.address");
   const phone = valueOf("contact.phone");
   const openingHours = valueOf("openingHours");

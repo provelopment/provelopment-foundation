@@ -48,6 +48,16 @@ interface SiteHeaderProps {
      * context the composition was built for, so two contexts cannot share a header decision.
      */
     readonly siteConfig: SiteConfig;
+    /**
+     * `D40` Decision C (`R04-C31`) — the ALREADY RESOLVED brand logo of the EFS publication, as a
+     * same-origin `owner-assets` path, or absent when the publication resolved none.
+     *
+     * It is a resolved ADDRESS, not a configured asset: the composition made the source decision and applied
+     * the owner-assets representation, so this component must never pass it through the runtime catalog.
+     * Absent leaves the existing configured-logo path — and its compact alternate — exactly as it was, so a
+     * non-EFS composition is unaffected.
+     */
+    readonly resolvedLogoSrc?: string;
     /** M13 — that same context's dictionary answers (the header reads ITS site's dictionary). */
     readonly dictionaryAccess: RuntimeDictionaryAccess;
     /** M13 — that same context's asset resolver (server-only; never handed to a client component). */
@@ -128,6 +138,7 @@ export function SiteHeader({
     siteConfig,
     dictionaryAccess,
     assets,
+    resolvedLogoSrc,
 }: SiteHeaderProps) {
     const dictionary: Dictionary = dictionaryAccess.get(
         locale,
@@ -207,7 +218,13 @@ export function SiteHeader({
     // that Spoke's namespace; intrinsic aspect ratio is
     // preserved (`h-8 w-auto`, responsive); accessible name = the site name.
     // Absent config → the previous text brand link (graceful, never broken).
-    const headerLogoSrc = assets.runtimeAssetUrl(siteConfig.assets?.logo);
+    //
+    // `D40` Decision C (`R04-C31`) — when the EFS publication resolved a logo of its own, the address is
+    // ALREADY the binding's same-origin `owner-assets` path. It is used verbatim: handing an owner-assets
+    // path to `runtimeAssetUrl` would re-derive it from the basename in the Spoke's catalog namespace, which
+    // is exactly the "EFS URL through a catalog lookup" confusion the decision forbids. Absent means nothing
+    // may be published from either source, so the text brand link stands.
+    const headerLogoSrc = resolvedLogoSrc ?? assets.runtimeAssetUrl(siteConfig.assets?.logo);
     /**
      * FOUNDATION-UI-R1F — THE COMPACT ALTERNATIVE (`site.assets.logoCompact`, the `logo-compact` role).
      *
@@ -220,7 +237,8 @@ export function SiteHeader({
      * before this milestone: no markup, no attribute and no network request is added to an installation that
      * configures no compact artwork.
      */
-    const headerCompactLogoSrc = assets.runtimeAssetUrl(siteConfig.assets?.logoCompact);
+    const headerCompactLogoSrc =
+        resolvedLogoSrc === undefined ? assets.runtimeAssetUrl(siteConfig.assets?.logoCompact) : undefined;
     // P12-HG — the optional decorative header band (`site.assets.headerGraphic`,
     // the `header-graphic` role). Resolved on the SERVER through the shared
     // availability rule, so a configured-but-missing file resolves to

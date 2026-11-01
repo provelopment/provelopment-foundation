@@ -47,7 +47,7 @@ function seed(): string {
   delete config.site.tagline;
   delete config.site.description;
   config.publication = { host: "published.example.test" };
-  config.sites = [{ code: "ww", label: "Global", locales: ["en"], defaultLocale: "en" }];
+  config.sites = [{ code: "ww", label: "Global", locales: ["en-001"], defaultLocale: "en-001" }];
   config.defaultSite = "ww";
   delete config.business;
   writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`, "utf8");
@@ -77,14 +77,14 @@ describe("publication authority is explicit and site.url is informational (R06)"
     expect(established.ok, established.ok ? "" : established.failure.message).toBe(true);
     if (!established.ok || efs === null) return;
 
-    const view = await efs.efsViewForCurrentRequest(["ww", "en", "about"]);
+    const view = await efs.efsViewForCurrentRequest(["ww", "en-001", "about"]);
     expect(view).not.toBeNull();
     if (view === null) return;
     expect(view.binding.host).toBe("published.example.test");
-    expect(view.canonical).toBe("https://published.example.test/ww/en/about");
+    expect(view.canonical).toBe("https://published.example.test/ww/en-001/about");
     expect(assetUrl(view.binding, ["brand", "logo.svg"])).toBe("/ww/owner-assets/brand/logo.svg");
 
-    await expect(efs.efsViewForCurrentRequest([])).rejects.toThrow("REDIRECT:/ww/en");
+    await expect(efs.efsViewForCurrentRequest([])).rejects.toThrow("REDIRECT:/ww/en-001");
     const sitemap = await efs.efsSitemapForCurrentRequest();
     expect(sitemap).not.toBeNull();
     expect(sitemap?.every((entry) => entry.url.startsWith("https://published.example.test/ww/"))).toBe(

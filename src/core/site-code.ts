@@ -108,8 +108,16 @@ export function siteCodeIssue(value: string): string | null {
   );
 }
 
-/** The default display label for a site code: the country code, or `Worldwide` for `ww`. */
+/**
+ * The default display label for a site code.
+ *
+ * `Worldwide` for the reserved `ww`, the upper-case country code for a country (`de` → `DE`), and —
+ * since `GEO-03` R04 made a Spoke Site code a descriptive presentation identity — the code ITSELF for
+ * any other well-formed key (`main` → `main`). Upper-casing a descriptive key would shout a word the
+ * author wrote as a word.
+ */
 export function defaultSiteLabel(code: string): string {
   const normalized = normalizeSiteCode(code);
-  return isWorldwideSiteCode(normalized) ? "Worldwide" : normalized.toUpperCase();
+  if (isWorldwideSiteCode(normalized)) return "Worldwide";
+  return COUNTRY_SITE_CODES.includes(normalized) ? normalized.toUpperCase() : normalized;
 }

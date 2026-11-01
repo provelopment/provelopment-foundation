@@ -135,7 +135,12 @@ async function renderFooter(overrides: Record<string, unknown>): Promise<string>
   return renderToStaticMarkup(
     await SiteFooter({
       siteConfig: active,
-      dictionaryAccess: { get: (locale, siteCode) => getDictionary(locale, siteCode) },
+      dictionaryAccess: {
+        get: (locale, siteCode) => getDictionary(locale, siteCode),
+        // Chrome always renders (`@/config/i18n`'s accepted request-locale-else-default contract);
+        // only the computed-status consumer asks whether a dictionary APPLIES (`GEO-02-R03` B).
+        applicable: () => true,
+      },
       assets: createRuntimeAssetOwnershipResolver(deploymentPaths().runtimeAssetNamespaces),
       routes: createPageSources({ sites: active.sites }),
       locale: active.defaultLocale,

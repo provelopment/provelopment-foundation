@@ -369,6 +369,10 @@ describe("a cached projection is trusted only while it is current (R08-C)", () =
   });
 
   it("refuses a hierarchy that no longer owns a publication, then accepts a restored one", async () => {
+    // R04-C16 — TIMING BUDGET, not a validation change. This is the heaviest case in the file: it materialises a
+    // whole Installation and runs `producePublicationProjection` twice, and its siblings already report 2.5–6.1 s
+    // under a full parallel run (232 files). The default 5,000 ms budget was overrun by 27 ms under contention
+    // (measured 5,027.7 ms), so the budget is stated explicitly. Every assertion below is unchanged.
     const installation = await projected();
     const original = readFileSync(installation.manifestFile, "utf8");
     const declarations = JSON.parse(original);
@@ -404,7 +408,7 @@ describe("a cached projection is trusted only while it is current (R08-C)", () =
     expect(restored.status, JSON.stringify(restored)).toBe("projected");
     expect(projectedClaims(installation.root, installation.efsManifestFile)).toHaveLength(5);
     expect(removed.id).toBe("alpha");
-  });
+  }, 20_000);
 
   it("grants nothing when the projection describes another manifest", async () => {
     const installation = await projected();

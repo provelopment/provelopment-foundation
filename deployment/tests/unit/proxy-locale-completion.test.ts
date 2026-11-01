@@ -4,21 +4,44 @@ import { describe, expect, it } from "vitest";
 // it lives in the deployment capsule (`deployment/tests/**`, FOUNDATION-DEPLOYMENT-ISO-B2A) and runs in
 // the `deployment` Vitest project, whose setup selects the REAL installed deployment
 // (`tests/setup/real-deployment.ts`, ISO-H2). Its subject is the real capsule, never a fixture.
+import { join } from "node:path";
+
 import { NextRequest } from "next/server";
 
-import { completePublicPath } from "@/app/[[...segments]]/spoke-navigation";
+import { loadEfsManifest } from "@/config/efs/manifest";
 import { SPOKE_SELECTION_HEADER } from "@/config/spoke-selection";
+import {
+  canonicalUrl,
+  contentSegments,
+  entryRedirectPath,
+  matchBinding,
+  parseContentRoute,
+  type EfsBinding,
+} from "@/core/efs/publication";
 import { foundationConfig as siteConfig } from "../support/spoke-contexts";
 import { proxy } from "@/proxy";
 
-/** The path a request is COMPLETED to inside its Spoke, or `null` when it is already complete. */
-function completionFor(path: string, headers: Record<string, string> = {}): string | null {
-  const segments = path.split("/").filter(Boolean);
-  const completion = completePublicPath(siteConfig, segments, {
-    cookieLocale: headers["cookie"]?.split("=")[1],
-    acceptLanguage: headers["accept-language"],
-  });
-  return "redirectPath" in completion ? completion.redirectPath : null;
+/**
+ * R04-C13 §3 — the authority for language and route completion is the EFS PUBLICATION, not the retired
+ * geographic completer. `completePublicPath` and the legacy Page resolver answer for a Site-and-country
+ * deployment that no longer exists here; asking them to define migrated behavior would be asking the
+ * reference to pretend to be geographic. These helpers read the deployment's REAL manifest instead, so
+ * every expectation below is measured against the binding this host actually declares.
+ */
+const DEPLOYMENT_MANIFEST = join(process.cwd(), "deployment", "efs", "manifest.json");
+const BINDINGS: EfsBinding[] = loadEfsManifest(DEPLOYMENT_MANIFEST).manifest!.publications.flatMap(
+  (publication) => publication.bindings,
+);
+const FOUNDATION_HOST = "foundation-template.provelopment.com";
+const GERMANY_HOST = "foundation-template-germany.provelopment.com";
+const foundationWeb = BINDINGS.find((binding) => binding.id === "foundation-web")!;
+const germanyWeb = BINDINGS.find((binding) => binding.id === "germany-web")!;
+
+/** The binding a host selects and the route its remaining segments parse to, or `null` when unclaimed. */
+function resolve(host: string, path: string) {
+  const matched = matchBinding(host, path, BINDINGS);
+  if (matched === null) return null;
+  return { matched, parsed: parseContentRoute(matched.binding, matched.remaining) };
 }
 
 /**
@@ -45,90 +68,150 @@ function statusFor(path: string, host = "foundation-template.provelopment.com"):
 }
 
 /**
- * FOUNDATION-R1B — A LINK'S LANGUAGE SURVIVES THE REDIRECT THAT COMPLETES IT
- * =========================================================================
+ * FOUNDATION-R1B / GEO-03 R04-C13 — THE LANGUAGE A PUBLISHED URL NAMES, AND THE ONE IT NEGOTIATES
+ * ==============================================================================================
  *
- * Every public URL is `/<site>/<locale>/<route>`; the site-less locale form (`/de/about`) is the
- * one spelling a page can still emit (a JSON action's `route` destination is resolved as
- * `/<locale>/<route>`), and `src/proxy.ts` completes it into the site-scoped URL.
+ * Both publications declare a Site-CLOSED binding with an EMPTY prefix, so the public shape is
+ * `/<locale>/<route>`: `/en-001/about`, `/de-de/about`. There is no Site segment to emit — `main` is the
+ * Site's identity, not a public path — and no country is a language.
  *
- * Once a deployment serves MORE THAN ONE language, that completion must not be decided by
- * `NEXT_LOCALE`: `/de/about` is German, whatever the visitor's cookie says, exactly as the
- * site-scoped form `/ww/de/about` never negotiates at all. This file pins that rule — and pins
- * that a path which names NO locale still negotiates (cookie, then `Accept-Language`, then the
- * deployment default).
+ * R04-C13 retired the geographic spellings from THIS suite. `completePublicPath` still exists and is still
+ * exercised directly by `tests/unit/location-selection.test.ts`; what changed is that this deployment file
+ * no longer asks the retired completer to define migrated behavior. Everything below goes through the EFS
+ * binding, route parse, canonical destination and entry redirect that actually serve the reference.
  */
 const REFERENCE = siteConfig.defaultSite.code;
 /**
- * M18 — the Germany SITE now belongs to the GERMANY SPOKE, so `de` is not a site code OF THIS SPOKE any
- * more. What remains true of the Foundation Spoke is that `de` is one of ITS LOCALES (`/ww/de/**`), which
- * is exactly the distinction the assertions below draw: a LOCALE named `de` completes into this Spoke,
- * while a SITE named `de` is answered only by the Germany Spoke (§22/§23).
+ * M18 — `de` is neither a Site of this publication nor one of its locales: the qualified identity is
+ * `de-DE` and the public path key is `de-de`. What remains true is that a German SITE belongs to the
+ * Germany publication, while this host serves German as one of ITS OWN locales.
  */
 const GERMANY = "de";
 
-/**
- * The `Location` a request is COMPLETED to inside its Spoke, or `null` when the path is already complete.
- *
- * M16 — completion moved from the request boundary into the Spoke the host selected, because it is a decision
- * about ONE Spoke's Sites and locales. The RULES are unchanged, and so is the resulting public path.
- */
-function redirectFor(path: string, headers: Record<string, string> = {}): string | null {
-  return completionFor(path, headers);
-}
-
 describe("an explicit locale in the path is authoritative", () => {
   it("keeps English when the visitor's cookie says German", () => {
-    // `en` is a locale, not a site code, so `/en/about` is the site-less locale form of the
-    // DEFAULT site — and the URL's language wins over the stored preference.
-    expect(
-      completionFor("/en/about", { cookie: "NEXT_LOCALE=de", "accept-language": "de-DE,de" }),
-    ).toBe(`/${REFERENCE}/en/about`);
+    // A published URL names its own representation, and negotiation is an ENTRY decision: it happens at the
+    // binding root and never to a URL that already names a locale. So the URL's language wins over the
+    // stored preference, and the request stays inside its own Page and Entity.
+    const named = resolve(FOUNDATION_HOST, "/en-001/about");
+    expect(named?.parsed).toEqual({
+      kind: "route",
+      route: { siteId: "main", locale: "en-001", localeKey: "en-001", pageRoute: ["about"] },
+    });
+    if (named?.parsed.kind === "route") {
+      expect(canonicalUrl(named.matched.canonicalBinding, named.parsed.route)).toBe(
+        `https://${FOUNDATION_HOST}/en-001/about`,
+      );
+    }
+    // The SAME preferences, consulted where they belong — at entry — would select German.
+    expect(entryRedirectPath(foundationWeb, { cookie: "de-DE", acceptLanguage: "de-DE,de" })).toBe("/de-de/");
   });
 
   it("completes a bare locale path to that locale's root", () => {
-    expect(redirectFor("/en", { "accept-language": "de-DE,de" })).toBe(`/${REFERENCE}/en`);
+    // The Site is closed and the prefix empty, so `/en-001` IS the locale root: already complete, and it
+    // needs no Site segment. The entry address is what completes INTO it.
+    const root = resolve(FOUNDATION_HOST, "/en-001");
+    expect(root?.parsed).toEqual({
+      kind: "route",
+      route: { siteId: "main", locale: "en-001", localeKey: "en-001", pageRoute: [] },
+    });
+    if (root?.parsed.kind === "route") {
+      expect(contentSegments(root.matched.binding, root.parsed.route)).toEqual(["en-001"]);
+      expect(canonicalUrl(root.matched.canonicalBinding, root.parsed.route)).toBe(
+        `https://${FOUNDATION_HOST}/en-001`,
+      );
+    }
+    expect(entryRedirectPath(foundationWeb, { acceptLanguage: "de-DE,de" })).toBe("/de-de/");
   });
 
-  it("treats `de` as THIS Spoke's LOCALE, never as a site it does not own (M18 §22)", () => {
-    // The Germany SITE belongs to the Germany Spoke now. On the Foundation Spoke `de` is one of the
-    // Foundation's own LOCALES, so the site-less locale form completes INSIDE this Spoke — `/ww/de/**` —
-    // and never into a Site this host does not claim. Nothing crosses to the other Spoke's origin.
-    expect(redirectFor("/de/about")).toBe(`/${REFERENCE}/de/about`);
-    expect(redirectFor("/de/about", { cookie: "NEXT_LOCALE=en" })).toBe(`/${REFERENCE}/de/about`);
-    expect(redirectFor("/de/about", { cookie: "NEXT_LOCALE=fr" })).toBe(`/${REFERENCE}/de/about`);
-    expect(redirectFor("/de")).toBe(`/${REFERENCE}/de`);
+  it("treats `de-DE` as THIS publication's LOCALE, never as a site it does not own (M18 §22)", () => {
+    // `de-DE` is the canonical identity and `de-de` its public path key — a LOCALE of this binding, served
+    // from this host's own Site. Nothing about it reaches the Germany publication's origin.
+    const german = resolve(FOUNDATION_HOST, "/de-de/about");
+    expect(german?.parsed).toEqual({
+      kind: "route",
+      route: { siteId: "main", locale: "de-DE", localeKey: "de-de", pageRoute: ["about"] },
+    });
+    if (german?.parsed.kind === "route") {
+      expect(canonicalUrl(german.matched.canonicalBinding, german.parsed.route)).toBe(
+        `https://${FOUNDATION_HOST}/de-de/about`,
+      );
+    }
+    // A retired geographic alias is NOT revived as a compatibility route: bare `de` is not a locale here.
+    expect(resolve(FOUNDATION_HOST, "/de")?.parsed).toEqual({
+      kind: "rejected",
+      reason: 'Unsupported locale "de".',
+    });
+  });
+});
+
+describe("an entry address negotiates the language it does not name", () => {
+  it("uses the declared default when the visitor expresses no preference", () => {
+    expect(entryRedirectPath(foundationWeb, {})).toBe("/en-001/");
   });
 
+  it("honours the cookie, then Accept-Language, then the declared default", () => {
+    expect(entryRedirectPath(foundationWeb, { cookie: "de-DE" })).toBe("/de-de/");
+    expect(entryRedirectPath(foundationWeb, { acceptLanguage: "de-DE,de;q=0.9" })).toBe("/de-de/");
+    // A preference the binding does not declare is not approximated, aliased, or guessed from a country.
+    expect(entryRedirectPath(foundationWeb, { acceptLanguage: "fr-FR,fr;q=0.9" })).toBe("/en-001/");
+    expect(entryRedirectPath(foundationWeb, { cookie: "fr" })).toBe("/en-001/");
+  });
+
+  it("negotiates each publication against ITS OWN declaration", () => {
+    expect(entryRedirectPath(germanyWeb, {})).toBe("/de-de/");
+    expect(entryRedirectPath(germanyWeb, { cookie: "en-001" })).toBe("/en-001/");
+  });
+});
+
+describe("a Site-closed binding publishes no Site segment", () => {
+  it("serves the locale root and the Page route at their own URLs", () => {
+    const served = [
+      ["/en-001", []],
+      ["/de-de", []],
+      ["/en-001/about", ["about"]],
+      ["/de-de/about", ["about"]],
+    ] as const;
+    for (const [path, pageRoute] of served) {
+      const resolved = resolve(FOUNDATION_HOST, path);
+      expect(resolved?.parsed.kind, path).toBe("route");
+      if (resolved?.parsed.kind === "route") {
+        expect(resolved.parsed.route.pageRoute, path).toEqual(pageRoute);
+        expect(canonicalUrl(resolved.matched.canonicalBinding, resolved.parsed.route), path).toBe(
+          `https://${FOUNDATION_HOST}${path}`,
+        );
+      }
+    }
+  });
+
+  it("refuses the retired Site prefixes instead of keeping them alive as routes", () => {
+    // `main` is the Site's IDENTITY and `ww` was an older geographic Site. Neither is a public segment: an
+    // empty-prefix binding has no Site segment to accept, and no alias is added for an obsolete URL.
+    for (const retired of ["/main/en-001", "/main/de-de-de/about", "/ww/de/about"]) {
+      expect(resolve(FOUNDATION_HOST, retired)?.parsed.kind, retired).toBe("rejected");
+    }
+  });
+});
+
+describe("a host resolves only the publication it claims", () => {
+  it("selects the binding that belongs to the request host", () => {
+    expect(resolve(FOUNDATION_HOST, "/en-001/about")?.matched.binding.id).toBe("foundation-web");
+    expect(resolve(GERMANY_HOST, "/en-001/about")?.matched.binding.id).toBe("germany-web");
+  });
+
+  it("gives an unclaimed host no public EFS Page at all", () => {
+    expect(resolve("unclaimed.example", "/en-001/about")).toBeNull();
+    expect(resolve("unclaimed.example", "/")).toBeNull();
+  });
+});
+
+describe("the retired geographic configuration is not revived", () => {
   it("declares no `de` SITE on the Foundation Spoke at all (M18 §22)", () => {
-    // The Site itself moved: the Foundation host owns `ww` and nothing else. A `/de/de…` URL on this host
-    // is therefore not completable into a Site — it fails closed (the browser proof asserts the refusal).
+    // The legacy installation stays a ONE-Site configuration until GEO-04 retires it: the Germany Site
+    // belongs to the Germany publication, so `/de/de…` cannot complete into a Site on this host. This is
+    // also the guard that stops the legacy config from quietly re-acquiring a geographic Site.
     expect(siteConfig.sites.map((site) => site.code)).toEqual([REFERENCE]);
     expect(siteConfig.sites.map((site) => site.code)).not.toContain(GERMANY);
-  });
-});
-
-describe("a path that names no locale still negotiates", () => {
-  it("uses the default locale when the visitor expresses no preference", () => {
-    expect(redirectFor("/about")).toBe(`/${REFERENCE}/${siteConfig.defaultLocale}/about`);
-  });
-
-  it("honours the cookie, then Accept-Language, then the default", () => {
-    expect(redirectFor("/about", { cookie: "NEXT_LOCALE=de" })).toBe(`/${REFERENCE}/de/about`);
-    expect(redirectFor("/about", { "accept-language": "de-DE,de;q=0.9" })).toBe(
-      `/${REFERENCE}/de/about`,
-    );
-    expect(redirectFor("/", { "accept-language": "fr-FR,fr;q=0.9" })).toBe(
-      `/${REFERENCE}/${siteConfig.defaultLocale}`,
-    );
-  });
-});
-
-describe("the site-scoped form is never redirected", () => {
-  it("serves both languages at their own URLs", () => {
-    expect(redirectFor("/ww/en")).toBeNull();
-    expect(redirectFor("/ww/de")).toBeNull();
-    expect(redirectFor("/ww/de/about", { cookie: "NEXT_LOCALE=en" })).toBeNull();
   });
 });
 
@@ -136,14 +219,14 @@ describe("the boundary selects the host's Spoke without touching the pathname (M
   const segment = "foundation";
 
   it("declares the claimed Spoke upstream and passes the PUBLIC path through unchanged", () => {
-    for (const path of ["/ww/en", "/ww/en/about", "/", "/about"]) {
+    for (const path of ["/main/en-001", "/main/en-001/about", "/", "/about"]) {
       expect(selectionFor(path), path).toBe(segment);
       expect(rewriteFor(path), path).toBeNull();
     }
   });
 
   it("never answers a DIRECT internal request: the namespace is retired, not a route", () => {
-    expect(statusFor(`/~spoke/${segment}/ww/en`)).toBe(404);
+    expect(statusFor(`/~spoke/${segment}/main/en-001`)).toBe(404);
     expect(statusFor("/~spoke")).toBe(404);
   });
 

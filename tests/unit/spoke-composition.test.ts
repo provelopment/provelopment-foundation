@@ -348,7 +348,7 @@ describe("failure aggregation", () => {
       {
         id: "demo",
         locator: spokeLocator("demo"),
-        config: siteConfigJson({ url: "https://demo.example.com", sites: [{ code: "canada" }] }),
+        config: siteConfigJson({ url: "https://demo.example.com", sites: [{ code: "Canada" }] }),
       },
     ]);
 
@@ -382,7 +382,7 @@ describe("failure aggregation", () => {
       {
         id: "foundation",
         locator: spokeLocator("foundation"),
-        config: siteConfigJson({ url: "https://foundation.example.com", sites: [{ code: "canada" }] }),
+        config: siteConfigJson({ url: "https://foundation.example.com", sites: [{ code: "Canada" }] }),
       },
       // A differently-shaped failure: the origin is not an absolute URL.
       { id: "demo", locator: spokeLocator("demo"), config: siteConfigJson({ url: "www.example.com" }) },
@@ -395,7 +395,7 @@ describe("failure aggregation", () => {
 
   it("keeps TODAY's error shape for a legacy failure (no Spoke wrapping)", () => {
     const root = legacyInstallation(
-      siteConfigJson({ url: "https://legacy.example.com", sites: [{ code: "canada" }] }),
+      siteConfigJson({ url: "https://legacy.example.com", sites: [{ code: "Canada" }] }),
     );
 
     const message = captureFailure(() => compose(root));

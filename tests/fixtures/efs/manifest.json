@@ -45,7 +45,7 @@
                       "locale": "en-001"
                     },
                     {
-                      "locale": "fr"
+                      "locale": "fr-FR"
                     }
                   ]
                 },
@@ -90,7 +90,7 @@
                   ],
                   "representations": [
                     {
-                      "locale": "fr"
+                      "locale": "fr-FR"
                     }
                   ]
                 }
@@ -150,7 +150,7 @@
           "defaultSiteId": "jakarta",
           "locales": [
             "en-001",
-            "fr",
+            "fr-FR",
             "fr-CA"
           ],
           "defaultLocale": "en-001"
@@ -176,7 +176,7 @@
           "defaultSiteId": "jakarta",
           "locales": [
             "en-001",
-            "fr",
+            "fr-FR",
             "fr-CA"
           ],
           "defaultLocale": "en-001"

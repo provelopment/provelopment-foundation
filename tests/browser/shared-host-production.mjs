@@ -315,12 +315,14 @@ export async function run() {
     const alphaNamespace = namespaceOf(installation.root, "alpha");
     const deltaNamespace = namespaceOf(installation.root, "delta");
 
-    // The published page coordinates, read from the manifest this build is pointed at.
+    // The published page coordinates, read from the manifest this build is pointed at. HOME is the binding's
+    // locale ROOT: the reserved `home` segment is an internal Page identity, not a public address, and is
+    // refused (GEO-03 R04-C23 / -R02). The ordinary Page coordinates below it are unaffected.
     const alphaBinding = bindingFor(installation.root, "alpha");
     const deltaBinding = bindingFor(installation.root, "delta");
-    const alphaHomePath = "/" + alphaBinding.prefix + "/" + alphaBinding.locale + "/home";
+    const alphaHomePath = "/" + alphaBinding.prefix + "/" + alphaBinding.locale;
     const alphaAboutPath = "/" + alphaBinding.prefix + "/" + alphaBinding.locale + "/about";
-    const deltaHomePath = "/" + deltaBinding.prefix + "/" + deltaBinding.locale + "/home";
+    const deltaHomePath = "/" + deltaBinding.prefix + "/" + deltaBinding.locale;
     const deltaAboutPath = "/" + deltaBinding.prefix + "/" + deltaBinding.locale + "/about";
 
     // Item 3 - the compiler must be pointed at the SAME Installation and manifest that produced the two claims,
@@ -517,6 +519,23 @@ export async function run() {
     );
     const unmatched = await request({ pathname: "/not-a-publication/about" });
     check("an unmatched path prefix is refused", unmatched.status !== 200, "status=" + unmatched.status);
+    // THE ADDRESS, NOT ONLY THE NAMESPACE (R04-C24). The reserved asset tree is a literal path. A case variant of
+    // it must not reach the generated files through a case-insensitive filesystem — on Linux the filesystem would
+    // refuse it anyway, so this assertion exists to keep BOTH modes describing the same boundary rather than one
+    // of them depending on the host operating system. The control is the SAME file, which alpha legitimately
+    // serves, so it can never pass merely because the file is absent.
+    const foldedTree = await request({ pathname: "/SPOKES/" + alphaNamespace + "/assets/logo-header.svg" });
+    check(
+      "a case variant of the reserved asset tree is refused, while its declared spelling serves",
+      alphaLogo.status === 200 && alphaLogo.body.includes("Alpha") && foldedTree.status !== 200,
+      "declared=" + alphaLogo.status + " variant=" + foldedTree.status,
+    );
+    const foldedAssets = await request({ pathname: "/spokes/" + alphaNamespace + "/ASSETS/logo-header.svg" });
+    check(
+      "the `assets` segment is part of the address, so a case variant of it is refused",
+      alphaLogo.status === 200 && foldedAssets.status !== 200,
+      "declared=" + alphaLogo.status + " variant=" + foldedAssets.status,
+    );
     const root = await request({ pathname: "/" });
     check(
       "an unauthored / is refused rather than answered by some Spoke",

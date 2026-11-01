@@ -538,7 +538,7 @@ describe("Phase M — location selector + region-aware navigation boundaries", (
     expect(source).not.toContain('target="_blank"');
     // It still OWNS the context NavItem must not: URL/region resolution + active computation.
     expect(source).toContain("resolveNavHref");
-    expect(source).toContain("pathname === link.href");
+    expect(source).toContain("pathname.toLowerCase() === link.href.toLowerCase()");
   });
 
   it("primary navigation holds INTERNAL routes only (locations are selectors, never nav links)", () => {

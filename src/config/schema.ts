@@ -18,7 +18,8 @@ import {
   locationSelectionIssues,
 } from "@/core/location-selection";
 import { resolveSites, SiteConfigurationError, type SiteSet } from "@/core/site";
-import { normalizeSiteCode, siteCodeIssue } from "@/core/site-code";
+import { normalizeSiteCode } from "@/core/site-code";
+import { siteIdIssue } from "@/core/site-identity";
 import { LOCALE_PATH_KEY_PATTERN } from "@/core/site-locale";
 import {
   CONTENT_WIDTHS,
@@ -1212,7 +1213,14 @@ const siteLocaleEntrySchema = z.union([
 const siteConfigEntrySchema = z
   .object({
     code: z.string().superRefine((value, ctx) => {
-      const issue = siteCodeIssue(value);
+      /**
+       * A Spoke Site code is a PRESENTATION IDENTITY (`GEO-03` R04 §6), so it is governed by the one
+       * generic descriptive-key grammar (`siteIdIssue`) rather than by the legacy closed country list
+       * in `@/core/site-code`. `main` is a valid presentation code; `ww` and `de` remain valid too,
+       * because a country-shaped word is also a well-formed descriptive key — no reserved-word ban is
+       * added for the retired spellings.
+       */
+      const issue = siteIdIssue(value);
       if (issue !== null) ctx.addIssue({ code: "custom", message: issue });
     }),
     label: z.string().min(1, "must not be empty").optional(),

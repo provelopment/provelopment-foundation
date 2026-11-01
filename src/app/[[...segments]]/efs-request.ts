@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 
 import { headers } from "next/headers";
-import { notFound, redirect } from "next/navigation";
+import { notFound, permanentRedirect, redirect } from "next/navigation";
 
 import { loadEfsPageSource, type EfsPageSource } from "@/adapters/content/efs-content";
 import { efsPublicationOwnerForRequest } from "@/config/efs/owner";
@@ -10,6 +10,7 @@ import { legacyTestRuntimeEnabled, missingEfsInstallation } from "./legacy-test-
 import type { SpokeRuntimeContext } from "@/config/installation-runtime";
 import {
   canonicalUrl,
+  caseCorrectedAddress,
   contentSegments,
   entryRedirectPath,
   matchBinding,
@@ -25,13 +26,14 @@ import {
   resolveRepresentation,
   type PageRepresentation,
 } from "@/core/efs/locales";
+import { resolvePublicFacts } from "@/core/efs/public-facts";
 import { resolveProperties, type EffectiveProperties } from "@/core/efs/properties";
 import { sitemapEntries, type DiscoveryPage } from "@/core/efs/discovery";
 import type { PageVisibility } from "@/core/page-document";
 import type { ContactInquiryOrigin } from "@/core/contact-inquiry";
 import type { ContactOwnerIdentity } from "@/config/contact-receiver";
 import { deploymentPaths } from "@/config/deployment-root";
-import { EFS_REQUEST_PATH_HEADER } from "@/config/efs/request-path";
+import { EFS_REQUEST_PATH_HEADER, EFS_REQUEST_QUERY_HEADER } from "@/config/efs/request-path";
 import {
   loadEfsManifest,
   type EfsEntityDeclaration,
@@ -41,6 +43,12 @@ import {
   type EfsPublicationDeclaration,
   type EfsSiteDeclaration,
 } from "@/config/efs/manifest";
+import { openGraphImageForEfs, type EfsOpenGraphImage } from "@/app/efs-opengraph-image-model";
+import {
+  OPEN_GRAPH_IMAGE_CONTENT_TYPE,
+  OPEN_GRAPH_IMAGE_SEGMENT,
+  OPEN_GRAPH_IMAGE_SIZE,
+} from "@/config/efs/image-path";
 
 /**
  * THE EFS REQUEST/PRESENTATION BOUNDARY (S3-E3)
@@ -172,16 +180,39 @@ function findSite(manifest: EfsManifest, entityId: string, facetId: string, site
   return null;
 }
 
+/**
+ * The reserved authored Home Page's INTERNAL Page identity. It is never a public Page route (`GEO-03` R04-C23): the
+ * Page is addressed by its binding's locale root, i.e. by the EMPTY Page-route suffix.
+ */
+const RESERVED_HOME_ROUTE = "home";
+
+/**
+ * The declared Page addressed by an incoming Page-route suffix.
+ *
+ * `D43` — PAGE-ROUTE CASE IS NOT IDENTITY. Every segment is compared through the same ordinary lowercase
+ * normalization, so `/about-us`, `/About-Us` and `/abouT-uS` resolve the same authored Page. The comparison is
+ * still whole-route: the same segment COUNT and every folded segment must match, so casing never enlarges what
+ * is published and a different word stays a different address.
+ *
+ * The empty suffix addresses the reserved authored Home Page; the literal suffix `home` does NOT, because it
+ * names that document's internal identity rather than a public address. The refusal lives HERE — at the one
+ * shared boundary that Page rendering and contact-form hosting both use — so no caller (a GET, a POST, or an
+ * alternate request shape) can recover the reserved document through its private name, and `D43` makes the
+ * reservation case-insensitive: `/home`, `/HOME` and `/HoMe` are all refused. Only the whole suffix is
+ * reserved: an ordinary authored route that merely contains the word is untouched.
+ */
 function pageForRoute(site: EfsSiteDeclaration, route: readonly string[]): EfsPageDeclaration | undefined {
-  const wanted = route.length === 0 ? ["home"] : route;
+  if (route.length === 1 && route[0]!.toLowerCase() === RESERVED_HOME_ROUTE) return undefined;
+  const wanted = (route.length === 0 ? [RESERVED_HOME_ROUTE] : route).map((segment) => segment.toLowerCase());
   return site.pages.find(
     (page) =>
-      page.route.length === wanted.length && page.route.every((segment, index) => segment === wanted[index]),
+      page.route.length === wanted.length &&
+      page.route.every((segment, index) => segment.toLowerCase() === wanted[index]),
   );
 }
 
 function publicRoute(page: EfsPageDeclaration): readonly string[] {
-  return page.route.length === 1 && page.route[0] === "home" ? [] : page.route;
+  return page.route.length === 1 && page.route[0]!.toLowerCase() === RESERVED_HOME_ROUTE ? [] : page.route;
 }
 
 /** Load and strictly validate ONE declared representation, or fail with its actionable reason. */
@@ -416,7 +447,22 @@ export async function efsViewForCurrentRequest(
   if (!host) return null;
 
   const allBindings = manifest.publications.flatMap((publication) => publication.bindings);
-  const matched = matchBinding(host, `/${segments.join("/")}`, allBindings);
+
+  /**
+   * `D40` DECISION B — correct the platform segments to their authored capitalization BEFORE anything is
+   * resolved, so the publication, Site, Page and representation below are proved against the CANONICAL
+   * address. A request that is already canonical corrects to itself, so this path is unchanged for it.
+   *
+   * The raw pathname the edge boundary forwarded is the authority for the visitor's own bytes; the decoded
+   * route segments are only a fallback for a caller with no proxy in front of it.
+   */
+  const requestedPath = (await requestHeader(EFS_REQUEST_PATH_HEADER)) ?? `/${segments.join("/")}`;
+  const correction = caseCorrectedAddress(host, requestedPath, allBindings);
+  const addressed = correction
+    ? [...correction.platformSegments, ...segments.slice(correction.platformSegments.length)]
+    : segments;
+
+  const matched = matchBinding(host, `/${addressed.join("/")}`, allBindings);
   if (!matched) {
     // Preserve the released Spoke's root/locale-shorthand completion for a converted host. It is
     // deterministic only when that host has exactly ONE canonical binding; anything ambiguous is
@@ -503,6 +549,24 @@ export async function efsViewForCurrentRequest(
     );
   }
 
+  /**
+   * `D40` DECISION B (platform segments only), AS NARROWED BY `D43` — the publication, Site, Page and
+   * representation are established above, so a request whose binding prefix, Site selector or locale path key
+   * differs from the declaration ONLY in case now has exactly one canonical address. ONE `308`, ONE
+   * `Location`: the authored platform spelling, the LOWERCASE canonical Page route and the original query.
+   *
+   * A request that differs only in PAGE-route case is never here at all: `caseCorrectedAddress` reports
+   * nothing to correct, and the folded Page lookup above already served it. Sending it through this redirect
+   * would be the Page-only 308 `D43` forbids.
+   *
+   * `permanentRedirect` is the platform's 308. The entry-completion and same-Page fallback redirects above
+   * keep their existing 307 meaning, and nothing below can be reached by a case variant.
+   */
+  if (correction) {
+    const query = (await requestHeader(EFS_REQUEST_QUERY_HEADER)) ?? "";
+    permanentRedirect(`/${correction.platformSegments.join("/")}${correction.pageRoute}${query}`);
+  }
+
   const actual = representation.representation;
   const loaded = representations.find(
     (candidate) => localePathKey(candidate.locale) === localePathKey(actual.locale),
@@ -574,6 +638,184 @@ export function efsPublicSegments(view: EfsView): readonly string[] {
     locale: view.locale,
     localeKey: view.localeKey,
     pageRoute: publicRoute(view.page),
+  });
+}
+
+/**
+ * THE `og:image` ONE PUBLISHED PAGE ADVERTISES (`GEO-03` R04-C21, corrected by `R04-C21-R02`)
+ * =======================================================================================
+ *
+ * The site/locale root's absolute, owner-scoped image URL, plus the platform facts the SAME shared view
+ * renders — so the HTML cannot advertise a size, a type or an origin the endpoint does not serve.
+ *
+ * WHY IT RESOLVES THE ROOT INSTEAD OF READING THE CURRENT PAGE (the `R04-C21-R02` correction). The endpoint
+ * draws the ROOT Page's card from the ROOT Page's cascade. EFS legitimately lets a Page or one representation
+ * override or suppress `brand.name`, so deriving the alt or the refusal here from THIS page's properties could
+ * advertise an image the root card refuses (a dead URL) or an alt for a brand the card does not display.
+ * Matching URL strings would not fix that: the identity must be the SAME OBJECT. This function therefore calls
+ * the endpoint's own resolver for the root path and reports what it returns — one identity, one public brand,
+ * one refusal condition, for both the image and every Page that advertises it (`D42` §3–§5).
+ *
+ * `undefined` in exactly the state the endpoint refuses, which is now the only refusal condition (no usable
+ * PUBLIC brand on the root).
+ */
+export interface EfsOpenGraphImageMetadata {
+  readonly url: string;
+  readonly width: number;
+  readonly height: number;
+  readonly type: string;
+  readonly alt: string;
+}
+
+export async function efsOpenGraphImage(view: EfsView): Promise<EfsOpenGraphImageMetadata | undefined> {
+  const root = await efsOpenGraphImageForCurrentRequest(
+    contentSegments(view.binding, {
+      siteId: view.site.id,
+      locale: view.locale,
+      localeKey: view.localeKey,
+      pageRoute: [],
+    }),
+  );
+  if (root === null) return undefined;
+  return {
+    url: root.url,
+    width: OPEN_GRAPH_IMAGE_SIZE.width,
+    height: OPEN_GRAPH_IMAGE_SIZE.height,
+    type: OPEN_GRAPH_IMAGE_CONTENT_TYPE,
+    alt: root.content.siteName,
+  };
+}
+
+/**
+ * THE TWITTER CARD, TIED TO THE SAME ROOT IMAGE (`R04-C21-R02`, finding F4)
+ * ======================================================================
+ *
+ * The released product emits `twitter.card`, `title`, `description` and `images` (`@/core/seo-metadata`
+ * `buildTwitterData`), with `summary_large_image` and the page's own title/description. That contract is
+ * preserved here for EFS Pages rather than invented: the card type and the text are the page's, while the
+ * IMAGE is the very URL the root card answers at — so a Twitter card can never point somewhere the Open Graph
+ * card would refuse. Callers emit this only when `efsOpenGraphImage` returned an image, so a refused root
+ * advertises no Twitter image either.
+ */
+export function efsTwitterCard(
+  view: EfsView,
+  imageUrl: string,
+): {
+  readonly card: "summary_large_image";
+  readonly title: string;
+  readonly description: string;
+  readonly images: string[];
+} {
+  return {
+    card: "summary_large_image",
+    title: efsTitle(view),
+    description: efsDescription(view) ?? "",
+    images: [imageUrl],
+  };
+}
+
+
+
+/**
+ * THE OPEN GRAPH IMAGE OF THE REQUESTED SITE/LOCALE ROOT (`GEO-03` R04-C21)
+ * ======================================================================
+ *
+ * Resolves a PUBLIC image request through the SAME chain a Page uses — request host → exact binding claim →
+ * binding prefix → declared Site → declared locale → the root Page's exact representation → the one property
+ * cascade — and hands the authorized facts to the pure model. It returns `null` (→ 404) wherever a Page would
+ * refuse, and it never redirects: an image is not a location that can be canonicalized.
+ *
+ * THREE DELIBERATE DIFFERENCES FROM PAGE RESOLUTION, each one a strictness:
+ *
+ *   1. EXACT REPRESENTATION ONLY. `allowFallback: false`, so a locale this Site does not declare is refused
+ *      instead of being answered by the authored same-Page fallback: a card is not a navigation target, and a
+ *      preview labelled with a locale the caller did not ask for would be false with nowhere to redirect to.
+ *   2. THE ROOT ONLY. A Page suffix before the reserved segment is refused, so `/<locale>/about/opengraph-image`
+ *      is not a second, per-Page identity. The accepted contract is the site/locale card.
+ *   3. NO ENTRY COMPLETION. A path with no locale cannot name a locale to draw, and negotiating one from a
+ *      cookie or `Accept-Language` would mint an address the caller never asked for.
+ */
+export async function efsOpenGraphImageForCurrentRequest(
+  segments: readonly string[],
+): Promise<EfsOpenGraphImage | null> {
+  const runtimeValue = runtime();
+  if (!runtimeValue) return null;
+  const { manifest, capsule } = runtimeValue;
+  const host = hostName((await requestHeader("host")) ?? (await requestHeader("x-forwarded-host")));
+  if (!host) return null;
+
+  const allBindings = manifest.publications.flatMap((publication) => publication.bindings);
+  const matched = matchBinding(host, `/${segments.join("/")}`, allBindings);
+  if (!matched) return null;
+
+  const publication = publicationForBinding(manifest.publications, matched.binding);
+  if (!publication) return null;
+  // The publication's explicit owner and the Installation's declared hierarchy — never a hostname resemblance.
+  const owner = efsPublicationOwnerForRequest(publication, host);
+  if (owner.kind === "refused") return null;
+  const context = owner.context;
+
+  const parsed = parseContentRoute(matched.binding, matched.remaining);
+  if (parsed.kind !== "route") return null;
+  if (parsed.route.pageRoute.length !== 0) return null;
+
+  const located = findSite(
+    manifest,
+    matched.binding.entityId,
+    matched.binding.facetId,
+    parsed.route.siteId,
+  );
+  if (!located) return null;
+  const { entity, facet, site } = located;
+
+  const page = pageForRoute(site, []);
+  if (!page) return null;
+
+  const representations = loadedRepresentations({
+    capsule,
+    entityId: entity.id,
+    facetId: facet.id,
+    siteId: site.id,
+    page,
+  });
+  const representation = resolveRepresentation(
+    { pageId: page.id, fallbackLocaleKey: page.fallbackLocaleKey, representations },
+    parsed.route.locale,
+    { allowFallback: false },
+  );
+  if (representation.kind !== "render") return null;
+  const actual = representation.representation;
+  const loaded = representations.find(
+    (candidate) => localePathKey(candidate.locale) === localePathKey(actual.locale),
+  );
+  if (!loaded) return null;
+
+  const declaration = page.representations.find(
+    (candidate) => localePathKey(candidate.locale) === localePathKey(actual.locale),
+  );
+  const properties = resolveProperties([
+    { level: "entity", id: entity.id, properties: entity.properties },
+    { level: "facet", id: facet.id, properties: facet.properties },
+    { level: "site", id: site.id, properties: site.properties },
+    { level: "page", id: page.id, properties: page.properties },
+    { level: "representation", id: actual.locale, properties: declaration?.properties },
+  ]);
+
+  // `D40`-C: the PUBLIC `brand.name`, else the owner Spoke's configured name — never a private value.
+  const brand = resolvePublicFacts(properties, {
+    "brand.name": context.siteConfig.name,
+  }).get("brand.name");
+
+  return openGraphImageForEfs({
+    brandName: brand.value,
+    description: contentDescription(loaded.source),
+    title: contentTitle(loaded.source, page),
+    canonicalRoot: canonicalUrl(matched.canonicalBinding, {
+      siteId: site.id,
+      locale: canonicalLocaleTag(actual.locale),
+      localeKey: localePathKey(actual.locale),
+      pageRoute: [],
+    }),
   });
 }
 

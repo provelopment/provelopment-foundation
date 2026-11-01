@@ -19,6 +19,7 @@
 //   server, and the deployment configuration path it resolved the way the BUILD resolves it
 //   (`src/config/deployment-build.ts`) — so this scenario names no repository path of its own.
 
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -111,11 +112,24 @@ function declarativeSectionCount(ids) {
 }
 
 /**
+ * R04-C22 — THE R04-C17 AUTHORED-CONTENT EXCEPTION IS RETIRED, NOT RELAXED.
+ *
+ * R04-C17 documented exactly one exemption: two German-language Home links still pointed at the retired
+ * `/ww/de/about` route, so that one destination was exempted from the resolution walk and a separate check
+ * proved it still dead-ended. The authored content has now been repaired — both editorial actions address this
+ * publication's own German About Page (`/de-de/about`) — so the exemption is DELETED rather than left in place:
+ * every internal destination a page renders must resolve, with no allow-list at all. Nothing may re-open it.
+ */
+
+/**
  * Every internal destination a page renders must RESOLVE at the host that serves it.
  *
- * "Resolve" includes the platform's own accepted completion: a locale-rooted destination is answered
- * with a same-host redirect to its site-scoped route, so the walk follows same-host redirects and
- * requires a 200 at the end. A destination that dead-ends (404, a foreign host, a loop) fails.
+ * "Resolve" includes the platform's own accepted completion: a destination is answered with a same-host
+ * redirect or a 200, so the walk follows same-host redirects and requires a 200 at the end. A destination
+ * that dead-ends (404, a foreign host, a loop) fails.
+ *
+ * R04-C22 — there is no `allow` parameter. Until this increment one destination could be exempted; now none can,
+ * so a future broken authored link fails here instead of being excused.
  */
 async function internalLinksResolve(port, host, hrefs) {
   if (hrefs.length === 0) return false;
@@ -338,7 +352,7 @@ export async function run(chrome, harness) {
 
   const rows = [];
   const port = portFor(410);
-  const url = `http://${FOUNDATION_HOST}:${port}/ww/en`;
+  const url = `http://${FOUNDATION_HOST}:${port}/en-001`;
   BASE_URL = `http://${FOUNDATION_HOST}:${port}`;
   // The SHIPPED configuration, READ ONLY: writing it here would prove a
   // configuration the repository does not ship.
@@ -386,7 +400,7 @@ export async function run(chrome, harness) {
   const server = startDevServer(port, { synthetic: false });
   let cdp = null;
   try {
-    await waitForHostReady(port, FOUNDATION_HOST, "/ww/en", server);
+    await waitForHostReady(port, FOUNDATION_HOST, "/en-001", server);
     cdp = await Cdp.connect(chrome, { hostResolverRules: HOST_RESOLVER_RULES });
     await cdp.setViewport(VIEWPORTS.desktop.width, VIEWPORTS.desktop.height);
     await cdp.evaluate("window.localStorage.clear(); true").catch(() => undefined);
@@ -636,7 +650,7 @@ export async function run(chrome, harness) {
     );
     // A REAL navigation icon click, awaited by the route it produces (FOUNDATION-BR1).
     const navigatedClosed = await cdp.clickCenter('#shell-sidebar-desktop-rail a[href$="/about"]');
-    await waitReady(cdp, { path: "/ww/en/about" });
+    await waitReady(cdp, { path: "/en-001/about" });
     const closedAfterNavigation = JSON.parse(await cdp.evaluate(DISCLOSURE_PROBE));
     check(
       rows,
@@ -651,7 +665,7 @@ export async function run(chrome, harness) {
     await cdp.clickCenter(".ui-sidebar-toggle");
     await sleep(400);
     const navigatedFromOpenOverlay = await cdp.clickCenter("#shell-sidebar-desktop-rail ul li:first-child a");
-    await waitReady(cdp, { path: "/ww/en" });
+    await waitReady(cdp, { path: "/en-001" });
     const closedAfterSelection = JSON.parse(await cdp.evaluate(DISCLOSURE_PROBE));
     check(
       rows,
@@ -680,7 +694,7 @@ export async function run(chrome, harness) {
 
     // ── HOME: the authored JSON document, served at the locale root ─────────
     const home = JSON.parse(await cdp.evaluate(REFERENCE_PROBE));
-    check(rows, "reference.home.isLocaleRoot", home.path === "/ww/en", home.path);
+    check(rows, "reference.home.isLocaleRoot", home.path === "/en-001", home.path);
     check(
       rows,
       "reference.home.oneH1",
@@ -703,6 +717,35 @@ export async function run(chrome, harness) {
       JSON.stringify(home.sections),
     );
     check(rows, "reference.home.assetNamespaceOwnership", home.assetNamespaces.every((base) => !base.includes("/spokes/germany/")), JSON.stringify(home.assetNamespaces));
+    // R04-C17 §6D — SPOKE ARTWORK AT THE PUBLIC BOUNDARY, in three separate facts so none can hide the others:
+    //   · the NEGATIVE (the security contract): this host cannot obtain the other Spoke's private namespace;
+    //   · the OWNERSHIP of every rendered `/spokes/**` reference;
+    //   · the PRESENCE of that artwork in the owning Spoke's own generated namespace.
+    //
+    // The positive HTTP status is deliberately NOT asserted here: a `next dev` server refuses every
+    // `/spokes/**` static path (measured), while the same deployment serves its own namespace with 200 and
+    // refuses the foreign one with 404 under `next start`. Asserting the dev refusal would bless it, and
+    // asserting 200 here would fail on the harness's own origin — so the boundary's positive half is proved
+    // against the production server and reported, not smuggled into a weaker check.
+    const foreignNamespace = await requestWithHost(port, FOUNDATION_HOST, "/spokes/germany/assets/sidebar-open.svg");
+    check(
+      rows,
+      "reference.assets.foreignSpokeNamespaceRefused",
+      foreignNamespace.status === 404,
+      `status=${foreignNamespace.status}`,
+    );
+    check(
+      rows,
+      "reference.assets.renderedSpokeReferencesStayInTheOwningNamespace",
+      home.assetNamespaces.filter((base) => base.startsWith("/spokes/")).every((base) => base.startsWith("/spokes/foundation/")),
+      JSON.stringify(home.assetNamespaces),
+    );
+    check(
+      rows,
+      "reference.assets.ownNamespaceArtworkInstalled",
+      existsSync(path.join(process.cwd(), "public", "spokes", "foundation", "assets", "sidebar-open.svg")),
+      path.join("public", "spokes", "foundation", "assets", "sidebar-open.svg"),
+    );
     check(
       rows,
       "reference.home.internalLinksResolve",
@@ -727,8 +770,8 @@ export async function run(chrome, harness) {
     check(
       rows,
       "reference.nav.siteAwareHomeAndAbout",
-      home.visibleNav.some((entry) => entry.startsWith("/ww/en|")) &&
-        home.visibleNav.some((entry) => entry.startsWith("/ww/en/about")),
+      home.visibleNav.some((entry) => entry.startsWith("/en-001|")) &&
+        home.visibleNav.some((entry) => entry.startsWith("/en-001/about")),
       JSON.stringify(home.visibleNav),
     );
     check(
@@ -740,13 +783,13 @@ export async function run(chrome, harness) {
     check(
       rows,
       "reference.metadata.canonicalOnReferenceOrigin",
-      home.canonical === `${REFERENCE_ORIGIN}/ww/en`,
+      home.canonical === `${REFERENCE_ORIGIN}/en-001`,
       String(home.canonical),
     );
     check(
       rows,
       "reference.metadata.openGraphUrlOnReferenceOrigin",
-      home.ogUrl === `${REFERENCE_ORIGIN}/ww/en`,
+      home.ogUrl === `${REFERENCE_ORIGIN}/en-001`,
       String(home.ogUrl),
     );
 
@@ -756,7 +799,7 @@ export async function run(chrome, harness) {
     await waitReady(cdp);
     await sleep(300);
     const followed = await cdp.evaluate("location.pathname");
-    check(rows, "reference.home.aboutTeaserReachesAbout", followed === "/ww/en/about", `landed ${followed}`);
+    check(rows, "reference.home.aboutTeaserReachesAbout", followed === "/en-001/about", `landed ${followed}`);
 
     // ── ABOUT: the authored Markdown page, in the other authoring mode ──────
     const about = JSON.parse(await cdp.evaluate(REFERENCE_PROBE));
@@ -797,13 +840,13 @@ export async function run(chrome, harness) {
     check(
       rows,
       "reference.nav.aboutMarksCurrentPage",
-      about.visibleNav.some((entry) => entry.startsWith("/ww/en/about") && entry.endsWith("|page")),
+      about.visibleNav.some((entry) => entry.startsWith("/en-001/about") && entry.endsWith("|page")),
       JSON.stringify(about.visibleNav),
     );
     check(
       rows,
       "reference.metadata.aboutCanonicalOnReferenceOrigin",
-      about.canonical === `${REFERENCE_ORIGIN}/ww/en/about`,
+      about.canonical === `${REFERENCE_ORIGIN}/en-001/about`,
       String(about.canonical),
     );
 
@@ -818,16 +861,16 @@ export async function run(chrome, harness) {
       rows,
       "reference.sites.germanySpokeDeclaresItsOwnSite",
       declaredSites.length === 1 &&
-        declaredSites[0]?.code === "de" &&
+        declaredSites[0]?.code === "main" &&
         declaredSites[0]?.label === "Germany" &&
-        germanConfig.defaultSite === "de",
+        germanConfig.defaultSite === "main",
       JSON.stringify(declaredSites),
     );
     check(
       rows,
       "reference.sites.germanyServesGermanAndEnglish",
-      JSON.stringify(declaredSites[0]?.locales ?? null) === JSON.stringify(["de", "en"]) &&
-        declaredSites[0]?.defaultLocale === "de",
+      JSON.stringify(declaredSites[0]?.locales ?? null) === JSON.stringify(["de-de", "en-001"]) &&
+        declaredSites[0]?.defaultLocale === "de-de",
       JSON.stringify(declaredSites[0] ?? null),
     );
     check(
@@ -836,10 +879,10 @@ export async function run(chrome, harness) {
       JSON.stringify(Object.keys(germanConfig.business?.regions ?? {})) === JSON.stringify(["berlin", "frankfurt"]) &&
         JSON.stringify(germanConfig.business?.pages ?? null) ===
           JSON.stringify([
-            { site: "de", locale: "de", region: "berlin" },
-            { site: "de", locale: "en", region: "berlin" },
-            { site: "de", locale: "de", region: "frankfurt" },
-            { site: "de", locale: "en", region: "frankfurt" },
+            { site: "main", locale: "de-de", region: "berlin" },
+            { site: "main", locale: "en-001", region: "berlin" },
+            { site: "main", locale: "de-de", region: "frankfurt" },
+            { site: "main", locale: "en-001", region: "frankfurt" },
           ]) &&
         // M18 — the Foundation Spoke legitimately carries NO Germany business block at all, so the narrow
         // contract is ABSENCE (an empty Germany block here would be a Germany binding in disguise).
@@ -850,8 +893,8 @@ export async function run(chrome, harness) {
     check(
       rows,
       "reference.german.configDeclaresGermanOnTheDefaultLocale",
-      (germanConfig.i18n?.locales ?? []).some((locale) => locale.code === "de" && locale.label === "Deutsch") &&
-        reference.i18n?.defaultLocale === "en",
+      (germanConfig.i18n?.locales ?? []).some((locale) => locale.code === "de-de" && locale.label === "Deutsch") &&
+        reference.i18n?.defaultLocale === "en-001",
       JSON.stringify(germanConfig.i18n ?? null),
     );
     check(
@@ -891,7 +934,7 @@ export async function run(chrome, harness) {
     check(
       rows,
       "reference.german.englishIsCurrent",
-      englishSelectors.languageValue === "en",
+      englishSelectors.languageValue === "en-001",
       String(englishSelectors.languageValue),
     );
     check(
@@ -905,7 +948,7 @@ export async function run(chrome, harness) {
     );
 
     // ── SITE SWITCHING: Global ↔ Germany keeps the page where the target serves it ──
-    await cdp.navigate(`${BASE_URL}/ww/en/about`);
+    await cdp.navigate(`${BASE_URL}/en-001/about`);
     await waitReady(cdp);
     // M18 — SITE SWITCHING is RETIRED: each Spoke declares exactly ONE Site, so there is no Site control
     // to switch with, and M18 invents no cross-Spoke selector. The facts that block proved about GERMANY's
@@ -913,13 +956,13 @@ export async function run(chrome, harness) {
     check(
       rows,
       "reference.sites.noSiteControlToSwitchWith",
-      (await cdp.evalBool(chooseSite("de"))) === false,
+      (await cdp.evalBool(chooseSite("main"))) === false,
     );
     // M18 — `backToGlobalPreservesRoute` is RETIRED, with reason: it proved that the route survived a SITE
     // SWITCH, and a Spoke that owns exactly ONE Site has nothing to switch with. Its surviving purpose —
     // Global's German About is Global's OWN page and carries none of Germany's content — is preserved by
     // ADDRESSING that page, which is exactly what the retired switch used to produce.
-    await cdp.navigate(`${BASE_URL}/ww/de/about`);
+    await cdp.navigate(`${BASE_URL}/de-de/about`);
     await waitReady(cdp);
     const backOnGlobal = JSON.parse(await cdp.evaluate(REFERENCE_PROBE));
     const backOnGlobalSelectors = JSON.parse(await cdp.evaluate(REFERENCE_SELECTORS_PROBE));
@@ -930,11 +973,11 @@ export async function run(chrome, harness) {
       // origin inside the `ww` Site, its controls are the Foundation Spoke's own configuration, every
       // internal destination stays inside `ww`, and the document references only the Foundation Spoke's
       // asset namespace. Two Spokes may legitimately share wording; that is why wording proves nothing.
-      backOnGlobal.path === "/ww/de/about" &&
-        backOnGlobal.canonical === `${REFERENCE_ORIGIN}/ww/de/about` &&
-        backOnGlobal.ogUrl === `${REFERENCE_ORIGIN}/ww/de/about` &&
+      backOnGlobal.path === "/de-de/about" &&
+        backOnGlobal.canonical === `${REFERENCE_ORIGIN}/de-de/about` &&
+        backOnGlobal.ogUrl === `${REFERENCE_ORIGIN}/de-de/about` &&
         JSON.stringify(backOnGlobalSelectors.selectorOrder ?? null) === JSON.stringify(["layout", "language"]) &&
-        backOnGlobal.internalHrefs.every((href) => href.startsWith("/ww/") || href.startsWith("/assets")) &&
+        backOnGlobal.internalHrefs.every((href) => href.startsWith("/en-001") || href.startsWith("/de-de") || href.startsWith("/assets")) &&
         !backOnGlobal.assetNamespaces.some((base) => base.includes("/spokes/germany/")),
       JSON.stringify({
         path: backOnGlobal.path,
@@ -945,7 +988,7 @@ export async function run(chrome, harness) {
     );
 
     // English About → Deutsch: the SAME page, in German. The route is preserved.
-    check(rows, "reference.german.switchApplies", await cdp.evalBool(chooseLanguage("de")));
+    check(rows, "reference.german.switchApplies", await cdp.evalBool(chooseLanguage("de-de")));
     // M18 — THE GERMAN PAGE IS PROVED BY ADDRESSING IT, exactly as the Language control addresses it.
     //
     // WHY: this scenario drives the REAL deployment at its REAL hostname, which means an INSECURE dev
@@ -957,13 +1000,13 @@ export async function run(chrome, harness) {
     // key, no cookie — at a secure origin the same interaction is proved by the Foundation-owned browser
     // scenarios in `tests/browser/matrix.mjs`). The URL the control produces is therefore asserted
     // directly, together with every server-rendered result the switch was there to prove.
-    await cdp.navigate(`${BASE_URL}/ww/de/about`);
+    await cdp.navigate(`${BASE_URL}/de-de/about`);
     await waitReady(cdp);
     const germanAboutPath = await cdp.evaluate("location.pathname");
     check(
       rows,
       "reference.german.aboutRoutePreserved",
-      germanAboutPath === "/ww/de/about",
+      germanAboutPath === "/de-de/about",
       String(germanAboutPath),
     );
     const germanAbout = JSON.parse(await cdp.evaluate(REFERENCE_PROBE));
@@ -997,7 +1040,7 @@ export async function run(chrome, harness) {
       "reference.german.dictionaryIsGerman",
       // The control's vocabulary, read from the Spoke's own German dictionary.
       germanSelectors.languageLabel === foundationDictionary.de.language.label &&
-        germanSelectors.languageValue === "de",
+        germanSelectors.languageValue === "de-de",
       JSON.stringify(germanSelectors),
     );
     check(
@@ -1011,7 +1054,7 @@ export async function run(chrome, harness) {
     check(
       rows,
       "reference.german.htmlLangAndCanonical",
-      germanSelectors.lang === "de" && germanSelectors.canonical === `${REFERENCE_ORIGIN}/ww/de/about`,
+      germanSelectors.lang === "de-DE" && germanSelectors.canonical === `${REFERENCE_ORIGIN}/de-de/about`,
       `lang=${germanSelectors.lang} canonical=${germanSelectors.canonical}`,
     );
     check(
@@ -1038,16 +1081,16 @@ export async function run(chrome, harness) {
         (germanLayout.controlOptions ?? []).length === 2 &&
       JSON.stringify(germanLayout),
     );
-    check(rows, "reference.german.backToEnglishApplies", await cdp.evalBool(chooseLanguage("en")));
+    check(rows, "reference.german.backToEnglishApplies", await cdp.evalBool(chooseLanguage("en-001")));
     // M18 — the ENGLISH destination is proved by ADDRESSING it (see the insecure-dev-origin note above).
-    await cdp.navigate(`${BASE_URL}/ww/en/about`);
+    await cdp.navigate(`${BASE_URL}/en-001/about`);
     await waitReady(cdp);
     const backInEnglish = await cdp.evaluate("location.pathname");
     const englishLayoutAfter = JSON.parse(await cdp.evaluate(LAYOUT_STATE_PROBE));
     check(
       rows,
       "reference.german.englishRoutePreserved",
-      backInEnglish === "/ww/en/about",
+      backInEnglish === "/en-001/about",
       String(backInEnglish),
     );
     // M18 — RETIRED, with reason: the persistence of the visitor's Layout choice across a navigation is
@@ -1064,8 +1107,8 @@ export async function run(chrome, harness) {
     await cdp.evaluate(chooseLayout("sidebar"));
     await sleep(400);
 
-    // ── GERMAN HOME: the JSON document at `/ww/de`, whose action really reaches German About ──
-    await cdp.navigate(`${BASE_URL}/ww/de`);
+    // ── GERMAN HOME: the JSON document at `/de-de`, whose action really reaches German About ──
+    await cdp.navigate(`${BASE_URL}/de-de`);
     await waitReady(cdp);
     await sleep(300);
     const germanHome = JSON.parse(await cdp.evaluate(REFERENCE_PROBE));
@@ -1091,19 +1134,25 @@ export async function run(chrome, harness) {
     check(
       rows,
       "reference.german.localeRootSpeaksGerman",
-      // `site.config.json`'s `i18n.locales[].description` is what the locale root advertises: the
-      // German sentence of the FOUNDATION Spoke's own `de` locale, never the deployment's English default.
-      germanHomeSelectors.description ===
-        (reference.i18n?.locales ?? []).find((locale) => locale.code === "de")?.description,
+      // R04-C17 — the durable fact is that the German locale root advertises a GERMAN description, not that
+      // it equals one particular configuration field: publication qualification now decides which authored
+      // description a representation publishes, so the check compares against the ENGLISH default instead of
+      // pinning a source. Copy remains the owner's.
+      typeof germanHomeSelectors.description === "string" &&
+        germanHomeSelectors.description.length > 0 &&
+        germanHomeSelectors.description !== reference.site?.description,
       String(germanHomeSelectors.description),
     );
     check(
       rows,
       "reference.german.homeLinksStayInsideTheGlobalSite",
-      // `de` is BOTH a locale key and the Germany Site's code, so a German page's internal destinations
-      // must be site-scoped (`/ww/…`): a bare `/de/…` would read as the Germany Site. This is the
-      // durable form of that contract — the destinations themselves are the owner's to choose.
-      germanHome.internalHrefs.length > 0 && germanHome.internalHrefs.every((href) => href.startsWith("/ww/")),
+      // R04-C17 — the EFS model has no Site segment to leak into, so the durable contract is narrower and
+      // stronger: every internal destination is one of this Spoke's OWN qualified paths. R04-C22 — the former
+      // `/ww/de/about` exemption is gone: a retired address is no longer an accepted member of this set.
+      germanHome.internalHrefs.length > 0 &&
+        germanHome.internalHrefs.every(
+          (href) => href.startsWith("/en-001") || href.startsWith("/de-de"),
+        ),
       JSON.stringify(germanHome.internalHrefs),
     );
     check(
@@ -1112,33 +1161,103 @@ export async function run(chrome, harness) {
       await internalLinksResolve(port, FOUNDATION_HOST, germanHome.internalHrefs),
       JSON.stringify(germanHome.internalHrefs),
     );
-    // The internal action states the SITE-SCOPED destination it means (`/ww/de/about`), because
+    // R04-C22 — THE REPAIRED EDITORIAL LINKS, STATED AS THE POSITIVE THEY NOW ARE.
+    //
+    // The German Home's two authored About actions (the hero button and the "Eine echte Foundation-Website"
+    // card) addressed the retired `/ww/de/about` until this increment. They must now address THIS publication's
+    // own German About Page — both of them, and nothing else — while the retired address stays refused.
+    const germanActions = germanHome.aboutAnchors.map((anchor) => anchor.split(" :: ")[0]);
+    check(
+      rows,
+      "reference.german.homeAboutActionsTargetGermanAbout",
+      germanActions.length === 2 &&
+        germanActions.every((href) => href === "/de-de/about") &&
+        !germanActions.includes("/ww/de/about"),
+      JSON.stringify(germanActions),
+    );
+    const retiredResponse = await requestWithHost(port, FOUNDATION_HOST, "/ww/de/about");
+    check(
+      rows,
+      "reference.retired.wwDeAboutStillRefused",
+      retiredResponse.status === 404,
+      `status=${retiredResponse.status} location=${retiredResponse.location || "(none)"}`,
+    );
+    // The internal action states the SITE-SCOPED destination it means (`/de-de/about`), because
     // `de` is now BOTH a locale key and the Germany site's code: the site-less locale form
     // (`/de/about`) would be read as the Germany site. The destination is therefore unambiguous,
     // needs no redirect, and keeps its language whatever the visitor's cookie says.
     await cdp.evaluate(`document.cookie = "NEXT_LOCALE=en; path=/"; true`);
-    const germanAction = germanHome.aboutAnchors[0]?.split(" :: ")[0];
-    check(
-      rows,
-      "reference.german.homeActionCarriesItsOwnSite",
-      String(germanAction) === "/ww/de/about",
-      String(germanAction),
-    );
-    await cdp.navigate(`${BASE_URL}${germanAction}`);
+    // R04-C22 — BOTH AUTHORED ACTIONS, FOLLOWED AS THE RENDERED LINKS THEMSELVES.
+    //
+    // A static string test cannot show that the repaired values are reachable, and visiting `/de-de/about`
+    // by hand would not show that the AUTHORED action leads there. So each of the two editorial links is
+    // followed in the real page — the hero button with the pointer, the card action through its own element —
+    // and each landing is required to be the Foundation host's German About REPRESENTATION at its canonical
+    // address, with the document in German, while the visitor's cookie says English. That is the strongest
+    // form of the guarantee R04-C17 split apart: one working action, proved twice, from the content itself.
+    const germanHomeUrl = `${BASE_URL}/de-de`;
+    const landingOf = async () => JSON.parse(await cdp.evaluate(REFERENCE_PROBE));
+    const germanAboutLanding = (landing, host, lang) =>
+      landing.path === "/de-de/about" &&
+      landing.canonical === `${REFERENCE_ORIGIN}/de-de/about` &&
+      String(host).startsWith(FOUNDATION_HOST) &&
+      String(lang).toLowerCase() === "de-de" &&
+      landing.h1s.length === 1 &&
+      landing.h1s[0].trim() !== "";
+    const landingDetail = (landing, host, lang) =>
+      `path=${landing.path} canonical=${landing.canonical} host=${host} lang=${lang} h1=${JSON.stringify(landing.h1s)}`;
+
+    await cdp.navigate(germanHomeUrl);
+    await waitReady(cdp);
+    const heroClicked = await cdp.clickCenter('main a[href="/de-de/about"]');
     await waitReady(cdp);
     await sleep(300);
-    const landedInGerman = await cdp.evaluate("location.pathname");
+    const heroLanding = await landingOf();
+    const heroHost = await cdp.evaluate("location.host");
+    const heroLang = await cdp.evaluate("document.documentElement.lang");
     check(
       rows,
-      "reference.german.homeActionReachesGermanAbout",
-      landedInGerman === "/ww/de/about",
-      `landed ${landedInGerman} (the cookie said en)`,
+      "reference.german.heroActionReachesGermanAbout",
+      heroClicked === true && heroLanding.path === "/de-de/about",
+      `clicked=${heroClicked} landed=${heroLanding.path} (the cookie said en)`,
+    );
+    check(
+      rows,
+      "reference.german.heroLandingIsFoundationGermanAbout",
+      germanAboutLanding(heroLanding, heroHost, heroLang),
+      landingDetail(heroLanding, heroHost, heroLang),
+    );
+
+    await cdp.navigate(germanHomeUrl);
+    await waitReady(cdp);
+    // The card action is the SECOND rendered occurrence of the same repaired destination; it is followed
+    // through its own element so the assertion is about that action and not about the URL.
+    const cardClicked = await cdp.evaluate(
+      `(() => { const links = [...document.querySelectorAll('main a[href="/de-de/about"]')]; ` +
+        `if (links.length !== 2) return 'count:' + links.length; links[1].click(); return 'clicked'; })()`,
+    );
+    await waitReady(cdp);
+    await sleep(300);
+    const cardLanding = await landingOf();
+    const cardHost = await cdp.evaluate("location.host");
+    const cardLang = await cdp.evaluate("document.documentElement.lang");
+    check(
+      rows,
+      "reference.german.cardActionReachesGermanAbout",
+      cardClicked === "clicked" && cardLanding.path === "/de-de/about",
+      `clicked=${cardClicked} landed=${cardLanding.path} (the cookie said en)`,
+    );
+    check(
+      rows,
+      "reference.german.cardLandingIsFoundationGermanAbout",
+      germanAboutLanding(cardLanding, cardHost, cardLang),
+      landingDetail(cardLanding, cardHost, cardLang),
     );
 
     // ── GERMANY: ordinary Pages, NO Location runtime (D28/D31/R03) ──────────
     // The Germany Spoke still owns its historical `business.regions` authoring material, but the EFS
     // shell no longer exposes a Location selector, a region route, a timezone or a regional address.
-    await cdp.navigate(`${GERMANY_BASE_URL}/de/de`);
+    await cdp.navigate(`${GERMANY_BASE_URL}/de-de`);
     await waitReady(cdp);
     await sleep(300);
     const germanyHomeSelectors = JSON.parse(await cdp.evaluate(REFERENCE_SELECTORS_PROBE));
@@ -1149,7 +1268,7 @@ export async function run(chrome, harness) {
         germanyHomeSelectors.locationPresent === false &&
         germanyHomeSelectors.languagePresent === true &&
         germanyHomeSelectors.layoutPresent === true &&
-        germanyHomeSelectors.languageValue === "de",
+        germanyHomeSelectors.languageValue === "de-de",
       JSON.stringify(germanyHomeSelectors),
     );
     check(
@@ -1163,16 +1282,16 @@ export async function run(chrome, harness) {
     await sleep(400);
 
     // A city-named Page is an ordinary Page: exact URL, canonical, one h1, no regional context.
-    await cdp.navigate(`${GERMANY_BASE_URL}/de/de/berlin`);
+    await cdp.navigate(`${GERMANY_BASE_URL}/de-de/berlin`);
     await waitReady(cdp);
     const inBerlin = JSON.parse(await cdp.evaluate(REFERENCE_PROBE));
     const berlinSelectors = JSON.parse(await cdp.evaluate(REFERENCE_SELECTORS_PROBE));
     check(
       rows,
       "reference.germany.cityPageIsOrdinary",
-      inBerlin.path === "/de/de/berlin" &&
-        inBerlin.canonical.endsWith("/de/de/berlin") &&
-        berlinSelectors.lang === "de" &&
+      inBerlin.path === "/de-de/berlin" &&
+        inBerlin.canonical.endsWith("/de-de/berlin") &&
+        berlinSelectors.lang === "de-DE" &&
         inBerlin.h1s.length === 1 &&
         inBerlin.h1s[0].trim() !== "",
       JSON.stringify({ path: inBerlin.path, canonical: inBerlin.canonical, lang: berlinSelectors.lang, h1s: inBerlin.h1s }),
@@ -1194,24 +1313,27 @@ export async function run(chrome, harness) {
     );
 
     // The same ordinary Page in the English representation: explicit `en`, never `en-DE`.
-    await cdp.navigate(`${GERMANY_BASE_URL}/de/en/frankfurt`);
+    await cdp.navigate(`${GERMANY_BASE_URL}/en-001/frankfurt`);
     await waitReady(cdp);
     const englishFrankfurt = JSON.parse(await cdp.evaluate(REFERENCE_PROBE));
     const frankfurtSelectors = JSON.parse(await cdp.evaluate(REFERENCE_SELECTORS_PROBE));
     check(
       rows,
       "reference.germany.englishCityPageRemainsEnglish",
-      englishFrankfurt.path === "/de/en/frankfurt" &&
-        englishFrankfurt.canonical.endsWith("/de/en/frankfurt") &&
-        frankfurtSelectors.lang === "en" &&
-        !JSON.stringify(englishFrankfurt).includes("en-DE") &&
-        !JSON.stringify(englishFrankfurt).includes("de-DE"),
-      JSON.stringify({ path: englishFrankfurt.path, canonical: englishFrankfurt.canonical, lang: frankfurtSelectors.lang, h1s: englishFrankfurt.h1s }),
+      // R04-C17 — the representation's OWN language identity is the qualified canonical tag `en-001` (what
+      // `<html lang>` carries), and its canonical stays on the English path key. The document legitimately
+      // lists the German sibling as an hreflang alternate, so "the page never mentions de-DE" is no longer
+      // the contract; "the page's own language is English, not a German variant" is.
+      englishFrankfurt.path === "/en-001/frankfurt" &&
+        englishFrankfurt.canonical.endsWith("/en-001/frankfurt") &&
+        frankfurtSelectors.lang === "en-001" &&
+        String(frankfurtSelectors.description ?? "").length > 0,
+      JSON.stringify({ path: englishFrankfurt.path, canonical: englishFrankfurt.canonical, lang: frankfurtSelectors.lang }),
     );
     check(
       rows,
       "reference.germany.englishCityPageHasNoLocationControl",
-      frankfurtSelectors.locationPresent === false && frankfurtSelectors.languageValue === "en",
+      frankfurtSelectors.locationPresent === false && frankfurtSelectors.languageValue === "en-001",
       JSON.stringify(frankfurtSelectors),
     );
 
@@ -1223,8 +1345,8 @@ export async function run(chrome, harness) {
     ]) {
       await cdp.setViewport(viewport.width, viewport.height);
       for (const surface of ["sidebar", "menu-bar"]) {
-        for (const localePath of ["de", "en"]) {
-          await cdp.navigate(`${GERMANY_BASE_URL}/de/${localePath}`);
+        for (const localePath of ["de-de", "en-001"]) {
+          await cdp.navigate(`${GERMANY_BASE_URL}/${localePath}`);
           await waitReady(cdp);
           await cdp.evaluate(chooseLayout(surface));
           await sleep(250);
@@ -1281,7 +1403,37 @@ export async function run(chrome, harness) {
     check(
       rows,
       "reference.sitemap.publishesAuthoredAboutPage",
-      parsed.locs.includes(`${REFERENCE_ORIGIN}/ww/en/about`),
+      parsed.locs.includes(`${REFERENCE_ORIGIN}/en-001/about`),
+      JSON.stringify(parsed.locs),
+    );
+    // R04-C17 §6E — THE FOUNDATION PUBLICATION'S EXACT SHAPE: six qualified Page URLs, no retired Site
+    // prefixes and no entry owned by the other Spoke. Derived from the manifest's three Pages × two
+    // representations, never from filenames.
+    const EXPECTED_FOUNDATION_LOCS = [
+      `${REFERENCE_ORIGIN}/en-001`,
+      `${REFERENCE_ORIGIN}/de-de`,
+      `${REFERENCE_ORIGIN}/en-001/about`,
+      `${REFERENCE_ORIGIN}/de-de/about`,
+      `${REFERENCE_ORIGIN}/en-001/contact`,
+      `${REFERENCE_ORIGIN}/de-de/contact`,
+    ];
+    check(
+      rows,
+      "reference.sitemap.publishesItsSixQualifiedPagesOnly",
+      parsed.locs.length === EXPECTED_FOUNDATION_LOCS.length &&
+        EXPECTED_FOUNDATION_LOCS.every((loc) => parsed.locs.includes(loc)),
+      JSON.stringify(parsed.locs),
+    );
+    check(
+      rows,
+      "reference.sitemap.hasNoRetiredSitePrefix",
+      parsed.locs.every((loc) => !/\/ww\/|\/de\/[a-z-]+/.test(loc.replace(REFERENCE_ORIGIN, ""))),
+      JSON.stringify(parsed.locs),
+    );
+    check(
+      rows,
+      "reference.sitemap.hasNoCrossOwnerEntry",
+      parsed.locs.every((loc) => !loc.includes(GERMANY_HOST)),
       JSON.stringify(parsed.locs),
     );
     check(

@@ -14,7 +14,7 @@
 
       "actions": [
 
-        { "label": "So funktioniert diese Website", "href": "/ww/de/about" },
+        { "label": "So funktioniert diese Website", "href": "/de-de/about" },
 
         {
           "label": "Zum Foundation-Repository",
@@ -67,7 +67,7 @@
         {
           "title": "Eine echte Foundation-Website",
           "body": "Dies ist eine funktionierende Website auf Basis des öffentlich verfügbaren Foundation-Codes. Sie zeigt beide Arten der Seitenerstellung, mehrere Sprachen, unterschiedliche Layouts und eine zweite Demonstrations-Website für Deutschland.",
-          "action": { "label": "Mehr über diese Website erfahren", "href": "/ww/de/about" }
+          "action": { "label": "Mehr über diese Website erfahren", "href": "/de-de/about" }
         }
 
       ]

@@ -29,9 +29,12 @@
  * context whose enabled booking CTA would silently lose its label fails loudly when its access is
  * created, exactly as the compatibility binding fails at module load.
  *
- * ADDITIVE / UNWIRED (S3F2A2-D1). `@/config/i18n` remains the running application's ACTIVE binding;
- * nothing under `src/app/**`, `src/app/sitemap.ts`, `src/app/robots.ts` or `src/proxy.ts` imports this
- * module. Choosing which Spoke a request reads remains S3F2B's work.
+ * ADDITIVE / UNWIRED FOR SELECTION (S3F2A2-D1, updated by `GEO-02-R03`). `@/config/i18n` remains the
+ * running application's ACTIVE binding: nothing here chooses which Spoke a request reads, and
+ * `src/app/sitemap.ts`, `src/app/robots.ts` and `src/proxy.ts` do not import this module. Its ONE
+ * runtime consumer is the EFS Page path, which already holds a VERIFIED `SpokeRuntimeContext` for the
+ * request and needs that Spoke's OWN dictionaries: `src/app/[[...segments]]/efs-status-labels.ts`
+ * binds the computed-status labels through it. Choosing a Spoke remains S3F2B's work.
  *
  * SERVER/BUILD ONLY: its answers come from files, so it must never become reachable from a client chunk.
  */
@@ -57,6 +60,16 @@ import { loadSpokeDictionaryRegistry } from "./spoke-dictionaries";
  */
 export interface RuntimeDictionaryAccess {
   get(locale: Locale, siteCode?: string): Dictionary;
+  /**
+   * Whether `get` would answer from a dictionary that APPLIES to this locale (the site's override,
+   * the exact dictionary, or its language base) rather than the unrelated default-locale fallback.
+   *
+   * Exposed for consumers that publish a fact IN the representation's own language: for those, the
+   * default-locale substitution is a wrong answer rather than a graceful one. The predicate is the
+   * registry's own (`DictionaryRegistry.applicable`) — no rule is restated here, and `get` keeps the
+   * accepted fallback for every other consumer.
+   */
+  applicable(locale: Locale, siteCode?: string): boolean;
 }
 
 /**
@@ -114,5 +127,7 @@ export function dictionaryAccessForRuntimeContext(
 
   return Object.freeze({
     get: (locale: Locale, siteCode?: string): Dictionary => registry.get(locale, siteCode),
+    applicable: (locale: Locale, siteCode?: string): boolean =>
+      registry.applicable(locale, siteCode),
   });
 }

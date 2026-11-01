@@ -27,6 +27,19 @@ const PORT_OFFSETS = [71, 72];
 const FOUNDATION_HOST = "foundation-template.provelopment.com";
 const GERMANY_HOST = "foundation-template-germany.provelopment.com";
 
+// R04-C18 — THE DECLARED EFS COORDINATES, named once.
+//
+// The first segment of a public EFS path is the LOCALE PATH KEY (`en-001`, `de-de`), never a Site selector.
+// These are the representations the reference publication actually declares for this Spoke's Contact Page:
+// the readiness probe below must ask for one of THESE, because a probe for a route the publication does not
+// serve can never become ready and burns the whole budget on every candidate port.
+const ENGLISH_CONTACT_PATH = "/en-001/contact";
+const GERMAN_CONTACT_PATH = "/de-de/contact";
+const ENGLISH_HOME_PATH = "/en-001";
+const UNDECLARED_PATH = "/en-001/does-not-exist";
+/** A per-port readiness budget. Two ports, so the worst case is bounded and reported, never open-ended. */
+const READINESS_BUDGET_MS = 120000;
+
 function originFor(port) {
   return `http://localhost:${port}`;
 }
@@ -66,41 +79,72 @@ function deploymentCopy(repositoryRoot) {
     },
   };
 }
+/**
+ * Waits for the DECLARED English Contact Page on one port, reporting the last answer it actually saw.
+ *
+ * A loopback request without the claimed Host answers 404 by design, so the probe carries the public
+ * hostname. Readiness is bounded: a server that cannot serve the declared Page is a FAILURE with evidence,
+ * not a reason to wait indefinitely.
+ */
+async function waitForDeclaredContactPage(port, host) {
+  const deadline = Date.now() + READINESS_BUDGET_MS;
+  let last = "never answered";
+  while (Date.now() < deadline) {
+    try {
+      const response = await request(port, ENGLISH_CONTACT_PATH, host);
+      if (response.status === 200) return { ready: true, last: "status=200" };
+      last = `status=${response.status}`;
+    } catch (error) {
+      last = error instanceof Error ? error.message : String(error);
+    }
+    await sleep(1000);
+  }
+  return { ready: false, last };
+}
+
 export async function run(chrome, harness) {
   const rows = [];
-  let server = null;
+  /** EVERY server this scenario started, recorded the instant it starts, so cleanup never depends on
+   *  readiness having succeeded. R04-C18 — a scenario that throws must not leave a Next/Vite process holding
+   *  the repository's dependency cache (`node_modules/.vite`), which breaks unrelated suites. */
+  const servers = [];
   let cdp = null;
   let port = null;
+  let readiness = "never attempted";
 
   try {
     for (const offset of PORT_OFFSETS) {
       const candidate = harness.port(offset);
       const started = harness.startDevServer(candidate, { synthetic: false });
-      // A readiness probe that carries the PUBLIC hostname: the dev server needs tens of seconds to compile,
-      // and a loopback request without the claimed Host answers 404 by design (the boundary is doing its job).
-      const deadline = Date.now() + 240000;
-      let ready = false;
-      while (Date.now() < deadline && !ready) {
-        try {
-          ready = (await request(candidate, "/ww/en/contact", FOUNDATION_HOST)).status === 200;
-        } catch { ready = false; }
-        if (!ready) await sleep(1000);
-      }
-      if (ready) { server = started; port = candidate; break; }
+      // TRACKED BEFORE THE FIRST await: the process exists now, so it is this scenario's to stop.
+      servers.push(started);
+      const attempt = await waitForDeclaredContactPage(candidate, FOUNDATION_HOST);
+      readiness = attempt.last;
+      if (attempt.ready) { port = candidate; break; }
       await harness.stopServer(started);
     }
-    if (port === null) throw new Error(`no port answered the reference contact Page on ${FOUNDATION_HOST}`);
+    if (port === null) {
+      throw new Error(
+        `no port answered the declared contact Page ${ENGLISH_CONTACT_PATH} on ${FOUNDATION_HOST} (last: ${readiness})`,
+      );
+    }
 
     const origin = originFor(port);
 
     // ---- raw boundary refusals -------------------------------------------------
-    const undeclared = await request(port, "/ww/en/does-not-exist", FOUNDATION_HOST);
+    // These are BOUNDARY answers, not interactions, so they are real HTTP tests with an explicit Host.
+    const undeclared = await request(port, UNDECLARED_PATH, FOUNDATION_HOST);
     harness.check(rows, "an unauthored Page is refused", undeclared.status === 404, `status=${undeclared.status}`);
 
-    const unclaimedHost = await request(port, "/ww/en/contact", "unclaimed.example");
-    harness.check(rows, "an unclaimed host is refused", unclaimedHost.status === 404, `status=${unclaimedHost.status}`);
+    const unclaimedHost = await request(port, ENGLISH_CONTACT_PATH, "unclaimed.example");
+    harness.check(
+      rows,
+      "an unclaimed host is refused, even for an otherwise valid Contact route",
+      unclaimedHost.status === 404,
+      `status=${unclaimedHost.status}`,
+    );
 
-    const home = await request(port, "/ww/en", FOUNDATION_HOST);
+    const home = await request(port, ENGLISH_HOME_PATH, FOUNDATION_HOST);
     harness.check(
       rows,
       "a Page without the section hosts no form",
@@ -108,15 +152,19 @@ export async function run(chrome, harness) {
       `status=${home.status}`,
     );
 
-    const germany = await request(port, "/de/de/contact", GERMANY_HOST);
-    harness.check(
-      rows,
-      "the Germany Site exposes no contact form",
-      germany.status === 404 && !germany.body.includes("connect-contact-acknowledgement"),
-      `status=${germany.status}`,
-    );
+    // The Germany Host publishes no Contact Page, so BOTH representations must fail closed there — the
+    // pathname is otherwise valid, which is exactly what makes this an ownership test.
+    for (const pathname of [ENGLISH_CONTACT_PATH, GERMAN_CONTACT_PATH]) {
+      const germany = await request(port, pathname, GERMANY_HOST);
+      harness.check(
+        rows,
+        `the Germany Host owns no Contact Page at ${pathname}`,
+        germany.status === 404 && !germany.body.includes("connect-contact-acknowledgement"),
+        `status=${germany.status}`,
+      );
+    }
 
-    // ---- the real browser flow, in both locales -------------------------------
+    // ---- the real browser flow, in both representations -----------------------
     cdp = await Cdp.connect(chrome, {
       hostResolverRules: `MAP ${FOUNDATION_HOST} 127.0.0.1, MAP ${GERMANY_HOST} 127.0.0.1`,
     });
@@ -130,7 +178,8 @@ export async function run(chrome, harness) {
     });
   } finally {
     if (cdp) await cdp.close();
-    if (server) await harness.stopServer(server);
+    // EVERY server, always — not only the one that became ready.
+    for (const started of servers) await harness.stopServer(started);
   }
 
   return rows;

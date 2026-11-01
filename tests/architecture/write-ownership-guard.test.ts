@@ -110,8 +110,6 @@ const SANCTIONED_DOMAIN_WRITERS: Record<string, string> = {
   "scripts/generate-country-code-reference.mjs":
     "<selected deployment>/content/COUNTRY-CODES.md — the ONE generated deployment document (ISO-B3A)",
   "scripts/ci/change-scope.mjs": "$GITHUB_OUTPUT — the CI runner's own file, never repository state (ISO-B3B)",
-  "scripts/efs/convert-reference.mjs":
-    "<selected deployment>/efs/manifest.json and <selected deployment>/efs/capsule/** — the explicit EFS capsule converted from the controlled reference Spokes. It reads deployment/spokes/** and never writes there (S3-E3-R02)",
   "scripts/release/release-construction.mjs":
     "the EMPTY destination directory the caller names — a release construction area outside the source repository. It reads committed bytes only, and writes no repository, deployment or generated state (R1B)",
   // ── FOUNDATION-B4B: the FIRST writers inside `src/**`, each owning exactly ONE installation ──────────
@@ -141,9 +139,15 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
     "OS temp (the disposable synthetic Installations it materialises, through `tests/support/shared-host-installation.mjs`) and the repository's IGNORED projection cache `<repo>/node_modules/.cache/foundation/efs-publications/**`, which it writes only by invoking the production producer; it mutates its own fixtures' manifests to prove staleness, never a committed deployment (R08)",
   "tests/integration/efs-application-link-integrity.test.tsx":
     "OS temp only — a disposable capsule it materialises under the OS temp directory to prove the EFS runtime reader refuses malformed and undeclared application links, and removes in `afterAll`. It never writes a committed fixture, a deployment or a generated namespace (A8 Phase F)",
+  "tests/integration/efs-opengraph-image-root-parity.test.ts":
+    "OS temp only — SEVERAL disposable Installation roots, none of which can be orphaned and all of which are removed by one `afterAll` registered BEFORE anything is created: one `foundation-efs-installation-*` root built at module load by the shared helper, which is FAILURE-ATOMIC (`materializeEfsInstallation` removes its own root if population throws, so a caller never inherits a half-built one) and is handed to this file only on a successful return, where selection and the dynamic import are wrapped in an initialization rollback; plus one `foundation-opengraph-parity-*` root per case, registered before its manifest and capsule are written. Teardown restores the process ENVIRONMENT exactly as it was at module load — `FOUNDATION_EFS_MANIFEST`/`FOUNDATION_EFS_CAPSULE` and every deployment key selection rewrites (`FOUNDATION_DEPLOYMENT_ROOT`/`…_LAYOUT`/`…_CONFIG` and whatever `deploymentEnvironment` resolves), deleting a key the run added — AND removes every owned root as an INDEPENDENT second attempt, so neither failure skips the other, both are reported together, and a root whose removal fails stays tracked and retryable instead of being deregistered. It never writes a committed fixture, a deployment, a generated namespace or a build output (R04-C22-R03-R02)",
   "tests/browser/scratch.mjs": "the guard: OS temp + `tests/browser/.report/` + the generated Spoke namespaces, refusing every other target",
   "tests/browser/matrix.mjs": "the synthetic deployment copy, `.report/`, OS temp and the generated Spoke namespaces a multi-Spoke scenario materialises — all via scratch.mjs",
   "tests/browser/cdp.mjs": "the headless-Chrome profile directory it created, under OS temp",
+  "tests/browser/efs-schedule.scenario.mjs":
+    "OS temp only — a disposable Installation it materialises under the OS temp directory (a COPY of the reference Spoke plus a " +
+    "generated Spokes declaration and a per-run schedule manifest) and removes in `finally`. The reference deployment, the " +
+    "reference capsule and every committed fixture are read-only to it (GEO-02-R02 F)",
   "tests/browser/multihost.scenario.mjs":
     "OS temp (its disposable two-Spoke Installation) and `public/spokes/<segment>/**` — the GENERATED " +
     "namespaces it materialises FROM THE CANONICAL ASSET PLAN (never by inventing files) and removes for the " +
@@ -314,6 +318,8 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
   "tests/unit/change-scope.test.ts": "OS temp trees and `$GITHUB_OUTPUT` files",
   "tests/unit/country-code-generator-deployment-root.test.ts": "OS temp deployment trees the generator writes into",
   "tests/unit/dictionary-precedence.test.ts": "the synthetic deployment's dictionary tree",
+  "tests/unit/efs-status-labels.test.ts":
+    "OS temp dictionary and override trees it creates — the GEO-02 computed-status-label proofs author their own dictionaries, overrides and a language-only dictionary, removed by exact ownership (GEO-02 R03)",
   "tests/unit/i18n-dictionary-discovery.test.ts": "OS temp dictionary trees it creates",
   "tests/unit/i18n-site-overlay.test.ts": "OS temp dictionary trees it creates",
   "tests/unit/page-sources.test.ts": "the synthetic deployment's page tree",
@@ -398,7 +404,7 @@ describe("the executable writer inventory is explicit", () => {
   });
 
   it("names the sanctioned durable domains, each as ONE document/domain and no more", () => {
-    expect(Object.keys(SANCTIONED_DOMAIN_WRITERS)).toHaveLength(9);
+    expect(Object.keys(SANCTIONED_DOMAIN_WRITERS)).toHaveLength(8);
     expect(SANCTIONED_DOMAIN_WRITERS["scripts/sync-runtime-assets.mjs"]).toContain("public/assets");
     expect(SANCTIONED_DOMAIN_WRITERS["scripts/generate-country-code-reference.mjs"]).toContain(
       "COUNTRY-CODES.md",

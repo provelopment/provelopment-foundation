@@ -70,8 +70,8 @@ describe("a partially localized Home whose default locale is absent (R07)", () =
     const home = manifest.entities[0].facets[0].sites[0].pages.find(
       (page) => page.route.join("/") === "home",
     );
-    expect(home?.representations).toEqual([{ locale: "en" }]);
-    expect(home?.fallbackLocaleKey).toBe("en");
+    expect(home?.representations).toEqual([{ locale: "en-001" }]);
+    expect(home?.fallbackLocaleKey).toBe("en-001");
 
     const homeSource = path.join(
       capsule,
@@ -79,16 +79,16 @@ describe("a partially localized Home whose default locale is absent (R07)", () =
       "capsule",
       manifest.entities[0].id,
       "main",
-      "ww",
+      "main",
       "pages",
       home?.id ?? "",
     );
-    expect(existsSync(path.join(homeSource, "en.json"))).toBe(true);
-    expect(existsSync(path.join(homeSource, "de.json"))).toBe(false);
+    expect(existsSync(path.join(homeSource, "en-001.json"))).toBe(true);
+    expect(existsSync(path.join(homeSource, "de-de.json"))).toBe(false);
 
-    await expect(efs.efsViewForCurrentRequest(["ww", "de"])).rejects.toThrow("REDIRECT:/ww/en/");
-    const english = await efs.efsViewForCurrentRequest(["ww", "en"]);
+    await expect(efs.efsViewForCurrentRequest(["main", "de-de"])).rejects.toThrow("REDIRECT:/main/en-001/");
+    const english = await efs.efsViewForCurrentRequest(["main", "en-001"]);
     expect(english?.home).toBe(true);
-    expect(english?.alternates.map((alternate) => alternate.hreflang)).toEqual(["en"]);
+    expect(english?.alternates.map((alternate) => alternate.hreflang)).toEqual(["en-001"]);
   });
 });

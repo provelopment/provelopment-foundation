@@ -331,6 +331,148 @@ export function parseContentRoute(binding: EfsBinding, remaining: readonly strin
   };
 }
 
+/**
+ * `D40` DECISION B, AS NARROWED BY `D43` — THE CANONICAL SPELLING OF A MATCHED ADDRESS
+ * ===================================================================================
+ *
+ * A visitor can reach a publication whose binding PREFIX, Site SELECTOR or LOCALE PATH KEY differs from the
+ * declaration only in case. Those three are platform-authored addresses — the platform chooses their
+ * spelling — so exactly one canonical spelling exists and a single `308` may point at it.
+ *
+ * Everything after them is the authored PAGE ROUTE, and since `D43` its capitalization is NOT identity:
+ * `About-Us`, `about-us` and `abouT-uS` address the same Page, which is why a Page-only case difference is
+ * served normally and never redirected. The canonical public spelling of a Page route is its LOWERCASE form
+ * (`contentSegments`), and that is what this function carries in `pageRoute`, so the ONE platform `308` that
+ * may still be required lands directly on the canonical Page address instead of a second, Page-only hop.
+ *
+ * It answers only "is this the same published address in the wrong case?". An unclaimed host, an unmatched
+ * or undeclared prefix, an undeclared Site, an unsupported locale, or a path with no locale segment at all
+ * is NOT a case variant, so it returns `null` and the ordinary refusal stands: a casing redirect may never
+ * make an otherwise invalid request valid. Ambiguity is refused for the same reason — two declarations
+ * whose prefixes fold together have no single canonical spelling to point at.
+ *
+ * The HOST is never corrected: a hostname is a DNS claim, not a spelling this platform owns.
+ */
+export interface CaseCorrectedAddress {
+  readonly binding: EfsBinding;
+  /** The authored spelling of the address's platform segments: prefix, Site when open, locale path key. */
+  readonly platformSegments: readonly string[];
+  /** The Page route in its ONE canonical public spelling: every segment lowercased, empty at a locale root. */
+  readonly pageRoute: string;
+}
+
+/** The single authored value a request segment folds to, or `null` when the declaration is ambiguous. */
+function authoredValue<T>(
+  declared: readonly T[],
+  requested: string,
+  keyOf: (value: T) => string,
+): T | null {
+  const wanted = requested.toLowerCase();
+  const matches = declared.filter((candidate) => keyOf(candidate).toLowerCase() === wanted);
+  if (matches.length === 0) return null;
+  // Two authored spellings that fold to the same segment leave nothing canonical to point at.
+  if (new Set(matches.map(keyOf)).size > 1) return null;
+  return matches[0];
+}
+
+/**
+ * The request path's own Page-route text after its first `count` segments, lowercased — `D43`'s ONE canonical
+ * public spelling of a Page route.
+ *
+ * Sliced out of the address authority's bytes and then folded, so a redirect target carries the canonical
+ * address in a single hop while the platform's escaping is otherwise left as it arrived. The trailing
+ * separator is dropped because it terminates the platform segments rather than spelling a Page, and
+ * re-emitting it would ask the router for a second, trailing-slash redirect.
+ */
+function pageRouteOf(pathname: string, count: number): string {
+  let index = 0;
+  let separators = 0;
+  while (index < pathname.length && separators <= count) {
+    if (pathname[index] === "/") separators += 1;
+    index += 1;
+  }
+  const rest = pathname.slice(index);
+  const trimmed = rest.endsWith("/") ? rest.slice(0, -1) : rest;
+  return trimmed.length === 0 ? "" : `/${trimmed.replace(/^\/+/, "").toLowerCase()}`;
+}
+
+/** The authored capitalization of a matched address, or `null` when nothing but case differs (or nothing matches). */
+export function caseCorrectedAddress(
+  host: string,
+  pathname: string,
+  bindings: readonly EfsBinding[],
+): CaseCorrectedAddress | null {
+  const fold = (value: string) => value.toLowerCase();
+  const normalizedHost = normalizeBindingHost(host);
+  const raw = pathname.startsWith("/") ? pathname : `/${pathname}`;
+  let segments: readonly string[];
+  try {
+    segments = pathSegments(raw);
+  } catch {
+    return null; // a malformed path (an empty segment) is refused, never corrected
+  }
+  if (segments.length === 0) return null;
+
+  // 1 — the binding, by the same longest-whole-prefix rule `matchBinding` uses, comparing folded whole
+  // segments. A prefix no declaration folds to is simply not this publication.
+  let best: { binding: EfsBinding; prefix: readonly string[]; exact: boolean } | null = null;
+  for (const binding of bindings) {
+    if (normalizeBindingHost(binding.host) !== normalizedHost) continue;
+    const prefix = normalizePrefix(binding.prefix);
+    if (prefix.length > segments.length) continue;
+    if (!prefix.every((segment, index) => fold(segments[index]) === fold(segment))) continue;
+    const exact = prefix.every((segment, index) => segments[index] === segment);
+    const longer = best === null || prefix.length > best.prefix.length;
+    const sharper = best !== null && prefix.length === best.prefix.length && exact && !best.exact;
+    if (longer || sharper) best = { binding, prefix, exact };
+  }
+  if (best === null) return null;
+
+  // Two declarations whose prefixes fold together would send the visitor to one of them by accident.
+  const chosen = best;
+  const foldedPrefix = chosen.prefix.map(fold).join("/");
+  const rival = bindings.some(
+    (binding) =>
+      normalizeBindingHost(binding.host) === normalizedHost &&
+      normalizePrefix(binding.prefix).map(fold).join("/") === foldedPrefix &&
+      prefixKey(normalizePrefix(binding.prefix)) !== prefixKey(chosen.prefix),
+  );
+  if (rival) return null;
+
+  const platform: string[] = [...chosen.prefix];
+  let cursor = chosen.prefix.length;
+
+  // 2 — a Site selector exists only in Site-open addressing; a closed binding's Site is never in the address.
+  if (chosen.binding.siteMode === "open") {
+    const requestedSite = segments[cursor];
+    if (requestedSite === undefined) return null;
+    const siteId = authoredValue(chosen.binding.siteIds, requestedSite, (id) => id);
+    if (siteId === null) return null;
+    platform.push(siteId);
+    cursor += 1;
+  }
+
+  // 3 — the locale path key, through the accepted canonicalizer: never a second grammar, never a fallback.
+  const localeCandidate = segments[cursor];
+  if (localeCandidate === undefined) return null; // an incomplete address is completed elsewhere, not here
+  const locale = authoredValue(chosen.binding.locales, localeCandidate, localePathKey);
+  if (locale === null) return null;
+  platform.push(localePathKey(locale));
+  cursor += 1;
+
+  // Only CASE may differ: a differently spelled segment is a different address, not a capitalization one.
+  const requested = segments.slice(0, cursor);
+  if (!requested.every((segment, index) => fold(segment) === fold(platform[index]))) return null;
+  // Already canonical: this address is served, never redirected.
+  if (requested.every((segment, index) => segment === platform[index])) return null;
+
+  return {
+    binding: chosen.binding,
+    platformSegments: platform,
+    pageRoute: pageRouteOf(raw, cursor),
+  };
+}
+
 /** A publication's declared owner and the runtime identity it must match. */
 export interface EfsPublicationOwner {
   readonly spokeId: string;
@@ -372,12 +514,21 @@ export function publicPathBase(binding: EfsBinding, siteId: string): readonly st
   return [...normalizePrefix(binding.prefix), ...(binding.siteMode === "open" ? [siteId] : [])];
 }
 
-/** Build the canonical content suffix (prefix + Site when open + locale + Page route). */
+/**
+ * Build the canonical content suffix (prefix + Site when open + locale + Page route).
+ *
+ * `D43` — THE ONE PUBLIC PAGE-ROUTE SPELLING. A Page route's letter case is not identity, so its canonical
+ * public spelling is the lowercase form of each declared segment: `About-Us` is published at `/about-us` and
+ * every canonical URL, `hreflang` alternate, navigation link and sitemap `loc` built here says so. Only the
+ * Page route is folded: the binding prefix, the Site selector and the locale key keep their declared platform
+ * spelling, because `D40`/`D43` leave that naming contract exactly as it was. The authored declaration and the
+ * Page's source path are untouched — this is output, never authoring.
+ */
 export function contentSegments(binding: EfsBinding, route: EfsContentRoute): readonly string[] {
   return [
     ...publicPathBase(binding, route.siteId),
     route.localeKey,
-    ...route.pageRoute,
+    ...route.pageRoute.map((segment) => segment.toLowerCase()),
   ];
 }
 

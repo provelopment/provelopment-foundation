@@ -13,8 +13,10 @@
 import { readFileSync } from "node:fs";
 
 import { entityIdIssue } from "@/core/efs/identity";
-import { canonicalLocaleTag, localeTagIssue } from "@/core/efs/locales";
+import { canonicalLocaleTag, publicationLocaleIssue, type PublicationLocaleIssue } from "@/core/efs/locales";
 import { resolveProperties, type PropertyBag } from "@/core/efs/properties";
+import { typedPropertyIssue } from "@/core/efs/property-contract";
+import { OPEN_GRAPH_IMAGE_SEGMENT } from "@/config/efs/image-path";
 import {
   bindingIssues,
   normalizePrefix,
@@ -23,6 +25,21 @@ import {
 } from "@/core/efs/publication";
 import { siteIdIssue } from "@/core/site-identity";
 import { IMPLICIT_SPOKE_HUB_ID, IMPLICIT_SPOKE_ID } from "@/core/spoke";
+
+/**
+ * ONE diagnosis for a locale that may not be PUBLISHED (`GEO-03` R04 §5).
+ *
+ * The two failures stay distinct on purpose. A MALFORMED tag is a spelling fault, while an
+ * UNQUALIFIED tag is a perfectly valid language that does not say WHICH authored representation is
+ * meant. Collapsing them would tell an author to fix the wrong thing: `de` needs a region, not a
+ * spelling repair. Browser preferences are a different question and stay bare-friendly.
+ */
+function publicationLocaleDiagnosis(issue: PublicationLocaleIssue): string {
+  return issue.kind === "malformed"
+    ? issue.reason
+    : `${issue.reason} A published representation is qualified by an authored script or region ` +
+        '("en-001", "de-DE", "zh-Hans"); a browser preference may still be bare.';
+}
 
 /** One localized representation declared inside a Page. */
 export interface EfsRepresentationDeclaration {
@@ -104,6 +121,15 @@ export interface EfsManifestResult {
 
 const FACET_ID_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 
+/**
+ * `D43` — THE RESERVED INTERNAL HOME ROUTE, as validation sees it.
+ *
+ * The Home Page is declared once, internally, as `id: "home", route: ["home"]`, and its public address is the
+ * locale root. Validation must know that name to refuse a second Page claiming it under another
+ * capitalization (the request boundary owns the matching rule itself).
+ */
+const RESERVED_HOME_ROUTE = "home";
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -130,6 +156,15 @@ function propertyBag(value: unknown, label: string, issues: string[]): PropertyB
     issues.push(`${label} properties must be an object.`);
     return undefined;
   }
+  // Typed keys carry a contract beyond the generic cascade validation (`D40` Decision A). A
+  // malformed `timezone` or `openingSchedule` fails HERE, before anything is published, rather
+  // than degrading into a missing value at render time.
+  for (const [key, declaration] of Object.entries(value)) {
+    if (declaration === null) continue; // explicit suppression: no value to validate
+    if (!isRecord(declaration)) continue; // the generic cascade reports the shape issue
+    const issue = typedPropertyIssue(key, declaration.value);
+    if (issue) issues.push(`${label}.properties["${key}"]: ${issue}`);
+  }
   return value as PropertyBag;
 }
 
@@ -139,13 +174,43 @@ function routeSegments(value: unknown, label: string, issues: string[]): readonl
     issues.push(`${label} must contain at least one route segment.`);
     return [];
   }
-  return segments.map((segment) => {
+  const parsed = segments.map((segment) => {
     if (typeof segment !== "string" || segment.length === 0 || /[/\\%]/.test(segment)) {
       issues.push(`${label} has an unsafe route segment.`);
       return "";
     }
     return segment;
   });
+  // R04-C21-R02 (finding F3) + `D43` — THE RESERVED IMAGE SUFFIX IS NOT A PAGE ROUTE.
+  //
+  // `…/opengraph-image` is the site/locale social-card ENDPOINT (`@/config/efs/image-path`). A Page whose route
+  // ENDS in that segment would be shadowed by the image dispatch — and in the site-open shape the same URL is
+  // `/<prefix>/<site>/<locale>/opengraph-image`, so both shapes collide — leaving an author with a declared
+  // Page that silently never renders. The rule is therefore refused HERE, at validation, before publication,
+  // and only for this terminal segment: every other route, nested or not, keeps validating exactly as it did.
+  //
+  // `D43` makes the terminal test case-insensitive: the image endpoint is published at the lowercase segment,
+  // so an ordinary Page declaring `OpenGraph-Image` would still be shadowed and is refused for the same reason.
+  if (parsed[parsed.length - 1]!.toLowerCase() === OPEN_GRAPH_IMAGE_SEGMENT) {
+    issues.push(
+      `${label} may not end in the reserved Open Graph image segment "${OPEN_GRAPH_IMAGE_SEGMENT}" ` +
+        `(compared case-insensitively): that URL names an image endpoint, not a Page route, and the Page ` +
+        `would never be served.`,
+    );
+  }
+  return parsed;
+}
+
+/**
+ * `D43` — ONE PAGE ROUTE KEY PER SITE.
+ *
+ * A Page route's letter case is not identity, so two declarations whose complete segment sequences are equal
+ * after ordinary lowercasing would be one address with two owners. The manifest is refused with a
+ * path-specific diagnostic instead of resolving it by declaration order, and the reserved internal Home route
+ * cannot be claimed by a different Page under another capitalization either.
+ */
+function routeKeyFold(route: readonly string[]): string {
+  return route.map((segment) => segment.toLowerCase()).join("/");
 }
 
 /**
@@ -202,6 +267,7 @@ export function validateEfsManifest(input: unknown): EfsManifestResult {
 
         const pages: EfsPageDeclaration[] = [];
         const pageIds = new Set<string>();
+        const pageRouteKeys = new Map<string, string>();
         for (const [pageIndex, rawPage] of arrayOf<unknown>(rawSite.pages, `${siteAt}.pages`, issues).entries()) {
           const pageAt = `${siteAt}.pages[${pageIndex}]`;
           if (!isRecord(rawPage)) {
@@ -213,6 +279,29 @@ export function validateEfsManifest(input: unknown): EfsManifestResult {
           if (pageIds.has(pageId)) issues.push(`${pageAt}.id duplicates Page "${pageId}" in its Site.`);
           pageIds.add(pageId);
           const route = routeSegments(rawPage.route, `${pageAt}.route`, issues);
+          /**
+           * `D43` — the route's identity is its folded segment sequence. A duplicate address, or a second Page
+           * claiming the reserved internal Home route under another capitalization, is refused with the exact
+           * path that collides; the authored bytes of both declarations are preserved untouched.
+           */
+          const routeKey = routeKeyFold(route);
+          const claimedBy = pageRouteKeys.get(routeKey);
+          if (claimedBy !== undefined) {
+            issues.push(
+              `${pageAt}.route declares the Page route "/${routeKey}" more than once in its Site ` +
+                `("${claimedBy}" already claims it) — letter case is not identity, so distinct Pages must ` +
+                `have distinct routes under lowercase normalization.`,
+            );
+          } else {
+            pageRouteKeys.set(routeKey, pageAt);
+          }
+          if (routeKey === RESERVED_HOME_ROUTE && pageId !== RESERVED_HOME_ROUTE) {
+            issues.push(
+              `${pageAt}.route claims the reserved internal Home address "${RESERVED_HOME_ROUTE}" ` +
+                `(compared case-insensitively) for Page "${pageId}": Home is declared once, by the ` +
+                `"${RESERVED_HOME_ROUTE}" Page, and its public address is the locale root.`,
+            );
+          }
           if (rawPage.visibility !== undefined) {
             issues.push(
               `${pageAt}.visibility is not an EFS manifest property: publication visibility belongs ` +
@@ -234,8 +323,8 @@ export function validateEfsManifest(input: unknown): EfsManifestResult {
               continue;
             }
             const localeValue = text(rawRepresentation.locale, `${representationAt}.locale`, issues);
-            const localeIssue = localeTagIssue(localeValue);
-            if (localeIssue) issues.push(`${representationAt}.locale: ${localeIssue}`);
+            const localeIssue = publicationLocaleIssue(localeValue);
+            if (localeIssue) issues.push(`${representationAt}.locale: ${publicationLocaleDiagnosis(localeIssue)}`);
             let locale = localeValue;
             try {
               locale = canonicalLocaleTag(localeValue);
@@ -352,6 +441,13 @@ export function validateEfsManifest(input: unknown): EfsManifestResult {
       rawPublication.presentationSiteCode === undefined
         ? undefined
         : text(rawPublication.presentationSiteCode, `${at}.presentationSiteCode`, issues);
+    // The presentation identity is a DESCRIPTIVE KEY, checked by the one Site-ID grammar. Whether it
+    // names a Site the owning Spoke actually declares needs the Spoke's configuration, so that half is
+    // checked at establishment (`GEO-03` R04 §6), never while a Page renders.
+    if (presentationSiteCode !== undefined) {
+      const presentationIssue = siteIdIssue(presentationSiteCode);
+      if (presentationIssue) issues.push(`${at}.presentationSiteCode: ${presentationIssue}`);
+    }
 
     const bindings: EfsBinding[] = [];
     for (const [bindingIndex, rawBinding] of arrayOf<unknown>(
@@ -373,6 +469,19 @@ export function validateEfsManifest(input: unknown): EfsManifestResult {
       const locales = arrayOf<unknown>(rawBinding.locales, `${bindingAt}.locales`, issues).map((locale) =>
         text(locale, `${bindingAt}.locales[]`, issues),
       );
+      // A binding PUBLISHES the locales it lists (`GEO-03` R04 §5): each must identify a qualified
+      // authored representation, so a bare language is refused here rather than served.
+      for (const locale of locales) {
+        const localeIssue = publicationLocaleIssue(locale);
+        if (localeIssue) {
+          issues.push(`${bindingAt}.locales[]: ${publicationLocaleDiagnosis(localeIssue)}`);
+        }
+      }
+      const defaultLocale = text(rawBinding.defaultLocale, `${bindingAt}.defaultLocale`, issues);
+      const defaultLocaleIssue = publicationLocaleIssue(defaultLocale);
+      if (defaultLocaleIssue) {
+        issues.push(`${bindingAt}.defaultLocale: ${publicationLocaleDiagnosis(defaultLocaleIssue)}`);
+      }
       const siteMode =
         rawBinding.siteMode === "open" ? "open" : rawBinding.siteMode === "closed" ? "closed" : "";
       if (!siteMode) issues.push(`${bindingAt}.siteMode must be "closed" or "open".`);
@@ -398,7 +507,7 @@ export function validateEfsManifest(input: unknown): EfsManifestResult {
         siteMode: siteMode as EfsSiteMode,
         defaultSiteId: rawBinding.defaultSiteId as string | undefined,
         locales,
-        defaultLocale: text(rawBinding.defaultLocale, `${bindingAt}.defaultLocale`, issues),
+        defaultLocale,
         canonical: rawBinding.canonical as boolean | undefined,
         aliasOf: rawBinding.aliasOf as string | undefined,
       };

@@ -12,7 +12,7 @@ vi.mock("next/headers", () => ({
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: () => undefined }),
-  usePathname: () => "/ww/en",
+  usePathname: () => "/en-001",
   notFound: () => {
     throw new Error("NOT_FOUND");
   },
@@ -39,7 +39,7 @@ async function rendered(view: EfsView): Promise<string> {
 }
 
 async function referenceView(): Promise<EfsView> {
-  const view = await efsViewForCurrentRequest(["ww", "en"]);
+  const view = await efsViewForCurrentRequest(["en-001"]);
   expect(view).not.toBeNull();
   return view as EfsView;
 }
@@ -55,11 +55,11 @@ function withBinding(view: EfsView, prefix: readonly string[], siteMode: "closed
 describe("EFS shared shell is publication-independent (R04)", () => {
   it("renders the explicit publication's shell at a single-prefix public base", async () => {
     const html = await rendered(await referenceView());
-    expect(html).toContain('lang="en"');
+    expect(html).toContain('lang="en-001"');
     expect(html).toContain("Provelopment Foundation");
     expect(html).toContain('data-selector="language"');
     expect(html).not.toContain('data-selector="location"');
-    expect(html).toContain('href="/ww/en/about"');
+    expect(html).toContain('href="/en-001/about"');
     expect(html).not.toContain("data-region");
     expect(html).toContain("EFS page");
   });
@@ -68,10 +68,11 @@ describe("EFS shared shell is publication-independent (R04)", () => {
     const html = await rendered(
       withBinding(await referenceView(), [], "closed", "https://foundation-template.provelopment.com/en"),
     );
-    expect(html).toContain('lang="en"');
+    expect(html).toContain('lang="en-001"');
     expect(html).toContain('data-selector="language"');
-    expect(html).toContain('href="/en/about"');
-    expect(html).not.toContain('href="/ww/en/about"');
+    expect(html).toContain('href="/en-001/about"');
+    // The public path carries NO Site segment: the Site is an ownership context, never a URL part.
+    expect(html).not.toContain('href="/main/');
   });
 
   it("keeps the same shell features at a multi-segment prefix", async () => {
@@ -83,7 +84,7 @@ describe("EFS shared shell is publication-independent (R04)", () => {
         "https://foundation-template.provelopment.com/us/west/en",
       ),
     );
-    expect(html).toContain('href="/us/west/en/about"');
+    expect(html).toContain('href="/us/west/en-001/about"');
     expect(html).not.toContain("data-region");
     expect(html).toContain('data-selector="language"');
   });
@@ -97,7 +98,7 @@ describe("EFS shared shell is publication-independent (R04)", () => {
         "https://foundation-template.provelopment.com/us/main/en",
       ),
     );
-    expect(html).toContain('href="/us/main/en/about"');
+    expect(html).toContain('href="/us/main/en-001/about"');
     expect(html).toContain('data-selector="language"');
     expect(html).not.toContain('data-selector="location"');
   });

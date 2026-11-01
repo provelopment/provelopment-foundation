@@ -53,6 +53,32 @@ const FIDELITY_SURFACES = [
   "spokes",
 ] as const;
 
+/**
+ * The surfaces a copy must reproduce. An EFS-authoring copy additionally proves the DECLARATION travelled:
+ * its manifest and capsule are part of what the copy claims to be, so a copy whose `efs/` differs is refused
+ * exactly like one whose pages differ (R04-C14).
+ */
+function fidelitySurfaces(preserveEfs: boolean): readonly string[] {
+  return preserveEfs ? [...FIDELITY_SURFACES, "efs"] : FIDELITY_SURFACES;
+}
+
+/**
+ * How a copy is taken (R04-C14).
+ *
+ * The DEFAULT is unchanged and must stay unchanged: an authoring/preservation copy is a LEGACY subject, so
+ * the explicit EFS manifest is removed from it. A suite that proves EFS AUTHORING needs the opposite — the
+ * manifest, the capsule and the publication owners — and has to say so. A copy that silently kept or
+ * silently dropped EFS would make both kinds of suite meaningless, which is why this is an opt-in flag
+ * rather than a default that drifted.
+ */
+export interface DisposableDeploymentOptions {
+  /**
+   * Keep the Installation's explicit EFS declaration (manifest + capsule) in the copy, and leave the
+   * legacy test runtime switched OFF so the EFS authority is the only one that can answer.
+   */
+  readonly preserveEfs?: boolean;
+}
+
 export interface DisposableDeployment {
   /** The temporary root to hand to `FOUNDATION_DEPLOYMENT_ROOT`. */
   readonly root: string;
@@ -67,18 +93,24 @@ export interface DisposableDeployment {
  * deployment. Returns the copy; throws — loudly, before anything else — when the copy is not faithful,
  * because a silently different copy would make every assertion made against it meaningless.
  */
-export function selectDisposableDeploymentCopy(): DisposableDeployment {
+export function selectDisposableDeploymentCopy(
+  options: DisposableDeploymentOptions = {},
+): DisposableDeployment {
+  const preserveEfs = options.preserveEfs === true;
   const source = resolveDeploymentForBuild(process.env, process.cwd());
   const root = mkdtempSync(path.join(tmpdir(), "foundation-deployment-authoring-"));
   cpSync(source.root, root, { recursive: true });
   // The authoring/legacy preservation suites exercise the released page resolver through a
   // disposable copy. The explicit EFS manifest is a publication authority, so it must not travel
   // into that copy: the real deployment keeps it, and the copy remains the legacy authoring subject.
-  rmSync(path.join(root, "efs"), { recursive: true, force: true });
+  //
+  // R04-C14 — unless the caller asks for the EFS subject, in which case the declaration travels WITH the
+  // copy and is proved byte-identical below like every other authored surface.
+  if (!preserveEfs) rmSync(path.join(root, "efs"), { recursive: true, force: true });
 
   const fidelity = productionStateDrift(
-    captureProductionStateManifest(source.root, FIDELITY_SURFACES),
-    captureProductionStateManifest(root, FIDELITY_SURFACES),
+    captureProductionStateManifest(source.root, fidelitySurfaces(preserveEfs)),
+    captureProductionStateManifest(root, fidelitySurfaces(preserveEfs)),
   );
   if (fidelity.length > 0) {
     rmSync(root, { recursive: true, force: true });
@@ -93,7 +125,12 @@ export function selectDisposableDeploymentCopy(): DisposableDeployment {
   process.env[DEPLOYMENT_LAYOUT_ENV] = "override";
   // The authoring/preservation suite drives the isolated released Page/locale utility against this
   // copy. It is a test utility only (`legacyTestRuntimeEnabled` refuses NODE_ENV=production).
-  process.env[LEGACY_TEST_RUNTIME_ENV] = "1";
+  //
+  // R04-C14 — an EFS-authoring copy is the opposite case: the EFS declaration IS the authority under test, so
+  // the legacy runtime is switched OFF. Nothing may answer for an undeclared path, which is exactly the
+  // isolation the authoring proof asserts.
+  if (preserveEfs) delete process.env[LEGACY_TEST_RUNTIME_ENV];
+  else process.env[LEGACY_TEST_RUNTIME_ENV] = "1";
   // The compatibility configuration binding is published ONLY when the Installation HAS one. A MULTI-Spoke
   // Installation inlines no single configuration at all (S3F2A/M16 — there is no default Spoke to inline),
   // so `siteConfigFile` is empty and reading it would fail for exactly the deployment form the multi-Spoke

@@ -21,6 +21,7 @@ vi.mock("next/navigation", () => ({
 
 import { materializeEfsInstallation, selectEfsInstallation } from "../support/efs-installation";
 import { LEGACY_TEST_RUNTIME_ENV } from "@/app/[[...segments]]/legacy-test-runtime";
+import { EFS_REQUEST_PATH_HEADER } from "@/config/efs/request-path";
 
 // The canonical fixture's publications name REAL Spokes (`acme-spoke`). Declare that Spoke in a
 // disposable explicit Installation before the runtime modules are loaded, so ownership is checked
@@ -28,7 +29,9 @@ import { LEGACY_TEST_RUNTIME_ENV } from "@/app/[[...segments]]/legacy-test-runti
 const installation = materializeEfsInstallation({ mode: "flat", spokes: ["acme-spoke"] });
 selectEfsInstallation(installation.root);
 vi.resetModules();
-const { efsViewForCurrentRequest } = await import("@/app/[[...segments]]/efs-request");
+const { efsContactContextForCurrentRequest, efsViewForCurrentRequest } = await import(
+  "@/app/[[...segments]]/efs-request"
+);
 
 afterAll(() => installation.cleanup());
 
@@ -93,10 +96,10 @@ describe("EFS actual App Router request branch (S3-E3)", () => {
     const nested = await request("my.provelopment.com", "/acme-co/en-001/products/detail");
     expect(nested?.page.id).toBe("detail");
     expect(nested?.visibility).toBe("unlisted");
-    const open = await request("my.provelopment.com", "/acme-open/outlet/fr/");
+    const open = await request("my.provelopment.com", "/acme-open/outlet/fr-fr/");
     expect(open?.site.id).toBe("outlet");
     expect(open?.page.id).toBe("home");
-    expect(open?.canonical).toBe("https://my.provelopment.com/acme-open/outlet/fr");
+    expect(open?.canonical).toBe("https://my.provelopment.com/acme-open/outlet/fr-fr");
   });
 
   it("publishes a public English representation while its French representation is unlisted", async () => {
@@ -106,29 +109,29 @@ describe("EFS actual App Router request branch (S3-E3)", () => {
     expect(english?.xDefault).toBe("https://my.provelopment.com/acme-co/en-001/guide");
     expect(english?.navigation.some((item) => item.pageId === "guide")).toBe(true);
 
-    const french = await request("my.provelopment.com", "/acme-co/fr/guide");
+    const french = await request("my.provelopment.com", "/acme-co/fr-fr/guide");
     expect(french?.visibility).toBe("unlisted");
     expect(french?.alternates.map((alternate) => alternate.hreflang)).toEqual(["en-001"]);
     expect(french?.navigation.some((item) => item.pageId === "guide")).toBe(false);
-    expect(french?.canonical).toBe("https://my.provelopment.com/acme-co/fr/guide");
+    expect(french?.canonical).toBe("https://my.provelopment.com/acme-co/fr-fr/guide");
   });
 
   it("publishes a public French representation while its English representation is unlisted", async () => {
     const english = await request("my.provelopment.com", "/acme-co/en-001/notice");
     expect(english?.visibility).toBe("unlisted");
-    expect(english?.alternates.map((alternate) => alternate.hreflang)).toEqual(["fr"]);
+    expect(english?.alternates.map((alternate) => alternate.hreflang)).toEqual(["fr-FR"]);
     expect(english?.xDefault).toBeUndefined();
     expect(english?.navigation.some((item) => item.pageId === "notice")).toBe(false);
 
-    const french = await request("my.provelopment.com", "/acme-co/fr/notice");
+    const french = await request("my.provelopment.com", "/acme-co/fr-fr/notice");
     expect(french?.visibility).toBe("public");
-    expect(french?.alternates.map((alternate) => alternate.hreflang)).toEqual(["fr"]);
+    expect(french?.alternates.map((alternate) => alternate.hreflang)).toEqual(["fr-FR"]);
     expect(french?.xDefault).toBeUndefined();
     expect(french?.navigation.some((item) => item.pageId === "notice")).toBe(true);
   });
 
   it("keeps an all-unlisted Page reachable without advertising either representation", async () => {
-    for (const locale of ["en-001", "fr"]) {
+    for (const locale of ["en-001", "fr-fr"]) {
       const view = await request("my.provelopment.com", `/acme-co/${locale}/secret`);
       expect(view?.visibility, locale).toBe("unlisted");
       expect(view?.alternates, locale).toEqual([]);
@@ -138,7 +141,7 @@ describe("EFS actual App Router request branch (S3-E3)", () => {
   });
 
   it("never redirects a missing translation to an unlisted fallback", async () => {
-    await expect(request("my.provelopment.com", "/acme-co/fr-CA/notice")).rejects.toThrow(
+    await expect(request("my.provelopment.com", "/acme-co/fr-ca/notice")).rejects.toThrow(
       "NOT_FOUND",
     );
     await expect(request("my.provelopment.com", "/acme-co/fr-CA/guide")).rejects.toThrow(
@@ -242,7 +245,7 @@ describe("EFS actual App Router request branch (S3-E3)", () => {
   });
 
   it("suppresses an inherited address at the descendant Site", async () => {
-    const open = await request("my.provelopment.com", "/acme-open/outlet/fr/");
+    const open = await request("my.provelopment.com", "/acme-open/outlet/fr-fr/");
     expect(open?.properties.get("contact.address")?.state).toBe("suppressed");
     expect(open?.properties.publicEntries().map((entry) => entry.key)).not.toContain("contact.address");
   });
@@ -319,6 +322,139 @@ describe("EFS actual App Router request branch (S3-E3)", () => {
       /declares no EFS manifest/,
     );
     process.env[LEGACY_TEST_RUNTIME_ENV] = "1";
+  });
+
+  // THE RESERVED HOME PAGE HAS EXACTLY ONE PUBLIC ADDRESS: its binding's locale root (GEO-03 R04-C23). `home` is that
+  // document's INTERNAL Page identity, so the literal suffix is refused — never aliased, rewritten or redirected. These
+  // are real requests through the shared resolver, so each addressing shape must apply the rule after parsing its own
+  // distinct routing components.
+  it("refuses the literal home suffix on a Site-closed dedicated host, in every declared locale", async () => {
+    const home = await request("www.acme-co.com", "/en-001/");
+    expect(home?.page.id).toBe("home");
+    expect(home?.home).toBe(true);
+    expect(home?.canonical).toBe("https://www.acme-co.com/en-001");
+    for (const locale of ["en-001", "fr-fr"]) {
+      await expect(request("www.acme-co.com", `/${locale}/home`), locale).rejects.toThrow(
+        "NOT_FOUND",
+      );
+    }
+    // Case semantics are untouched: an undeclared `Home` Page route was and remains refused, and the refusal of
+    // `home` added no case folding.
+    await expect(request("www.acme-co.com", "/en-001/Home")).rejects.toThrow("NOT_FOUND");
+    expect((await request("www.acme-co.com", "/en-001/about"))?.page.id).toBe("about");
+  });
+
+  it("refuses the literal home suffix on a prefix-scoped Site-closed binding", async () => {
+    const home = await request("my.provelopment.com", "/acme-co/en-001/");
+    expect(home?.page.id).toBe("home");
+    expect(home?.canonical).toBe("https://my.provelopment.com/acme-co/en-001");
+    expect(home?.alternates.length).toBeGreaterThan(0);
+    for (const locale of ["en-001", "fr-fr"]) {
+      await expect(request("my.provelopment.com", `/acme-co/${locale}/home`), locale).rejects.toThrow(
+        "NOT_FOUND",
+      );
+    }
+    expect((await request("my.provelopment.com", "/acme-co/en-001/about"))?.page.id).toBe("about");
+  });
+
+  it("refuses the literal home suffix after a Site-open selector while real Pages still resolve", async () => {
+    const home = await request("my.provelopment.com", "/acme-open/outlet/fr-fr/");
+    expect(home?.page.id).toBe("home");
+    expect(home?.canonical).toBe("https://my.provelopment.com/acme-open/outlet/fr-fr");
+    await expect(request("my.provelopment.com", "/acme-open/outlet/fr-fr/home")).rejects.toThrow(
+      "NOT_FOUND",
+    );
+    await expect(request("my.provelopment.com", "/acme-open/main/en-001/home")).rejects.toThrow(
+      "NOT_FOUND",
+    );
+    const nested = await request("my.provelopment.com", "/acme-open/main/en-001/products/detail");
+    expect(nested?.page.id).toBe("detail");
+  });
+
+  it("never binds a contact form to the reserved literal home suffix", async () => {
+    // A DISPOSABLE capsule copy gives the Home representation its own `contactForm`, so the hosting seam is genuinely
+    // exercised: if the reserved suffix could still resolve the Home Page, it would acquire a pageId/formRef and a
+    // submission to `…/home` would be accepted by a page that has no public address.
+    //
+    // OWNERSHIP AND CLEANUP (GEO-03 R04-C23-R02). The root is owned the instant it exists; population and the
+    // assertions run under a guard; and restoration is attempted INDEPENDENTLY of disposal, so a failed `cpSync`, a
+    // failed write or a failed assertion cannot leak the directory, while a failed disposal cannot hide the primary
+    // failure — both are reported. The earlier form called `rmSync` only after the assertions had succeeded.
+    const capsuleBefore = process.env.FOUNDATION_EFS_CAPSULE;
+    const headersBefore = new Map(state.headers);
+    const root = mkdtempSync(join(tmpdir(), "efs-home-form-"));
+    let failure: unknown = null;
+    try {
+      const capsule = join(root, "capsule");
+      cpSync(join(process.cwd(), "tests", "fixtures", "efs", "canonical", "capsule"), capsule, {
+        recursive: true,
+      });
+      writeFileSync(
+        join(
+          capsule,
+          "e_00000000000000000000000000",
+          "acme",
+          "main",
+          "pages",
+          "home",
+          "en-001.json",
+        ),
+        JSON.stringify({
+          schemaVersion: 1,
+          title: "Home with a form",
+          sections: [{ type: "contactForm", formRef: "home-form" }],
+        }),
+        "utf8",
+      );
+      process.env.FOUNDATION_EFS_CAPSULE = capsule;
+      state.headers.set("host", "my.provelopment.com");
+
+      state.headers.set(EFS_REQUEST_PATH_HEADER, "/acme-co/en-001/");
+      const canonicalRoot = await efsContactContextForCurrentRequest();
+      expect(canonicalRoot?.pageId).toBe("home");
+      expect(canonicalRoot?.formRef).toBe("home-form");
+
+      state.headers.set(EFS_REQUEST_PATH_HEADER, "/acme-co/en-001/home");
+      const reserved = await efsContactContextForCurrentRequest();
+      expect(reserved).not.toBeNull();
+      expect(reserved?.pageId).toBeUndefined();
+      expect(reserved?.formRef).toBeUndefined();
+    } catch (error) {
+      failure = error;
+    } finally {
+      const problems: string[] = [];
+      // The environment and the request headers are restored on their OWN, before the directory is touched: they
+      // are cheap, they must never depend on a successful removal, and leaving them set would leak into every
+      // later case in this file.
+      try {
+        if (capsuleBefore === undefined) delete process.env.FOUNDATION_EFS_CAPSULE;
+        else process.env.FOUNDATION_EFS_CAPSULE = capsuleBefore;
+      } catch (error) {
+        problems.push("capsule environment: " + String(error));
+      }
+      try {
+        state.headers.clear();
+        for (const [key, value] of headersBefore) state.headers.set(key, value);
+      } catch (error) {
+        problems.push("request headers: " + String(error));
+      }
+      try {
+        rmSync(root, { recursive: true, force: true });
+      } catch (error) {
+        problems.push("dispose " + root + ": " + String(error));
+      }
+      if (failure !== null && problems.length > 0) {
+        throw new Error(
+          "contact fixture: the assertion failed AND teardown failed. primary=" +
+            (failure instanceof Error ? failure.message : String(failure)) +
+            "; teardown=" +
+            problems.join(" | "),
+          { cause: failure },
+        );
+      }
+      if (failure !== null) throw failure;
+      if (problems.length > 0) throw new Error("contact fixture teardown failed: " + problems.join(" | "));
+    }
   });
 
   it("refuses a publication whose declared Spoke does not own the host-selected context", async () => {

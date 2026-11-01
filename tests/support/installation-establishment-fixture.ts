@@ -139,12 +139,81 @@ export function constructSyntheticRelease(
 }
 
 /**
+ * QUALIFY THE SEED'S PUBLISHED LANGUAGES (`GEO-03` R04-C1 §4/§5).
+ *
+ * Establishment CONVERTS the seed's Spoke configuration into an EFS publication, so the seed's
+ * `i18n.locales[].code` become the published representation locales. Publication qualification is now
+ * validated before serving, so a seed that declares bare `en`/`de` can no longer be established —
+ * correctly: a bare language does not say which authored representation is meant.
+ *
+ * This rewrites the DISPOSABLE COPY only. The committed synthetic fixture stays byte-identical,
+ * because ~50 legacy suites read it and its geographic tree belongs to `GEO-05`'s fixture work rather
+ * than to this migration. The declared code and the authored directory are renamed TOGETHER, so the
+ * conversion still finds each representation's own source.
+ */
+const SEED_LOCALE_MAP: Readonly<Record<string, string>> = { en: "en-001", de: "de-de" };
+
+function qualifySeedLocales(seed: string): void {
+  const configPath = path.join(seed, "site.config.json");
+  const config = JSON.parse(readFileSync(configPath, "utf8")) as {
+    i18n?: { defaultLocale?: string; locales?: { code?: string }[] };
+  };
+  const i18n = config.i18n;
+  for (const locale of i18n?.locales ?? []) {
+    if (typeof locale.code === "string" && SEED_LOCALE_MAP[locale.code] !== undefined) {
+      locale.code = SEED_LOCALE_MAP[locale.code];
+    }
+  }
+  const defaultLocale = i18n?.defaultLocale;
+  if (typeof defaultLocale === "string" && SEED_LOCALE_MAP[defaultLocale] !== undefined) {
+    i18n!.defaultLocale = SEED_LOCALE_MAP[defaultLocale];
+  }
+
+  // A Site's own locale list and default are declared in the SAME vocabulary as `i18n.locales`
+  // (membership is validated), so they move with it.
+  const qualify = (value: unknown): unknown =>
+    typeof value === "string" && SEED_LOCALE_MAP[value] !== undefined ? SEED_LOCALE_MAP[value] : value;
+  for (const site of (config as { sites?: { locales?: unknown[]; defaultLocale?: unknown }[] }).sites ?? []) {
+    if (Array.isArray(site.locales)) {
+      site.locales = site.locales.map((entry) =>
+        typeof entry === "object" && entry !== null
+          ? { ...entry, path: qualify((entry as { path?: unknown }).path) }
+          : qualify(entry),
+      );
+    }
+    site.defaultLocale = qualify(site.defaultLocale);
+  }
+
+  // The legacy region bindings pair a Site with a locale path key, so they move with it too.
+  const bindings = (config as { business?: { pages?: { locale?: unknown }[] } }).business?.pages ?? [];
+  for (const binding of bindings) binding.locale = qualify(binding.locale);
+  writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+
+  const pagesRoot = path.join(seed, "content", "pages");
+  for (const mode of readdirSync(pagesRoot)) {
+    const modeRoot = path.join(pagesRoot, mode);
+    if (!statSync(modeRoot).isDirectory()) continue;
+    for (const site of readdirSync(modeRoot)) {
+      const siteRoot = path.join(modeRoot, site);
+      if (!statSync(siteRoot).isDirectory()) continue;
+      for (const locale of readdirSync(siteRoot)) {
+        const qualified = SEED_LOCALE_MAP[locale];
+        if (qualified === undefined) continue;
+        cpSync(path.join(siteRoot, locale), path.join(siteRoot, qualified), { recursive: true });
+        rmSync(path.join(siteRoot, locale), { recursive: true, force: true });
+      }
+    }
+  }
+}
+
+/**
  * An authored seed: the platform's committed synthetic deployment fixture, plus the generated-state ignore
  * rule a capsule must carry. Copied, never written in place — other suites use the fixture.
  */
 export function syntheticSeed(extra: Record<string, string> = {}): string {
   const seed = disposableTree("foundation-b4b-seed-");
   cpSync(SYNTHETIC_DEPLOYMENT_FIXTURE_ROOT, seed, { recursive: true });
+  qualifySeedLocales(seed);
   writeFileSync(path.join(seed, ".gitignore"), `${INSTALLATION_OPERATIONAL_STATE_FILE_NAME}\n`, "utf8");
   writeFiles(seed, extra);
   return seed;

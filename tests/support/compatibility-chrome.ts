@@ -28,6 +28,13 @@ export const compatibilityAssets = createRuntimeAssetOwnershipResolver(
 /** The compatibility dictionary binding (`@/config/i18n`'s `getDictionary`) behind the access shape. */
 export const compatibilityDictionaries: RuntimeDictionaryAccess = {
   get: (locale, siteCode) => getDictionary(locale, siteCode),
+  /**
+   * Chrome ALWAYS renders: the compatibility binding's accepted contract is "the requested locale,
+   * else the deployment default", so whatever `get` answers is the applicable answer here. The
+   * applicability question exists only for a consumer that publishes a fact in the representation's
+   * own language (`GEO-02-R03` B), and no chrome consumer asks it.
+   */
+  applicable: () => true,
 };
 
 /** The context-bound inputs `SiteHeader`/`SiteFooter`/`BusinessInfo`/dedicated pages take (no `routes`). */

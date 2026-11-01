@@ -9,15 +9,15 @@
     }
   },
   "i18n": {
-    "defaultLocale": "en",
+    "defaultLocale": "en-001",
     "locales": [
       {
-        "code": "en",
+        "code": "en-001",
         "label": "English",
         "englishLabel": "English"
       },
       {
-        "code": "de",
+        "code": "de-de",
         "label": "Deutsch",
         "description": "Diese Website ist eine laufende Installation der Open-Source-Vorlage Provelopment Foundation: derselbe öffentliche Code, den jeder herunterladen und selbst einsetzen kann. Sie ist die Referenzseite der Vorlage, nicht die Website eines Kunden."
       }
@@ -25,16 +25,16 @@
   },
   "sites": [
     {
-      "code": "de",
+      "code": "main",
       "label": "Germany",
       "locales": [
-        "de",
-        "en"
+        "de-de",
+        "en-001"
       ],
-      "defaultLocale": "de"
+      "defaultLocale": "de-de"
     }
   ],
-  "defaultSite": "de",
+  "defaultSite": "main",
   "contact": {
     "email": "hello@example.com"
   },
@@ -64,10 +64,10 @@
       }
     },
     "pages": [
-      { "site": "de", "locale": "de", "region": "berlin" },
-      { "site": "de", "locale": "en", "region": "berlin" },
-      { "site": "de", "locale": "de", "region": "frankfurt" },
-      { "site": "de", "locale": "en", "region": "frankfurt" }
+      { "site": "main", "locale": "de-de", "region": "berlin" },
+      { "site": "main", "locale": "en-001", "region": "berlin" },
+      { "site": "main", "locale": "de-de", "region": "frankfurt" },
+      { "site": "main", "locale": "en-001", "region": "frankfurt" }
     ]
   },
   "socialLinks": [],

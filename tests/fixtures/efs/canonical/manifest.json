@@ -50,7 +50,7 @@
                       "locale": "en-001"
                     },
                     {
-                      "locale": "fr"
+                      "locale": "fr-FR"
                     }
                   ],
                   "properties": {
@@ -92,7 +92,7 @@
                       "locale": "en-001"
                     },
                     {
-                      "locale": "fr"
+                      "locale": "fr-FR"
                     }
                   ],
                   "properties": {
@@ -113,7 +113,7 @@
                       "locale": "en-001"
                     },
                     {
-                      "locale": "fr"
+                      "locale": "fr-FR"
                     }
                   ],
                   "properties": {
@@ -133,7 +133,7 @@
                       "locale": "en-001"
                     },
                     {
-                      "locale": "fr"
+                      "locale": "fr-FR"
                     }
                   ],
                   "properties": {
@@ -180,7 +180,7 @@
                   ],
                   "representations": [
                     {
-                      "locale": "fr"
+                      "locale": "fr-FR"
                     }
                   ],
                   "properties": {
@@ -219,7 +219,7 @@
           "defaultSiteId": "main",
           "locales": [
             "en-001",
-            "fr",
+            "fr-FR",
             "fr-CA"
           ],
           "defaultLocale": "en-001",
@@ -240,7 +240,7 @@
           "defaultSiteId": "main",
           "locales": [
             "en-001",
-            "fr",
+            "fr-FR",
             "fr-CA"
           ],
           "defaultLocale": "en-001",
@@ -259,7 +259,7 @@
           "defaultSiteId": "main",
           "locales": [
             "en-001",
-            "fr",
+            "fr-FR",
             "fr-CA"
           ],
           "defaultLocale": "en-001",
@@ -281,7 +281,7 @@
           "defaultSiteId": "main",
           "locales": [
             "en-001",
-            "fr",
+            "fr-FR",
             "fr-CA"
           ],
           "defaultLocale": "en-001",
@@ -308,7 +308,7 @@
           "defaultSiteId": "main",
           "locales": [
             "en-001",
-            "fr",
+            "fr-FR",
             "fr-CA"
           ],
           "defaultLocale": "en-001",
@@ -338,7 +338,7 @@
           "defaultSiteId": "main",
           "locales": [
             "en-001",
-            "fr",
+            "fr-FR",
             "fr-CA"
           ],
           "defaultLocale": "en-001",

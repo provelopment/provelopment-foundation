@@ -79,7 +79,9 @@ import { dictionaryAccessForRuntimeContext } from "@/config/runtime-dictionaries
 import type { SiteConfig } from "@/config/site-config";
 import { effectiveSitePageConfig } from "@/config/site-page-config";
 import type { EfsView } from "./efs-request";
-import { publicPathBase, publicationOwnedBy } from "@/core/efs/publication";
+import { assetUrl, publicPathBase, publicationOwnedBy } from "@/core/efs/publication";
+import { ownerAssetReference, PUBLIC_FACT_KEYS, resolvePublicFacts, type PublicFactState } from "@/core/efs/public-facts";
+import type { PropertyLevel } from "@/core/efs/properties";
 import { siteDescriptionForLocale } from "@/config/site-metadata";
 import { spokeSwitcherForRenderingSpoke } from "@/config/spoke-routing";
 import { buildLanguageAlternates, type LanguageAlternateLocale } from "@/core/locale";
@@ -160,6 +162,13 @@ export interface SpokeServerComposition {
   readonly resolvedUi: ResolvedUiConfig;
   /** M14 — the CLIENT-safe routing projection of THIS Spoke, for the controls that resolve destinations. */
   readonly clientRouting: ClientRoutingContext;
+  /**
+   * `D40` Decision C (`R04-C31`) — the ONE resolved EFS brand-logo address for the shell, already a
+   * same-origin `owner-assets` path. Absent means the shell publishes no logo from either source, so the
+   * header keeps its existing text brand link. A non-EFS composition never sets it, so its header path is
+   * exactly what it was.
+   */
+  readonly brandLogo?: string;
 }
 
 /**
@@ -181,7 +190,12 @@ export interface SpokeServerComposition {
  */
 export function spokeServerComposition(
   context: SpokeRuntimeContext,
-  presentation?: { readonly siteConfig?: SiteConfig; readonly siteSet?: SiteSet },
+  presentation?: {
+    readonly siteConfig?: SiteConfig;
+    readonly siteSet?: SiteSet;
+    /** `D40` Decision C — the EFS shell's one resolved brand logo, when the EFS path supplies one. */
+    readonly brandLogo?: string;
+  },
 ): SpokeServerComposition {
   const siteConfig = presentation?.siteConfig ?? context.siteConfig;
   const siteSet = presentation?.siteSet ?? siteSetOf(siteConfig.sites, siteConfig.defaultSite);
@@ -213,6 +227,9 @@ export function spokeServerComposition(
     // M14 — ONE client-safe projection per composition: the four routing controls read it through the ONE
     // transport, so no client can reach a configuration module and no placement can use a different source.
     clientRouting: buildClientRoutingContext(siteConfig, siteSet),
+    // `D40` Decision C — carried through, never re-derived downstream: the header renders THE answer this
+    // composition was given (or nothing), so a second logo decision cannot appear later in the graph.
+    ...(presentation?.brandLogo === undefined ? {} : { brandLogo: presentation.brandLogo }),
   };
 }
 
@@ -1029,6 +1046,8 @@ export async function layoutForContext(
               siteConfig={siteConfig}
               dictionaryAccess={composition.dictionaries}
               assets={assets}
+              // `D40` Decision C — the EFS shell's ONE resolved logo, when the EFS path resolved one.
+              {...(composition.brandLogo === undefined ? {} : { resolvedLogoSrc: composition.brandLogo })}
             />
           }
           main={
@@ -1089,6 +1108,72 @@ export async function layoutForContext(
 }
 
 /**
+ * How ONE brand/contact fact is applied to the composed presentation configuration
+ * (`D40` Decision C, corrected by `GEO-02-R02` C2).
+ *
+ *   - `set`   — a public EFS declaration supplies the value;
+ *   - `clear` — the fact is not publishable, so it is REMOVED and the configured value is refused
+ *               with it. This covers privacy, `null` suppression, and a declaration whose value is
+ *               not usable — none of which may be filled from configuration;
+ *   - `keep`  — nothing is declared at any level, so the configured value stands.
+ */
+type FactDecision = { readonly kind: "set"; readonly value: string } | { readonly kind: "clear" } | { readonly kind: "keep" };
+
+/**
+ * `D40` DECISION C (`R04-C31`) — THE ONE BRAND-LOGO DECISION FOR AN EFS VIEW
+ * =========================================================================
+ *
+ * `brand.logo` is artwork, so the source question and the URL question are answered separately and in this
+ * order. The CASCADE decides whether anything may be published at all (`resolvePublicFacts`, the same
+ * mechanism `brand.name` and the contact facts already use); `ownerAssetReference` decides whether the
+ * declared bytes are owner-bound artwork at all. Both answers are needed before any consumer acts.
+ *
+ * | cascade state            | publishable? | fallback to configured art? |
+ * | ------------------------ | ------------ | --------------------------- |
+ * | declared + public        | EFS artwork  | no                          |
+ * | declared but REFUSED     | nothing      | no — a declaration owns the slot |
+ * | declared but private     | nothing      | no                          |
+ * | declared explicit `null` | nothing      | no                          |
+ * | absent at every level    | configured artwork, if any | yes           |
+ *
+ * The configured Spoke logo is therefore reachable ONLY through `absent`. Nothing in this module publishes
+ * a URL; it answers the precedence, and each consumer carries the representation it owns.
+ */
+interface BrandLogoDecision {
+  readonly state: PublicFactState;
+  readonly originLevel?: PropertyLevel;
+  readonly originId?: string;
+  /** The owner-bound reference of a publishable declaration, when the value names artwork at all. */
+  readonly reference?: string;
+}
+
+function brandLogoDecision(view: EfsView): BrandLogoDecision {
+  const fact = resolvePublicFacts(view.properties).get("brand.logo");
+  const decision: BrandLogoDecision = {
+    state: fact.state,
+    ...(fact.originLevel === undefined ? {} : { originLevel: fact.originLevel }),
+    ...(fact.originId === undefined ? {} : { originId: fact.originId }),
+    ...(fact.state === "declared" && ownerAssetReference(fact.value) !== undefined
+      ? { reference: ownerAssetReference(fact.value) }
+      : {}),
+  };
+  return decision;
+}
+
+/**
+ * The shell's ONE resolved brand-logo address: the binding's own `owner-assets` path for a publishable
+ * declaration, and `undefined` whenever nothing may be published.
+ *
+ * It is NOT routed through the runtime asset catalog: that resolver answers for a Spoke's generated
+ * namespaces, and a basename it happens to own must never redirect an EFS owner-assets address to itself
+ * (`D40` §3.2). A same-origin path is already the correct HTML representation.
+ */
+export function efsResolvedBrandLogo(view: EfsView): string | undefined {
+  const decision = brandLogoDecision(view);
+  return decision.reference === undefined ? undefined : assetUrl(view.binding, decision.reference);
+}
+
+/**
  * EFS's shared-shell presentation configuration. It keeps the approved visual/navigation/dictionary
  * chrome but makes the EFS representation the ONLY locale authority: every site locale is explicit and
  * canonicalised from its declared tag, while regions, page-region bindings, required-Location policy and
@@ -1134,9 +1219,126 @@ export function efsShellPresentationConfig(
       .map(([, value]) => [site.code, value]),
   );
 
+  /**
+   * SOURCE PRECEDENCE (`D40` Decision C, corrected by `GEO-02-R02` C1/C2).
+   *
+   * This is the ONE place the ordering is applied, and it feeds BOTH surfaces: the shared shell
+   * (header, footer, contact block) reads this config, and so does the JSON-LD built from it. One
+   * resolution, so a contact value can never be displayed and advertised differently.
+   *
+   * Each fact resolves to exactly one of three decisions:
+   *
+   *   - SET   — an effective PUBLIC declaration supplies the value;
+   *   - CLEAR — the cascade decided the fact is not publishable (private, `null`, or a declared
+   *             value that is not a usable string), so the fact is REMOVED and the configuration
+   *             fallback is refused with it;
+   *   - KEEP  — nothing is declared at any level, so the configuration value stands as-is.
+   *
+   * `contact.name` deliberately has NO fallback and no consumer here: it is contact-PERSON identity,
+   * and promoting it into the business name would relabel the business.
+   */
+  const facts = resolvePublicFacts(view.properties, {
+    "brand.name": source.name,
+    "contact.email": source.business.contact.email ?? source.contact.email,
+    "contact.phone": source.business.contact.phone ?? source.contact.phone,
+  });
+
+  const decisionFor = (key: (typeof PUBLIC_FACT_KEYS)[number]): FactDecision => {
+    const fact = facts.get(key);
+    switch (fact.state) {
+      case "declared":
+        // A declaration occupies the precedence slot even when its value is unusable. Typed
+        // validation refuses such a value before serving; clearing here keeps the order total and
+        // stops it from silently re-opening the configuration fallback.
+        return fact.value === undefined ? { kind: "clear" } : { kind: "set", value: fact.value };
+      case "private":
+      case "suppressed":
+        return { kind: "clear" };
+      default:
+        return { kind: "keep" };
+    }
+  };
+
+  const withoutFact = <T extends object>(base: T, key: keyof T): T => {
+    const rest: Record<string, unknown> = { ...(base as Record<string, unknown>) };
+    delete rest[key as string];
+    return rest as T;
+  };
+
+  const applyTo = <T extends object>(base: T, key: keyof T, decision: FactDecision): T =>
+    decision.kind === "set"
+      ? { ...base, [key]: decision.value }
+      : decision.kind === "clear"
+        ? withoutFact(base, key)
+        : base;
+
+  /**
+   * The shell's own identity name, from `brand.name` only.
+   *
+   * SET keeps the declaration; KEEP leaves the configured name untouched; CLEAR refuses both the
+   * declaration and the configured name, and the shell falls back to the EFS SiteID — the documented
+   * consequence of deny-by-default for a DISPLAY property (`GEO-01-R02` §5, as `site.label` already
+   * does above). It is never filled with a contact person's name.
+   */
+  const brandDecision = decisionFor("brand.name");
+  const brandName =
+    brandDecision.kind === "set"
+      ? brandDecision.value
+      : brandDecision.kind === "clear"
+        ? view.site.id
+        : source.name;
+
+  const businessName =
+    brandDecision.kind === "set"
+      ? brandDecision.value
+      : brandDecision.kind === "clear"
+        ? view.site.id
+        : source.business.name;
+
+  const businessContact = applyTo(
+    applyTo(source.business.contact, "email", decisionFor("contact.email")),
+    "phone",
+    decisionFor("contact.phone"),
+  );
+  const siteContact = applyTo(
+    applyTo(source.contact, "email", decisionFor("contact.email")),
+    "phone",
+    decisionFor("contact.phone"),
+  );
+
+  /**
+   * THE BRAND LOGO, PROJECTED ONCE (`D40` Decision C, `R04-C31`).
+   *
+   * `absent` is the ONLY state that keeps the configured artwork, so this is the ONE place the Spoke's own
+   * logo can survive an EFS view. Every other state owns the slot: the configured primary, its compact
+   * alternate and the footer artwork are all artwork of a source that has lost precedence or permission, and
+   * the legacy `site.logo` is the same artwork under another name, so all four are cleared together. That is
+   * what stops the shell from showing one brand and the metadata advertising another.
+   *
+   * The published EFS address is ABSOLUTE here because this configuration feeds metadata (JSON-LD `logo`),
+   * where a canonical URL is the correct form; the shell's `<img>` uses `efsResolvedBrandLogo()` instead,
+   * which is the same decision expressed as a same-origin path.
+   */
+  const logo = brandLogoDecision(view);
+  const configuredLogoKept = logo.state === "absent";
+  const ownerAssetsLogo =
+    logo.reference === undefined ? undefined : assetUrl(view.binding, logo.reference);
+  const origin = new URL(view.canonical).origin;
+
   return {
     ...source,
-    url: new URL(view.canonical).origin,
+    url: origin,
+    assets: configuredLogoKept
+      ? source.assets
+      : {
+          ...source.assets,
+          // Set explicitly in BOTH the published and the blocked case: a blocked declaration must not let the
+          // configured primary survive through the spread, and a published one replaces it outright.
+          logo: ownerAssetsLogo === undefined ? undefined : `${origin}${ownerAssetsLogo}`,
+          logoCompact: undefined,
+          logoFooter: undefined,
+        },
+    logo: configuredLogoKept ? source.logo : undefined,
     sites: [site],
     defaultSite: site,
     hubs: [],
@@ -1145,7 +1347,15 @@ export function efsShellPresentationConfig(
       view.binding.locales.some((locale) => localePathKey(locale) === entry.code),
     ),
     sitePageOverrides: overrides,
-    business: { ...source.business, timezone: undefined, locations: [] },
+    name: brandName,
+    contact: siteContact,
+    business: {
+      ...source.business,
+      timezone: undefined,
+      locations: [],
+      name: businessName,
+      contact: businessContact,
+    },
     regions: {},
     pageBindings: [],
   };
@@ -1173,7 +1383,12 @@ export async function layoutForEfsContext(
   if (!siteConfig) return null;
   const siteSet: SiteSet = { sites: siteConfig.sites, defaultSite: siteConfig.defaultSite };
   return layoutForContext(
-    spokeServerComposition(context, { siteConfig, siteSet }),
+    spokeServerComposition(context, {
+      siteConfig,
+      siteSet,
+      // The SAME decision the configuration above projected, expressed as the shell's HTML form.
+      ...(efsResolvedBrandLogo(view) === undefined ? {} : { brandLogo: efsResolvedBrandLogo(view) }),
+    }),
     segments,
     children,
     htmlClassName,

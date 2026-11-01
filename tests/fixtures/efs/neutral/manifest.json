@@ -42,10 +42,10 @@
                   ],
                   "representations": [
                     {
-                      "locale": "de"
+                      "locale": "de-DE"
                     },
                     {
-                      "locale": "en"
+                      "locale": "en-001"
                     }
                   ],
                   "properties": {
@@ -87,10 +87,10 @@
           "siteMode": "closed",
           "defaultSiteId": "place",
           "locales": [
-            "de",
-            "en"
+            "de-DE",
+            "en-001"
           ],
-          "defaultLocale": "de",
+          "defaultLocale": "de-DE",
           "canonical": true
         }
       ]

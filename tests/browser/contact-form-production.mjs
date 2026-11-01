@@ -116,25 +116,30 @@ async function main() {
 
   let cdp = null;
   try {
-    const english = await waitForServer("/ww/en/contact", FOUNDATION_HOST);
+    // R04-C18 — the DECLARED EFS representations, not the retired geographic routes. The first public
+    // segment is the locale PATH KEY; Germany publishes no Contact Page at all, so both representations
+    // must fail closed there.
+    const english = await waitForServer("/en-001/contact", FOUNDATION_HOST);
     check("production server serves the contact Page", english.status === 200, `status=${english.status}`);
 
-    const german = await request("/ww/de/contact", FOUNDATION_HOST);
+    const german = await request("/de-de/contact", FOUNDATION_HOST);
     check("production server serves the German contact Page", german.status === 200, `status=${german.status}`);
 
-    const home = await request("/ww/en", FOUNDATION_HOST);
+    const home = await request("/en-001", FOUNDATION_HOST);
     check(
       "a Page without the section hosts no form",
       home.status === 200 && !home.body.includes("connect-contact-acknowledgement"),
       `status=${home.status}`,
     );
 
-    const germany = await request("/de/de/contact", GERMANY_HOST);
-    check(
-      "the Germany Site exposes no contact form",
-      germany.status === 404 && !germany.body.includes("connect-contact-acknowledgement"),
-      `status=${germany.status}`,
-    );
+    for (const pathname of ["/en-001/contact", "/de-de/contact"]) {
+      const germany = await request(pathname, GERMANY_HOST);
+      check(
+        `the Germany Host owns no Contact Page at ${pathname}`,
+        germany.status === 404 && !germany.body.includes("connect-contact-acknowledgement"),
+        `status=${germany.status}`,
+      );
+    }
 
     cdp = await Cdp.connect(chrome, {
       hostResolverRules: `MAP ${FOUNDATION_HOST} 127.0.0.1, MAP ${GERMANY_HOST} 127.0.0.1`,

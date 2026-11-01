@@ -30,10 +30,10 @@ const AUTHORING_DOCS = [
 /** Each Spoke's Site code, and the intermediates BELOW it that M20 added. */
 const SPOKE_DOCS: Record<string, readonly string[]> = {
   foundation: [
-    "content/pages/json/ww/README.md",
-    "content/pages/markdown/ww/README.md",
+    "content/pages/json/main/README.md",
+    "content/pages/markdown/main/README.md",
   ],
-  germany: ["content/pages/json/de/README.md", "content/pages/markdown/de/README.md"],
+  germany: ["content/pages/json/main/README.md", "content/pages/markdown/main/README.md"],
 };
 
 /**

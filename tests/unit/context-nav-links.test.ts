@@ -56,6 +56,38 @@ describe("ContextNavLinks — active navigation semantics (UI-10 B2)", () => {
         const html = render();
         expect(html.match(/aria-current="page"/g) ?? []).toHaveLength(0);
     });
+
+    /**
+     * D43 / R04-C33-R02 — a Page route's LETTER CASE is not identity.
+     *
+     * `/ww/en/About` serves the `/ww/en/about` Page (D43), so the accessibility contract has to
+     * follow the PAGE: the typed casing may differ from the emitted address and the visitor must
+     * still be told where they are. The comparison is folded; nothing about the destination is.
+     */
+    it("marks the same Page current when only the Page letter case differs (D43)", () => {
+        mockPath = "/ww/en/About";
+        const html = render();
+        // Exactly the About item is current — the same single marker the canonical address produces:
+        expect(html.match(/aria-current="page"/g) ?? []).toHaveLength(1);
+        expect(html).toMatch(
+            /href="\/ww\/en\/about"[^>]*aria-current="page"|aria-current="page"[^>]*href="\/ww\/en\/about"/,
+        );
+        // The shared item-wrapper marker lands on the same item:
+        expect(html.match(/<li class="aria-current-page">/g) ?? []).toHaveLength(1);
+        // The GENERATED href is untouched: no casing was "repaired" in the DOM, and Home is not current.
+        expect(html).toContain('href="/ww/en/about"');
+        expect(html).not.toMatch(/href="\/ww\/en\/About"/);
+        expect(html).not.toMatch(/href="\/ww\/en"[^>]*aria-current="page"/);
+        // Externals are still never current, whatever the pathname says.
+        expect(html).not.toMatch(/href="https:[^"]*"[^>]*aria-current="page"/);
+    });
+
+    it("does not invent a current Page for a different word in a different case (D43 folds letters, not words)", () => {
+        mockPath = "/ww/en/Aboutt";
+        expect(render().match(/aria-current="page"/g) ?? []).toHaveLength(0);
+        mockPath = "/ww/en/about/extra";
+        expect(render().match(/aria-current="page"/g) ?? []).toHaveLength(0);
+    });
 });
 
 /**

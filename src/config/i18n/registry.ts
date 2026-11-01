@@ -26,6 +26,21 @@ export interface DictionaryRegistry {
    * Falls back to the default locale's shared dictionary for a locale that is not configured.
    */
   get(locale: Locale, siteCode?: string): Dictionary;
+  /**
+   * Whether `get` would return a dictionary that APPLIES to this locale — the site's own override,
+   * the exact shared dictionary, or its LANGUAGE BASE — rather than the last-resort default-locale
+   * fallback.
+   *
+   * `get` deliberately never fails: a locale the context does not configure is served the deployment
+   * default's dictionary, which is the right answer for chrome that must always render something.
+   * A consumer that PUBLISHES a fact in the representation's own language cannot accept that
+   * substitution — labels in an unrelated language are worse than no labels — so it asks this first.
+   *
+   * The two accepted cases are exactly the first two branches of `get`, evaluated with the same
+   * private helpers, so this predicate cannot drift from what `get` would actually return. `get`
+   * itself is unchanged for every existing consumer.
+   */
+  applicable(locale: Locale, siteCode?: string): boolean;
   /** Returns every loaded SHARED dictionary keyed by locale code (no overrides, no fallback). */
   all(): ReadonlyMap<string, Dictionary>;
   /** Returns every effective site+locale override, keyed `"<site>/<locale>"` (S1E2). */
@@ -196,6 +211,15 @@ export function loadDictionaryRegistry(options: LoadDictionaryRegistryOptions): 
         if (overlay !== undefined) return overlay;
       }
       return sharedBaseOf(byLocale, locale) ?? sharedBaseOf(byLocale, options.defaultLocale)!;
+    },
+    /**
+     * The first two branches of `get`, and nothing else: the site's own override for this exact
+     * locale, or a shared dictionary for the locale / its language base. Reached only through the
+     * same helpers `get` uses, so the predicate and the answer cannot disagree.
+     */
+    applicable(locale: Locale, siteCode?: string): boolean {
+      if (siteCode !== undefined && overlays.has(overlayKey(siteCode, locale))) return true;
+      return sharedBaseOf(byLocale, locale) !== undefined;
     },
     all(): ReadonlyMap<string, Dictionary> {
       return new Map(byLocale);

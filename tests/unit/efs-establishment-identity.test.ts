@@ -8,10 +8,19 @@ import {
   type EfsSeedFile,
 } from "@/core/foundation-installation/efs-seed";
 
-import { SYNTHETIC_DEPLOYMENT_FIXTURE_ROOT } from "../support/synthetic-deployment-root";
+import { syntheticSeed } from "../support/installation-establishment-fixture";
 
 const decoder = new TextDecoder();
 const encoder = new TextEncoder();
+
+/**
+ * THE QUALIFIED DISPOSABLE SOURCE (GEO-03 R04-C10).
+ *
+ * The committed fixture keeps its historical authoring for other contracts, and the converter's accepted
+ * input is a QUALIFIED seed. `syntheticSeed()` copies the fixture and qualifies its languages, so ordinary
+ * conversion cases start there. The committed fixture itself is never modified.
+ */
+const qualifiedSource = () => readContentFiles(syntheticSeed());
 
 function entropy(seed: number): () => Uint8Array {
   return () => Uint8Array.from({ length: 16 }, (_, index) => (seed + index) % 256);
@@ -49,7 +58,7 @@ function manifestOf(files: readonly EfsSeedFile[]) {
 
 describe("permanent Entity identity and explicit publication authority (R06)", () => {
   it("mints a different valid identity for every independent establishment", async () => {
-    const source = await readContentFiles(SYNTHETIC_DEPLOYMENT_FIXTURE_ROOT);
+    const source = await qualifiedSource();
     const first = manifestOf(explicitSingleWebsiteEfsSeed(source, entropy(10)).files);
     const second = manifestOf(explicitSingleWebsiteEfsSeed(source, entropy(200)).files);
     const firstId = first.entities[0].id;
@@ -63,7 +72,7 @@ describe("permanent Entity identity and explicit publication authority (R06)", (
   });
 
   it("never re-mints an already-explicit identity", async () => {
-    const source = await readContentFiles(SYNTHETIC_DEPLOYMENT_FIXTURE_ROOT);
+    const source = await qualifiedSource();
     const authored = [
       ...source,
       { path: "efs/manifest.json", bytes: encoder.encode('{"entities":[],"publications":[]}\n') },
@@ -76,7 +85,7 @@ describe("permanent Entity identity and explicit publication authority (R06)", (
   });
 
   it("uses publication.host whether site.url differs or is absent", async () => {
-    const source = await readContentFiles(SYNTHETIC_DEPLOYMENT_FIXTURE_ROOT);
+    const source = await qualifiedSource();
     const different = withConfiguration(source, (config) => {
       (config.site as Record<string, unknown>).url = "https://information.invalid";
       config.publication = { host: "published.example.test" };
@@ -96,7 +105,7 @@ describe("permanent Entity identity and explicit publication authority (R06)", (
   });
 
   it("refuses to invent a claim from site.url and omits absent optional properties", async () => {
-    const source = await readContentFiles(SYNTHETIC_DEPLOYMENT_FIXTURE_ROOT);
+    const source = await qualifiedSource();
     const noAuthority = withConfiguration(source, (config) => {
       delete config.publication;
     });
@@ -128,9 +137,9 @@ describe("permanent Entity identity and explicit publication authority (R06)", (
 
   it("honours an explicit publication prefix for a one-Site website", async () => {
     const source = withConfiguration(
-      await readContentFiles(SYNTHETIC_DEPLOYMENT_FIXTURE_ROOT),
+      await qualifiedSource(),
       (config) => {
-        config.sites = [{ code: "ww", label: "Global", locales: ["en"], defaultLocale: "en" }];
+        config.sites = [{ code: "ww", label: "Global", locales: ["en-001"], defaultLocale: "en-001" }];
         config.defaultSite = "ww";
         config.publication = { host: "published.example.test", prefix: ["global"] };
       },
@@ -144,16 +153,16 @@ describe("permanent Entity identity and explicit publication authority (R06)", (
 
   it("supplies an explicit valid Home when none was authored, without changing nested Pages", async () => {
     const source = withConfiguration(
-      (await readContentFiles(SYNTHETIC_DEPLOYMENT_FIXTURE_ROOT)).filter(
+      (await qualifiedSource()).filter(
         (file) => !/\/home\.(json|md)$/.test(file.path),
       ),
       (config) => {
-        config.sites = [{ code: "ww", label: "Global", locales: ["en"], defaultLocale: "en" }];
+        config.sites = [{ code: "ww", label: "Global", locales: ["en-001"], defaultLocale: "en-001" }];
         config.defaultSite = "ww";
       },
     );
     const nested: EfsSeedFile = {
-      path: "content/pages/markdown/ww/en/company/team.md",
+      path: "content/pages/markdown/ww/en-001/company/team.md",
       bytes: encoder.encode("---\ntitle: Team\n---\n\nNested page.\n"),
     };
     const prepared = explicitSingleWebsiteEfsSeed([...source, nested], entropy(5));
@@ -162,11 +171,11 @@ describe("permanent Entity identity and explicit publication authority (R06)", (
     const home = pages.find((page) => page.route.join("/") === "home");
     const team = pages.find((page) => page.route.join("/") === "company/team");
 
-    expect(home?.representations).toEqual([{ locale: "en" }]);
+    expect(home?.representations).toEqual([{ locale: "en-001" }]);
     expect(team?.route).toEqual(["company", "team"]);
     expect(
       prepared.files.some(
-        (file) => file.path === `efs/capsule/${manifest.entities[0].id}/main/ww/pages/home/en.json`,
+        (file) => file.path === `efs/capsule/${manifest.entities[0].id}/main/ww/pages/home/en-001.json`,
       ),
     ).toBe(true);
     expect(

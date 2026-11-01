@@ -16,7 +16,13 @@ import {
 } from "@/application/site-switch";
 import { buildLanguageAlternates, languageAlternate } from "@/core/locale";
 import type { PageRegionBinding } from "@/core/region";
-import { resolveSites, siteHref, siteSwitchDestination, siteSwitchLocalePath } from "@/core/site";
+import {
+  resolveSites,
+  siteHref,
+  siteSetOf,
+  siteSwitchDestination,
+  siteSwitchLocalePath,
+} from "@/core/site";
 
 /** The deployment: Canada (en/fr), France (fr), and a Worldwide site (fr only). */
 const { sites } = resolveSites({
@@ -32,6 +38,13 @@ const { sites } = resolveSites({
 const canada = sites[0]!;
 const france = sites[1]!;
 const worldwide = sites[2]!;
+
+/**
+ * The deployment's OWN resolved inventory, as every real caller supplies it (`composition.siteSet`,
+ * `siteSetOf(siteConfig.sites, siteConfig.defaultSite)`). `siteHref` decides cross-Site membership
+ * from this and nothing else.
+ */
+const deploymentSet = siteSetOf(sites, canada);
 
 /** Which (site, route, locale) combinations exist — the page composition's word, stubbed. */
 function switchOptions(pages: readonly string[], bindings: readonly PageRegionBinding[] = []) {
@@ -139,24 +152,99 @@ describe("resolveSiteSwitchHref and siteSwitchOptions", () => {
   });
 });
 
-describe("siteHref (a configured destination, inside the active site)", () => {
+describe("siteHref (a configured destination, resolved from the DECLARED inventory)", () => {
+  /**
+   * A second Spoke, resolved from its OWN declarations. It shares the route strings of `sites` but
+   * declares different Sites, which is how a cross-Spoke inventory leak would show up.
+   */
+  const { sites: mainSites } = resolveSites({
+    input: [
+      { code: "main", label: "Main", locales: ["en"], defaultLocale: "en" },
+      { code: "outlet", label: "Outlet", locales: ["en"], defaultLocale: "en" },
+    ],
+    defaultLocale: "en",
+    locales: ["en", "fr"],
+  });
+  const main = mainSites[0]!;
+  const mainSet = siteSetOf(mainSites, main);
+
   it("scopes a site-relative destination to the active site+locale", () => {
-    expect(siteHref(canada, "fr", "/about")).toBe("/ca/fr/about");
-    expect(siteHref(canada, "fr", "/legal/privacy")).toBe("/ca/fr/legal/privacy");
+    expect(siteHref(deploymentSet, canada, "fr", "/about")).toBe("/ca/fr/about");
+    expect(siteHref(deploymentSet, canada, "fr", "/legal/privacy")).toBe("/ca/fr/legal/privacy");
   });
 
   it("resolves the site root to the locale root", () => {
-    expect(siteHref(canada, "fr", "/")).toBe("/ca/fr");
+    expect(siteHref(deploymentSet, canada, "fr", "/")).toBe("/ca/fr");
   });
 
   it("leaves an explicitly site-scoped destination exactly as written", () => {
-    expect(siteHref(canada, "fr", "/fr/fr/about")).toBe("/fr/fr/about");
-    expect(siteHref(canada, "fr", "/ca/en/about")).toBe("/ca/en/about");
+    expect(siteHref(deploymentSet, canada, "fr", "/fr/fr/about")).toBe("/fr/fr/about");
+    expect(siteHref(deploymentSet, canada, "fr", "/ca/en/about")).toBe("/ca/en/about");
+  });
+
+  it("keeps every declared Site of a multi-Site Spoke fully scoped, byte-for-byte", () => {
+    // Same-Site, other-Site and the worldwide Site are all DECLARED here, so each is already
+    // scoped and must be preserved exactly — including its route tail and any query it carries.
+    expect(siteHref(deploymentSet, canada, "fr", "/ca/en/about")).toBe("/ca/en/about");
+    expect(siteHref(deploymentSet, canada, "fr", "/fr/fr/about")).toBe("/fr/fr/about");
+    expect(siteHref(deploymentSet, canada, "fr", "/ww/fr")).toBe("/ww/fr");
+    expect(siteHref(deploymentSet, canada, "fr", "/fr/fr/legal/privacy?from=ca")).toBe(
+      "/fr/fr/legal/privacy?from=ca",
+    );
+  });
+
+  it("treats a declared DESCRIPTIVE Site (main) as the Site it is, not as a route", () => {
+    // `main` is not a country and never appears in a country list; it is a Site because this Spoke
+    // declares it. The destination must NOT be re-prefixed as if it were a page inside `outlet`.
+    expect(siteHref(mainSet, main, "en", "/outlet/en/about")).toBe("/outlet/en/about");
+    expect(siteHref(mainSet, main, "en", "/main/en/about")).toBe("/main/en/about");
+    // From the other declared Site, the same destination stays a fully scoped link.
+    const outlet = mainSites[1]!;
+    expect(siteHref(mainSet, outlet, "en", "/main/en/about")).toBe("/main/en/about");
+  });
+
+  it("gives an UNDECLARED country-shaped segment no cross-Site authority", () => {
+    // This Spoke declares `main` and `outlet` only. `/jp/en/about` merely LOOKS like a country, so it
+    // is an ordinary route inside the current Site — the old ISO list would have scoped it.
+    expect(siteHref(mainSet, main, "en", "/jp/en/about")).toBe("/main/en/jp/en/about");
+    // The mirror case: a Spoke that does not declare `main` treats it as a route, not a Site.
+    expect(siteHref(deploymentSet, canada, "fr", "/main/en/about")).toBe("/ca/fr/main/en/about");
+    // And a declared name is not inherited across Spokes: `ww` is declared by `sites`, not by `mainSet`.
+    expect(siteHref(mainSet, main, "en", "/ww/fr")).toBe("/main/en/ww/fr");
+  });
+
+  it("never borrows the other Spoke's declared Sites (two independent inventories)", () => {
+    const { sites: otherSites } = resolveSites({
+      input: [{ code: "shop", label: "Shop", locales: ["en"], defaultLocale: "en" }],
+      defaultLocale: "en",
+      locales: ["en", "fr"],
+    });
+    const shop = otherSites[0]!;
+    const otherSet = siteSetOf(otherSites, shop);
+
+    expect(siteHref(otherSet, shop, "en", "/shop/en/about")).toBe("/shop/en/about");
+    expect(siteHref(otherSet, shop, "en", "/ca/en/about")).toBe("/shop/en/ca/en/about");
+    expect(siteHref(deploymentSet, canada, "fr", "/outlet/en/about")).toBe(
+      "/ca/fr/outlet/en/about",
+    );
+  });
+
+  it("keeps ordinary nested routes inside the current Site", () => {
+    expect(siteHref(mainSet, main, "en", "/about")).toBe("/main/en/about");
+    expect(siteHref(mainSet, main, "en", "/legal/privacy")).toBe("/main/en/legal/privacy");
+    expect(siteHref(mainSet, main, "en", "/berlin/city/north")).toBe("/main/en/berlin/city/north");
+    expect(siteHref(mainSet, main, "en", "/")).toBe("/main/en");
   });
 
   it("never rewrites an external destination", () => {
-    for (const href of ["https://example.com", "mailto:hello@example.com", "#main"]) {
-      expect(siteHref(canada, "fr", href)).toBe(href);
+    for (const href of [
+      "https://example.com",
+      "mailto:hello@example.com",
+      "tel:+15550100",
+      "#main",
+    ]) {
+      expect(siteHref(deploymentSet, canada, "fr", href)).toBe(href);
+      expect(siteHref(mainSet, main, "en", href)).toBe(href);
     }
   });
 });

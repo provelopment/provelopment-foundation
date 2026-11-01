@@ -805,7 +805,10 @@ export async function layoutForContext(
   // shared `/contact` can never link into another site or 404 on its own site.
   const pageConfig = effectiveSitePageConfig(siteConfig, site.code);
   const ctaHrefSource = pageConfig.ctaHref;
-  const ctaHref = ctaHrefSource === undefined ? undefined : siteHref(site, locale, ctaHrefSource);
+  const ctaHref =
+    ctaHrefSource === undefined
+      ? undefined
+      : siteHref(composition.siteSet, site, locale, ctaHrefSource);
 
   // S1E2 — the STANDARDS-FACING tag for the same locale (`fr-CA` for `/ca/fr`): the document's
   // `lang` and every hreflang alternate identify the language, while the URL stays lowercase.

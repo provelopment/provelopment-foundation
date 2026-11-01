@@ -63,6 +63,9 @@ export async function SiteFooter({
         siteConfig,
         siteSetOf(siteConfig.sites, siteConfig.defaultSite),
     );
+    // GEO-04 — the footer's OWN resolved Site inventory. Legal links are resolved against it, so a
+    // leading segment is only a Site when this Spoke declares it; no country list decides.
+    const siteSet = siteSetOf(siteConfig.sites, siteConfig.defaultSite);
     // Phase K: the legacy global footer NAP is suppressed when operating
     // regions are configured — regional pages expose their own region's
     // identity, and the global block must never leak into them.
@@ -293,6 +296,7 @@ export async function SiteFooter({
                                 <li key={doc.slug}>
                                     <Link
                                         href={siteHref(
+                                            siteSet,
                                             pageConfig.site,
                                             locale,
                                             `/${legalPageRoutePath(doc.slug)}`,

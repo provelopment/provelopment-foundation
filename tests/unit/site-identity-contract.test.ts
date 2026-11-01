@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { isContentSlug } from "@/core/page-content";
-import { businessIdIssue } from "@/core/business-identity";
 import {
   RESERVED_SITE_ID_GROUPS,
   RESERVED_SITE_IDS,
-  SITE_IDENTITY_SEPARATOR,
   SITE_ID_MAX_LENGTH,
   SITE_ID_MIN_LENGTH,
   isReservedSiteId,
@@ -13,31 +11,21 @@ import {
   normalizeSiteId,
   reservedSiteIdIssue,
   siteIdIssue,
-  siteIdentityIssue,
-  siteIdentityKey,
-  type SiteIdentity,
 } from "@/core/site-identity";
 
 /**
- * THE SITE-ID, RESERVED-IDENTIFIER AND COMPOSITE-IDENTITY CONTRACT (FOUNDATION-ID-M1)
- * =================================================================================
+ * THE SITE-ID AND RESERVED-IDENTIFIER CONTRACT (FOUNDATION-ID-M1)
+ * ==============================================================
  *
- * These assertions exercise the authorities themselves. Three rules are proved separately, because
- * they must stay separate: the GRAMMAR (`siteIdIssue`), the RESERVATION (`reservedSiteIdIssue`) and
- * the COMPOSITE that applies both (`siteIdentityIssue`). A reserved word is normally a well-formed
- * Site ID, so a test suite that conflated the two would be unable to show which rule refused what.
+ * These assertions exercise the authorities themselves. Two rules are proved separately, because they
+ * must stay separate: the GRAMMAR (`siteIdIssue`) and the RESERVATION (`reservedSiteIdIssue`). A
+ * reserved word is normally a well-formed Site ID, so a test suite that conflated the two would be
+ * unable to show which rule refused what.
+ *
+ * The Business-scoped composite identity this suite once covered is RETIRED (`GEO-04` C02): the
+ * authorities a Site is still authored under are the two above, and
+ * `tests/architecture/reserved-site-identifiers.test.ts` guards that the composite is gone.
  */
-
-/** A real canonical Business ID (its validity is asserted below, not assumed). */
-const BUSINESS_A = "b_01j9z6q0q7k3m9v2n4p8r5t1wx";
-
-/** A second Business, so two composites can share one descriptive Site ID. */
-const BUSINESS_B = "b_01k2m4x8v6t0r3q7p5n9j1h4fd";
-
-/** One composite, spelled where it is read. */
-function identityOf(businessId: string, siteId: string): SiteIdentity {
-  return { businessId, siteId };
-}
 
 /** The approved descriptive examples, plus the two- and forty-character boundaries. */
 const ACCEPTED_SITE_IDS: readonly string[] = [
@@ -52,15 +40,6 @@ const ACCEPTED_SITE_IDS: readonly string[] = [
   "product-support",
   "a".repeat(SITE_ID_MAX_LENGTH),
 ];
-
-describe("the two Businesses used by these tests are canonical", () => {
-  it("carries valid Business IDs, so a composite failure is never the Business's fault", () => {
-    for (const businessId of [BUSINESS_A, BUSINESS_B]) {
-      expect(businessIdIssue(businessId), businessId).toBeNull();
-    }
-    expect(BUSINESS_A).not.toBe(BUSINESS_B);
-  });
-});
 
 describe("descriptive Site IDs the grammar accepts", () => {
   it("accepts the approved descriptive examples and the boundaries", () => {
@@ -252,134 +231,41 @@ describe("the reserved Site-ID vocabulary", () => {
     }
   });
 });
-describe("the composite Site identity", () => {
-  /** Four composites, including two Businesses that both own a `home-office`. */
-  const MATRIX: readonly SiteIdentity[] = [
-    identityOf(BUSINESS_A, "home-office"),
-    identityOf(BUSINESS_B, "home-office"),
-    identityOf(BUSINESS_A, "workshop"),
-    identityOf(BUSINESS_B, "showroom"),
-  ];
 
-  it("keeps two Businesses' `home-office` apart — they are two Sites", () => {
-    const first = identityOf(BUSINESS_A, "home-office");
-    const second = identityOf(BUSINESS_B, "home-office");
+describe("the retired composite identity is gone (GEO-04 C02-R02)", () => {
+  it("exports NONE of the composite interface, separator, validator or key", async () => {
+    // Read the real module object, so the guard cannot pass by finding nothing in a comment: the four
+    // retired exports must be absent at runtime, and every surviving authority must still be present.
+    const authority = (await import("@/core/site-identity")) as Record<string, unknown>;
 
-    expect(siteIdentityIssue(first)).toBeNull();
-    expect(siteIdentityIssue(second)).toBeNull();
-    expect(siteIdentityKey(first)).not.toBe(siteIdentityKey(second));
-    expect(siteIdentityKey(first)).toBe(`${BUSINESS_A}${SITE_IDENTITY_SEPARATOR}home-office`);
-    expect(siteIdentityKey(second)).toBe(`${BUSINESS_B}${SITE_IDENTITY_SEPARATOR}home-office`);
-  });
-
-  it("gives every distinct composite a distinct key, and is deterministic", () => {
-    const keys = MATRIX.map((identity) => siteIdentityKey(identity));
-    expect(new Set(keys).size).toBe(MATRIX.length);
-
-    for (const identity of MATRIX) {
-      expect(siteIdentityIssue(identity), siteIdentityKey(identity)).toBeNull();
-      expect(siteIdentityKey(identity)).toBe(siteIdentityKey({ ...identity }));
-    }
-  });
-
-  it("uses a separator NEITHER component can contain, which is what makes the key unambiguous", () => {
-    expect(SITE_IDENTITY_SEPARATOR).toBe("/");
-
-    for (const component of [BUSINESS_A, "home-office"]) {
-      expect(component, component).not.toContain(SITE_IDENTITY_SEPARATOR);
+    for (const retired of ["SiteIdentity", "SITE_IDENTITY_SEPARATOR", "siteIdentityIssue", "siteIdentityKey"]) {
+      expect(authority[retired], retired).toBeUndefined();
     }
 
-    // …and each authority enforces that: a value carrying the separator can never be a component,
-    // so the first separator is always the only one.
-    expect(businessIdIssue(`${BUSINESS_A}${SITE_IDENTITY_SEPARATOR}extra`)).not.toBeNull();
-    expect(siteIdIssue(`home${SITE_IDENTITY_SEPARATOR}office`)).not.toBeNull();
-    expect(
-      siteIdentityIssue(identityOf(BUSINESS_A, `home${SITE_IDENTITY_SEPARATOR}office`)),
-    ).not.toBeNull();
-  });
-
-  it("needs no Spoke, Spoke Hub, Site Hub, hostname or locale to establish identity", () => {
-    const minimal = identityOf(BUSINESS_A, "home-office");
-    expect(siteIdentityIssue(minimal)).toBeNull();
-
-    // The SAME identity carrying hosting facts is the same identity with the same key: those
-    // properties are ignored — never required, and never part of what a Site IS.
-    const hosted = {
-      ...minimal,
-      spokeHubId: "spoke-hub-2",
-      spokeId: "spoke-a",
-      siteHubId: "site-hub-1",
-      hostname: "beta.example.test",
-      localePath: "en-001",
-    };
-
-    expect(siteIdentityIssue(hosted)).toBeNull();
-    expect(siteIdentityKey(hosted)).toBe(siteIdentityKey(minimal));
-    expect(siteIdentityKey(hosted)).toBe(`${BUSINESS_A}${SITE_IDENTITY_SEPARATOR}home-office`);
-  });
-});
-describe("composites the contract refuses", () => {
-  it("refuses a missing, empty or non-canonical Business ID", () => {
-    for (const businessId of ["", "nope", `B_${"0".repeat(26)}`, BUSINESS_A.toUpperCase()]) {
-      const issue = siteIdentityIssue({ businessId, siteId: "home-office" });
-      expect(issue, JSON.stringify(businessId)).not.toBeNull();
-      expect(issue, JSON.stringify(businessId)).toContain("businessId:");
-    }
-
-    for (const incomplete of [
-      { siteId: "home-office" },
-      { businessId: undefined, siteId: "home-office" },
-      { businessId: null, siteId: "home-office" },
-      { businessId: 42, siteId: "home-office" },
+    for (const surviving of [
+      "SITE_ID_MIN_LENGTH",
+      "SITE_ID_MAX_LENGTH",
+      "SITE_ID_PATTERN",
+      "normalizeSiteId",
+      "isSiteId",
+      "siteIdIssue",
+      "RESERVED_SITE_ID_GROUPS",
+      "RESERVED_SITE_IDS",
+      "isReservedSiteId",
+      "reservedSiteIdIssue",
     ]) {
-      expect(siteIdentityIssue(incomplete), JSON.stringify(incomplete)).not.toBeNull();
+      expect(authority[surviving], surviving).toBeDefined();
     }
   });
 
-  it("refuses an invalid or missing Site ID", () => {
-    for (const siteId of ["", "Home-Office", "home/office", "-home", "a", "2nd-office"]) {
-      const issue = siteIdentityIssue({ businessId: BUSINESS_A, siteId });
-      expect(issue, JSON.stringify(siteId)).not.toBeNull();
-      expect(issue, JSON.stringify(siteId)).toContain("siteId:");
+  it("keeps the Page-route, locale-looking and neutral words OUT of the reserved vocabulary", () => {
+    for (const word of ["home", "connect", "contact", "opengraph-image", "hr", "it", "de", "web", "main"]) {
+      expect(isReservedSiteId(word), word).toBe(false);
+      expect(reservedSiteIdIssue(word), word).toBeNull();
+      expect(siteIdIssue(word), word).toBeNull();
     }
-
-    expect(siteIdentityIssue({ businessId: BUSINESS_A })).not.toBeNull();
-    expect(siteIdentityIssue({ businessId: BUSINESS_A, siteId: undefined })).not.toBeNull();
-  });
-
-  it("refuses a RESERVED Site ID, so it can never form an authorable composite", () => {
-    for (const siteId of RESERVED_SITE_IDS) {
-      const identity = { businessId: BUSINESS_A, siteId };
-
-      // Well-formed syntactically …
-      expect(siteIdIssue(siteId), siteId).toBeNull();
-      // … and refused as an identity, naming the reservation rather than the grammar.
-      const issue = siteIdentityIssue(identity);
-      expect(issue, siteId).not.toBeNull();
-      expect(issue, siteId).toContain("reserved identifier");
-      expect(isReservedSiteId(siteId), siteId).toBe(true);
-
-      // A key is never produced for an identity the contract refuses.
-      expect(() => siteIdentityKey(identity), siteId).toThrowError(/FOUNDATION-ID-M1/);
-    }
-  });
-
-  it("refuses a composite that is not an object with the two leaves", () => {
-    for (const value of [null, undefined, `${BUSINESS_A}/home-office`, 42, [], true]) {
-      expect(siteIdentityIssue(value), String(value)).toContain("must be an object");
-    }
-  });
-
-  it("refuses to build a key from an invalid identity", () => {
-    expect(() => siteIdentityKey({ businessId: BUSINESS_A, siteId: "api" })).toThrowError(
-      /reserved identifier/,
-    );
-    expect(() => siteIdentityKey({ businessId: "", siteId: "home-office" })).toThrowError(
-      /FOUNDATION-ID-M1/,
-    );
   });
 });
-
 describe("matching-only normalisation of a Site ID", () => {
   it("answers the matching form without ever accepting the authored one", () => {
     expect(isSiteId(" Web ")).toBe(false);

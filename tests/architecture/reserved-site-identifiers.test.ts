@@ -5,14 +5,15 @@ import { describe, expect, it } from "vitest";
 import { RESERVED_SITE_IDS, isReservedSiteId, isSiteId, reservedSiteIdIssue } from "@/core/site-identity";
 
 /**
- * THE IDENTITY CONTRACT'S BOUNDARIES (FOUNDATION-ID-M1, corrected by FOUNDATION-ID-M1R)
- * ====================================================================================
+ * THE IDENTITY CONTRACT'S BOUNDARIES (FOUNDATION-ID-M1, corrected by FOUNDATION-ID-M1R, reduced by
+ * `GEO-04` C02)
+ * ============================================================================================
  *
  * FOUNDATION-ID-M1 adds two pure domain modules and their tests. That claim has four checkable
  * parts, and this file checks them:
  *
- *   1. the new modules depend on nothing but the domain (and `business-identity.ts` on nothing at
- *      all), so no framework, filesystem, environment or crypto dependency can have entered them;
+ *   1. the modules depend on nothing but the domain, so no framework, filesystem, environment or
+ *      crypto dependency can have entered them;
  *   2. they are a LEAF of the import graph — every module they reach is inside `src/core/` — so the
  *      dependency can only ever run `src/**` → contracts. Wiring them into configuration and
  *      runtime composition is a USE of the contracts, never a change to their boundary;
@@ -20,6 +21,12 @@ import { RESERVED_SITE_IDS, isReservedSiteId, isSiteId, reservedSiteIdIssue } fr
  *      while any module may IMPORT and CALL it;
  *   4. the reservations that protect a released platform namespace still agree with it, while
  *      framework paths, public resource filenames and page-route names stay SEPARATE concerns.
+ *
+ * WHAT `GEO-04` C02 CHANGED HERE: the Business-scoped composite Site identity is retired, so
+ * `core/site-identity.ts` now imports NOTHING and the reachable set below is that one module. The
+ * composite interface, separator, validator and key are guarded as ABSENT rather than as present,
+ * because a contract that is deleted must not be able to reappear beside the authority that
+ * replaced it.
  *
  * ADOPTION-SAFE, DELIBERATELY (FOUNDATION-ID-M1R). An earlier revision of parts 2 and 3 asserted
  * that NOTHING under `src/` imported these modules, and that nothing outside the authority so much
@@ -113,14 +120,11 @@ describe("the two new domain modules", () => {
     expect(importSpecifiers(sourceOf(BUSINESS_ID_MODULE))).toEqual([]);
   });
 
-  it("lets `site-identity.ts` import the Business-ID authority and nothing else", () => {
-    const allowed = new Set(["./business-identity", "@/core/business-identity"]);
-    const specifiers = importSpecifiers(sourceOf(SITE_ID_MODULE));
-
-    expect(specifiers.length).toBeGreaterThan(0);
-    for (const specifier of specifiers) {
-      expect(allowed.has(specifier), `${SITE_ID_MODULE} imports "${specifier}"`).toBe(true);
-    }
+  it("lets `site-identity.ts` import NOTHING at all — the vocabulary stands alone", () => {
+    // `GEO-04` C02 retired the composite, and with it the module's only import. What remains — the
+    // grammar and the reservation vocabulary — is self-contained data and functions, so no second
+    // authority can change what a Site ID may be from outside this file.
+    expect(importSpecifiers(sourceOf(SITE_ID_MODULE))).toEqual([]);
   });
 
   it("imports no framework, infrastructure or outer layer in either module", () => {
@@ -157,8 +161,8 @@ describe("the two new domain modules", () => {
     // What may never happen is the REVERSE — a contract reaching a framework, an adapter, an
     // environment or an operator surface — so every module the contracts depend on is resolved
     // recursively and the whole reachable set must remain inside the pure domain.
-    const reached = new Set<string>([BUSINESS_ID_MODULE, SITE_ID_MODULE]);
-    const pending = [BUSINESS_ID_MODULE, SITE_ID_MODULE];
+    const reached = new Set<string>([SITE_ID_MODULE]);
+    const pending = [SITE_ID_MODULE];
 
     while (pending.length > 0) {
       const relative = pending.pop() as string;
@@ -178,10 +182,10 @@ describe("the two new domain modules", () => {
       }
     }
 
-    // NON-VACUOUS, and stable under adoption: the reachable set is the two contracts themselves —
-    // Site identity is built ON Business identity, and `business-identity.ts` imports nothing at
-    // all (the first check in this block), so no consumer can ever invert the direction.
-    expect([...reached].sort()).toEqual([BUSINESS_ID_MODULE, SITE_ID_MODULE]);
+    // NON-VACUOUS, and stable under adoption: each module is its own leaf — `business-identity.ts`
+    // keeps its consumers, and since `GEO-04` C02 `site-identity.ts` imports nothing at all — so no
+    // consumer can ever invert the direction and no contract can quietly acquire a dependency.
+    expect([...reached].sort()).toEqual([SITE_ID_MODULE]);
   });
 });
 describe("the reservation authority", () => {
@@ -259,3 +263,56 @@ describe("the reservations and the platform artefacts they protect", () => {
     }
   });
 });
+
+describe("the retired composite Site identity (GEO-04 C02)", () => {
+  /**
+   * The retired symbols, named once here so the guard cannot be satisfied by a rename.
+   *
+   * `GEO-04` C02 removed the Business-scoped `(businessId, siteId)` composite: the EFS declaration is
+   * the one place a Site is declared, and it declares a Site ID, not a pair. A contract that has been
+   * deleted must stay deleted — a re-added `SiteIdentity` beside the surviving vocabulary would be a
+   * second identity authority, which is exactly what the retirement removed.
+   */
+  const RETIRED_COMPOSITE = [
+    "SiteIdentity",
+    "SITE_IDENTITY_SEPARATOR",
+    "siteIdentityIssue",
+    "siteIdentityKey",
+  ];
+
+  it("leaves none of the composite, its separator, its validator or its key in the identity module", () => {
+    const authority = sourceOf(SITE_ID_MODULE);
+    for (const name of RETIRED_COMPOSITE) {
+      expect(declarationPattern(name).test(authority), name).toBe(false);
+      expect(authority.includes(name), name).toBe(false);
+    }
+  });
+
+  it("leaves no composite declaration anywhere under `src/`", () => {
+    for (const relative of sourceFiles()) {
+      const text = sourceOf(relative);
+      for (const name of RETIRED_COMPOSITE) {
+        expect(declarationPattern(name).test(text), `${relative} declares ${name}`).toBe(false);
+      }
+    }
+  });
+
+  it("keeps the `business-identity` authority OUT of the Site-ID vocabulary", () => {
+    // `business-identity.ts` keeps its own consumers and its retirement is a later bounded seam. What
+    // must hold NOW is only that the Site-ID vocabulary does not depend on it — the import that existed
+    // solely for the composite is what the retirement removed.
+    expect(importSpecifiers(sourceOf(SITE_ID_MODULE))).toEqual([]);
+    expect(sourceOf(SITE_ID_MODULE)).not.toContain("business-identity");
+  });
+});
+
+
+/**
+ * THE DEFERRED `ww` PROHIBITION — OPEN, NOT WAIVED (`GEO-04` C02-R02).
+ *
+ * The retired worldwide Site word is deliberately NOT in the reservation vocabulary yet: the legacy
+ * establishment inputs still author it as an EFS Site, so reserving it before that seam is reconciled
+ * would make the platform's own establishment output invalid. Enforcing it is a MANDATORY open
+ * `GEO-04` dependency and a later order's work; it is recorded here so the deferral cannot be mistaken
+ * for a decision that the word may stay authorable, and this file asserts nothing about it either way.
+ */

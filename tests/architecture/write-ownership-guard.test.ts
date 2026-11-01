@@ -36,7 +36,6 @@ import {
  * The domains, in one place:
  *
  *   Foundation application code (`src/**`)                       NOTHING — no writer exists there at all
- *   deployment generator `scripts/generate-country-code-…mjs`    `<selected>/content/COUNTRY-CODES.md` only
  *   runtime asset installer `scripts/sync-runtime-assets.mjs`     `<repo>/public/assets/**`,
  *                                                                 `<repo>/public/spokes/**` and the ONE
  *                                                                 generated catalog it publishes for the
@@ -107,8 +106,6 @@ function mutationLines(file: string): string[] {
 const SANCTIONED_DOMAIN_WRITERS: Record<string, string> = {
   "scripts/sync-runtime-assets.mjs":
     "<repo>/public/assets/** and <repo>/public/spokes/** — the generated runtime NAMESPACES: the shared platform tree, plus one collision-safe namespace per declared Spoke (ISO-B3C1 / S3E1C)",
-  "scripts/generate-country-code-reference.mjs":
-    "<selected deployment>/content/COUNTRY-CODES.md — the ONE generated deployment document (ISO-B3A)",
   "scripts/ci/change-scope.mjs": "$GITHUB_OUTPUT — the CI runner's own file, never repository state (ISO-B3B)",
   "scripts/release/release-construction.mjs":
     "the EMPTY destination directory the caller names — a release construction area outside the source repository. It reads committed bytes only, and writes no repository, deployment or generated state (R1B)",
@@ -316,7 +313,6 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
   "tests/unit/asset-source-resolution.test.ts": "OS temp asset trees it creates",
   "tests/unit/authoring-source-discovery.test.ts": "OS temp authoring trees it creates",
   "tests/unit/change-scope.test.ts": "OS temp trees and `$GITHUB_OUTPUT` files",
-  "tests/unit/country-code-generator-deployment-root.test.ts": "OS temp deployment trees the generator writes into",
   "tests/unit/dictionary-precedence.test.ts": "the synthetic deployment's dictionary tree",
   "tests/unit/efs-status-labels.test.ts":
     "OS temp dictionary and override trees it creates — the GEO-02 computed-status-label proofs author their own dictionaries, overrides and a language-only dictionary, removed by exact ownership (GEO-02 R03)",
@@ -404,11 +400,8 @@ describe("the executable writer inventory is explicit", () => {
   });
 
   it("names the sanctioned durable domains, each as ONE document/domain and no more", () => {
-    expect(Object.keys(SANCTIONED_DOMAIN_WRITERS)).toHaveLength(8);
+    expect(Object.keys(SANCTIONED_DOMAIN_WRITERS)).toHaveLength(7);
     expect(SANCTIONED_DOMAIN_WRITERS["scripts/sync-runtime-assets.mjs"]).toContain("public/assets");
-    expect(SANCTIONED_DOMAIN_WRITERS["scripts/generate-country-code-reference.mjs"]).toContain(
-      "COUNTRY-CODES.md",
-    );
     expect(SANCTIONED_DOMAIN_WRITERS["scripts/ci/change-scope.mjs"]).toContain("GITHUB_OUTPUT");
     // R1B — the release tool names its destination as the ONE thing it writes, and writes nothing else.
     expect(SANCTIONED_DOMAIN_WRITERS["scripts/release/release-construction.mjs"]).toContain("destination");
@@ -618,20 +611,6 @@ describe("each sanctioned writer stays inside the ONE domain it owns", () => {
     const sourceText = readFileSync(path.join(ROOT, script), "utf8");
     expect(sourceText).toContain("const base = path.resolve(path.dirname(runtimeRoot));");
     expect(sourceText).toContain("spoke-runtime-segment.mjs");
-  });
-
-  it("the country-code generator writes ONE deployment document, and resolves it through the authority", () => {
-    const script = "scripts/generate-country-code-reference.mjs";
-    const source = readFileSync(path.join(ROOT, script), "utf8");
-    const lines = mutationLines(script);
-    expect(lines).toHaveLength(1);
-    expect(lines[0]).toMatch(/^writeFileSync\(target\.document,/);
-    // The location is deployment-RELATIVE and comes from the shared selector — never from a literal.
-    // That it is never anchored to the repository is asserted where the generator's own deployment
-    // contract is proved (`tests/unit/country-code-generator-deployment-root.test.ts`), and by the
-    // generic-tree rule in `tests/architecture/deployment-root-guard.test.ts` — not repeated here.
-    expect(source).toContain('export const COUNTRY_CODES_DOCUMENT = path.join("content", "COUNTRY-CODES.md");');
-    expect(source).toContain('from "../src/config/deployment-build.mjs"');
   });
 
   it("the CI classifier writes only the runner's own output file", () => {

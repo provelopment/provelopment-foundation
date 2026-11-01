@@ -212,7 +212,6 @@ describe("each route runs exactly its declared contract", () => {
       "git diff --check",
       ROUTE_SETUP_COMMAND,
       "pnpm assets:check",
-      "pnpm country-codes:check",
       "pnpm exec tsc --noEmit",
       "pnpm lint",
       "pnpm test",

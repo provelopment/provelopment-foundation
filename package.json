@@ -17,8 +17,6 @@
     "assets:sync": "node scripts/sync-runtime-assets.mjs",
     "connect:verify": "node scripts/connect/verify-pinned-source.mjs",
     "assets:check": "node scripts/sync-runtime-assets.mjs --check",
-    "country-codes:sync": "node scripts/generate-country-code-reference.mjs",
-    "country-codes:check": "node scripts/generate-country-code-reference.mjs --check",
     "postinstall": "node scripts/sync-runtime-assets.mjs --if-deployment",
     "release:classify": "node scripts/release/index.mjs classify",
     "release:build": "node scripts/release/index.mjs build",

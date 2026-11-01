@@ -75,7 +75,6 @@ export const REQUIRED_PLATFORM_PATHS = Object.freeze([
   { path: "tests/support/synthetic-deployment-root.ts", reason: "the synthetic deployment the generic suite and harness need" },
   { path: "tests/fixtures/synthetic-deployment/site.config.json", reason: "the committed synthetic deployment's configuration" },
   { path: "scripts/sync-runtime-assets.mjs", reason: "the runtime asset mirror installer" },
-  { path: "scripts/generate-country-code-reference.mjs", reason: "the country-code reference generator" },
   { path: "instruction-manuals/README.md", reason: "the distributed manual package a deployment operates itself from" },
   { path: "ARCHITECTURE.md", reason: "the architecture authority the manuals point at" },
   { path: "CUSTOMIZING.md", reason: "the configuration-schema authority the manuals point at" },

@@ -31,9 +31,10 @@ content/pages/markdown/<site>/<language>/<page-name>.md
 ```
 
 - **`<site>`** — a recognized lowercase country code (`ca`, `fr`, `ch`…), or `ww` for a
-  worldwide/global site. The complete list is
-  [`content/COUNTRY-CODES.md`](../../COUNTRY-CODES.md). A folder that is not one of those
-  codes defines no site, and pages inside it are never published.
+  worldwide/global site. Which Sites a published reference serves is selected explicitly in
+  its EFS manifest (the configured reference Site is `main`), not from a country-code
+  catalogue. A folder that is not one of those codes defines no site, and pages inside it are
+  never published.
 - **`<language>`** is a folder named with the language code you publish in — `en`
   for English, `de` for German. Use the codes your site is configured with.
 - **`<page-name>`** is the file name and becomes the end of the web address. Use

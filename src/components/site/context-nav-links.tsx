@@ -103,12 +103,17 @@ export function ContextNavLinks({
   });
 
   // B2 (UI-10): the active page is conveyed via `aria-current="page"` on the
-  // internal link whose RESOLVED href equals the current pathname — the same
+  // internal link whose RESOLVED href is the current pathname — the same
   // route-comparison convention the bottom navigation uses
   // (shell-bottom-bar.tsx). External links never carry aria-current.
+  //
+  // D43 (R04-C33-R02) — a Page route's LETTER CASE is NOT identity: `/de-de/About` serves the
+  // `/de-de/about` Page, so the marker compares the FOLDED address. Only the comparison is folded —
+  // the emitted href, the resolution and the Platform's own spelling are untouched, and a null
+  // pathname (the platform's "not available" case) stays non-current.
   const resolvedWithActive = resolved.map((link) => ({
     ...link,
-    active: !link.external && pathname === link.href,
+    active: !link.external && pathname !== null && pathname.toLowerCase() === link.href.toLowerCase(),
   }));
 
   // P5-5 — sidebar surfaces order by configured region (top → middle → bottom),

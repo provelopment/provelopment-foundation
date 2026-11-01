@@ -142,7 +142,44 @@ export async function run(chrome, harness) {
     const landedOnce = await request(FOUNDATION_HOST, "/de-de/about");
     check(rows, "casing.platformWithPageCase.landsOn200", landedOnce.status === 200, String(landedOnce.status));
 
-    // ── 5. Unpublished addresses stay refused: no casing redirect to some other resource ────────
+    // ── 4c. The ACTIVE navigation marker follows the PAGE, not the typed casing (`D43`) ──────────
+    // The shell's active-link decoration is a per-request accessibility fact, not a route decision:
+    // `/de-de/About` is the `/de-de/about` Page, so the same navigation item must be current in BOTH
+    // spellings — and no emitted href may be rewritten to match what was typed.
+    const currentOf = (body) =>
+      (body.match(/<a\b[^>]*>/g) ?? [])
+        .filter((anchor) => /aria-current="page"/.test(anchor))
+        .map((anchor) => (anchor.match(/href="([^"]*)"/) ?? ["", "(none)"])[1]);
+    const canonicalCurrent = currentOf(canonicalAbout.body);
+    const variantCurrent = currentOf(pageVariant.body);
+    check(
+      rows,
+      "casing.pageRoute.activeNav.lowercase",
+      canonicalCurrent.includes("/de-de/about"),
+      JSON.stringify(canonicalCurrent),
+    );
+    check(
+      rows,
+      "casing.pageRoute.activeNav.mixedCase",
+      variantCurrent.includes("/de-de/about"),
+      JSON.stringify(variantCurrent),
+    );
+    // The marker is the SAME item in both spellings — one current destination, not a case-insensitive scatter:
+    check(
+      rows,
+      "casing.pageRoute.activeNav.sameItem",
+      JSON.stringify(variantCurrent) === JSON.stringify(canonicalCurrent),
+      `${JSON.stringify(variantCurrent)} vs ${JSON.stringify(canonicalCurrent)}`,
+    );
+    // …and the capitalised spelling never becomes an emitted destination:
+    check(
+      rows,
+      "casing.pageRoute.activeNav.noCapitalizedHref",
+      !/href="\/de-de\/About"/.test(pageVariant.body),
+      "the variant body emitted a capitalised href",
+    );
+
+
     refuses("casing.refused.unsupportedLocale", await request(FOUNDATION_HOST, "/fr-FR/about"));
     refuses("casing.refused.retiredAddress", await request(FOUNDATION_HOST, "/ww/de/about"));
     refuses("casing.refused.unknownPage", await request(FOUNDATION_HOST, "/de-de/nope"));
@@ -192,6 +229,60 @@ export async function run(chrome, harness) {
     // The representation is the SAME one the canonical address serves: a casing redirect changes the
     // address, never the language identity of what is published at it.
     check(rows, "casing.browser.keepsAuthoredLanguage", landed.lang === "de-DE", String(landed.lang));
+
+    // ── 9. A REAL navigation to the mixed-case Page address still indicates the active Page ─────
+    // `D43` (R04-C33-R02) — this is the accessibility half of the same identity rule, measured in the
+    // browser the visitor actually uses: the typed casing must not cost the visitor their position.
+    const activeInBrowser = async () =>
+      JSON.parse(
+        await cdp.evaluate(
+          "JSON.stringify({ path: location.pathname, current: Array.from(document.querySelectorAll('a[aria-current=page]')).map((a) => a.getAttribute('href')) })",
+        ),
+      );
+    await cdp.navigate(`${BASE_URL}/de-de/about`);
+    await waitReady(cdp);
+    const canonicalNav = await activeInBrowser();
+    await cdp.navigate(`${BASE_URL}/de-de/About`);
+    await waitReady(cdp);
+    const mixedNav = await activeInBrowser();
+    check(
+      rows,
+      "casing.browser.mixedCaseServed",
+      mixedNav.path === "/de-de/About",
+      JSON.stringify(mixedNav.path),
+    );
+    check(
+      rows,
+      "casing.browser.mixedCaseKeepsActiveNav",
+      mixedNav.current.includes("/de-de/about"),
+      JSON.stringify(mixedNav.current),
+    );
+    check(
+      rows,
+      "casing.browser.sameActiveNavAsCanonical",
+      JSON.stringify(mixedNav.current) === JSON.stringify(canonicalNav.current),
+      `${JSON.stringify(mixedNav.current)} vs ${JSON.stringify(canonicalNav.current)}`,
+    );
+    // Negative: an unknown Page is never current — nothing is served there, so no destination may be
+    // announced as current. A refusal has no shell to wait for, so the DOCUMENT is what is awaited.
+    await cdp.navigate(`${BASE_URL}/de-de/nope`);
+    let refused = { path: "", current: [], ready: "" };
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      refused = JSON.parse(
+        await cdp.evaluate(
+          "JSON.stringify({ path: location.pathname, current: Array.from(document.querySelectorAll('a[aria-current=page]')).map((a) => a.getAttribute('href')), ready: document.readyState })",
+        ),
+      );
+      if (refused.ready === "complete") break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    check(
+      rows,
+      "casing.browser.unknownPageNeverCurrent",
+      refused.path === "/de-de/nope" && refused.current.length === 0,
+      JSON.stringify(refused),
+    );
+
   } catch (error) {
     check(rows, "efs-canonical-casing.scenario.error", false, String(error));
   } finally {

@@ -151,7 +151,12 @@ export function ShellBottomBar({
         label: link.label,
         href,
         key: link.key ?? href,
-        active: pathname === href,
+        // D43 (R04-C33-R02) — the SAME folded route comparison the shared context navigation uses:
+        // a Page route's letter case is not identity, so a visitor at `/de-de/About` is on the
+        // `/de-de/about` Page and the bar must say so. Only the comparison is folded — the emitted
+        // href, the region/site resolution and the bar's composition are unchanged, and a null
+        // pathname stays non-current.
+        active: pathname !== null && pathname.toLowerCase() === href.toLowerCase(),
         external: !isInternalHref(link.href),
         badge: link.demoOnly && demoBadgeLabel ? demoBadgeLabel : undefined,
         icon: link.icon,

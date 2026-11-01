@@ -7,6 +7,7 @@ import {
   assetUrl,
   bindingIssues,
   canonicalUrl,
+  caseCorrectedAddress,
   contentSegments,
   entryRedirectPath,
   matchBinding,
@@ -177,6 +178,115 @@ describe("EFS publication and routing (D31 / O-4, O-5)", () => {
     expect(bindingIssues([{ ...base, prefix: [] }, { ...base, id: "c", prefix: ["other"] }])).toEqual(
       expect.arrayContaining(['Host "example.com" mixes a dedicated-root binding with prefix-scoped bindings.']),
     );
+  });
+});
+
+/**
+ * `D40` DECISION B — MATCHED-ADDRESS CAPITALIZATION (`R04-C30`)
+ * ============================================================
+ *
+ * The redirect is an ADDRESS question with exactly three platform-authored segments — the binding prefix,
+ * the Site selector of a Site-open binding and the locale path key. Everything after them is the authored
+ * Page route, whose case is CONTENT and must therefore survive untouched (and be refused, not corrected,
+ * when it does not name a Page). These prove the pure decision the request boundary acts on.
+ */
+describe("matched-address capitalization (D40 Decision B)", () => {
+  it("answers ONE canonical spelling for a mixed-case prefix, Site selector and locale", () => {
+    const corrected = caseCorrectedAddress(
+      "my.provelopment.com",
+      "/ACME-CO/Jakarta/EN-001/about",
+      loadedBindings(),
+    );
+    expect(corrected).not.toBeNull();
+    expect(corrected?.binding.id).toBe("managed-acme");
+    // All three platform segments corrected in ONE answer: no chain of second redirects.
+    expect(corrected?.platformSegments).toEqual(["acme-co", "jakarta", "en-001"]);
+    expect(corrected?.pageRouteText).toBe("/about");
+  });
+
+  it("corrects a locale path key alone, in both authored modes of addressing", () => {
+    // Site-closed, dedicated root: the locale is the only platform segment in the address.
+    const dedicated = caseCorrectedAddress("www.acme-co.com", "/Fr-CA/about", loadedBindings());
+    expect(dedicated?.binding.id).toBe("dedicated-acme");
+    expect(dedicated?.platformSegments).toEqual(["fr-ca"]);
+    expect(dedicated?.pageRouteText).toBe("/about");
+
+    // The address segment is the lowercase PATH KEY, so `/fr-CA` is a case variant of `fr-ca` even though the
+    // authored tag is `fr-CA`: the redirect corrects the ADDRESS, and `canonicalUrl` still derives from the key.
+    expect(
+      caseCorrectedAddress("www.acme-co.com", "/fr-CA/about", loadedBindings())?.platformSegments,
+    ).toEqual(["fr-ca"]);
+    expect(canonicalUrl(loadedBindings().find((b) => b.id === "dedicated-acme")!, {
+      siteId: "jakarta",
+      locale: "fr-CA",
+      localeKey: "fr-ca",
+      pageRoute: ["about"],
+    })).toBe("https://www.acme-co.com/fr-ca/about");
+  });
+
+  it("carries the visitor's Page-route text verbatim, never normalizing its case", () => {
+    const corrected = caseCorrectedAddress(
+      "my.provelopment.com",
+      "/Acme-Co/Jakarta/En-001/Products/Detail",
+      loadedBindings(),
+    );
+    // Capitalized, nested and non-lowercase route segments are the AUTHOR's spelling, not the platform's.
+    expect(corrected?.pageRouteText).toBe("/Products/Detail");
+  });
+
+  it("serves an already canonical address and never redirects it", () => {
+    expect(caseCorrectedAddress("my.provelopment.com", "/acme-co/jakarta/en-001/about", loadedBindings())).toBeNull();
+    expect(caseCorrectedAddress("www.acme-co.com", "/en-001/about", loadedBindings())).toBeNull();
+    // A trailing separator terminates the platform segments: it is not a Page and must not become one.
+    const trailing = caseCorrectedAddress("my.provelopment.com", "/ACME-CO/Jakarta/EN-001/", loadedBindings());
+    expect(trailing?.pageRouteText).toBe("");
+  });
+
+  it("refuses every address that is not a case variant of a published one", () => {
+    const bindings = loadedBindings();
+    // An unclaimed host, an unclaimed prefix, an undeclared Site, an unsupported locale: each is a DIFFERENT
+    // address, not a capitalization of a real one, so none of them earns a redirect to some other resource.
+    expect(caseCorrectedAddress("unknown.example", "/EN-001/about", bindings)).toBeNull();
+    expect(caseCorrectedAddress("my.provelopment.com", "/NOPE/EN-001/about", bindings)).toBeNull();
+    expect(caseCorrectedAddress("my.provelopment.com", "/acme-co/Paris/EN-001/about", bindings)).toBeNull();
+    expect(caseCorrectedAddress("www.acme-co.com", "/ja-JP/about", bindings)).toBeNull();
+    // No locale segment at all (an incomplete address is completed elsewhere), and a malformed path.
+    expect(caseCorrectedAddress("my.provelopment.com", "/acme-co", bindings)).toBeNull();
+    expect(caseCorrectedAddress("my.provelopment.com", "/acme-co//EN-001/about", bindings)).toBeNull();
+    // A Site id is not an address segment of a Site-closed binding.
+    expect(caseCorrectedAddress("www.acme-co.com", "/JAKARTA/en-001/about", bindings)).toBeNull();
+  });
+
+  it("keeps two Entities on one shared host apart while correcting each one's own casing", () => {
+    const bindings = loadedBindings();
+    const beta = caseCorrectedAddress("my.provelopment.com", "/BETA-CO/EN-001", bindings);
+    expect(beta?.binding.id).toBe("managed-beta");
+    expect(beta?.binding.entityId).toBe("e_00000000000000000000000001");
+    // `beta-co` is Site-closed: a Segment in that position is a locale, so `jakarta` is not addressable there
+    // and must not be corrected into the OTHER publication's Site selector.
+    expect(caseCorrectedAddress("my.provelopment.com", "/BETA-CO/Jakarta/en-001", bindings)).toBeNull();
+  });
+
+  it("refuses to choose between declarations whose prefixes fold together", () => {
+    const base: EfsBinding = {
+      id: "acme",
+      host: "my.provelopment.com",
+      prefix: ["Acme-Co"],
+      entityId: "e_00000000000000000000000000",
+      facetId: "acme",
+      siteIds: ["jakarta"],
+      siteMode: "closed",
+      defaultSiteId: "jakarta",
+      locales: ["en-001"],
+      defaultLocale: "en-001",
+    };
+    // Two bindings whose prefixes differ only in case have no single canonical spelling to redirect to.
+    expect(caseCorrectedAddress("my.provelopment.com", "/ACME-CO/EN-001", [base, { ...base, id: "rival", prefix: ["acme-co"] }])).toBeNull();
+    // Alone, the same declaration answers normally.
+    expect(caseCorrectedAddress("my.provelopment.com", "/ACME-CO/EN-001", [base])?.platformSegments).toEqual([
+      "Acme-Co",
+      "en-001",
+    ]);
   });
 });
 

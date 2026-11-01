@@ -9,7 +9,7 @@ import {
   type SpokeHostRoutingEntry,
 } from "@/config/spoke-routing";
 import { SPOKE_SELECTION_HEADER, isInternalSpokePath } from "@/config/spoke-selection";
-import { EFS_REQUEST_PATH_HEADER } from "@/config/efs/request-path";
+import { EFS_REQUEST_PATH_HEADER, EFS_REQUEST_QUERY_HEADER } from "@/config/efs/request-path";
 import {
   EFS_IMAGE_PATH_HEADER,
   EFS_OPEN_GRAPH_IMAGE_ROUTE,
@@ -91,18 +91,36 @@ function refuse(): NextResponse {
 }
 
 /**
- * The request headers a caller may hand upstream, with the boundary's PRIVATE image-path marker removed
- * (`R04-C21-R02`).
+ * The visitor's raw query text, leading `?` included, or `""`.
  *
- * The marker is the ONE thing the internal image route trusts, so only the rewrite below may produce it: it is
- * deleted on the way in and re-set on the way out by that single branch. Every other way through this file —
- * an asset pass-through, a Spoke selection, an unclaimed host — must therefore strip whatever the client sent,
- * otherwise a direct request to the internal path could supply its own "original public path" and skip the
- * authorization the rewrite represents. A header the client controls is not an authorization.
+ * `nextUrl.search` is NOT used: it re-serialises through `URLSearchParams`, which turns `%20` into `+` and
+ * would silently rewrite the address a visitor typed. The request URL is sliced instead, so every escape,
+ * every repeated key and their order reach the boundary exactly as they arrived (`D40` Decision B).
+ */
+function rawQueryOf(request: NextRequest): string {
+  const index = request.url.indexOf("?");
+  return index === -1 ? "" : request.url.slice(index);
+}
+
+/**
+ * The request headers a caller may hand upstream, with the boundary's PRIVATE headers removed
+ * (`R04-C21-R02`, `D40` Decision B).
+ *
+ * The image-path marker is the ONE thing the internal image route trusts, so only the rewrite below may
+ * produce it: it is deleted on the way in and re-set on the way out by that single branch. Every other way
+ * through this file — an asset pass-through, a Spoke selection, an unclaimed host — must therefore strip
+ * whatever the client sent, otherwise a direct request to the internal path could supply its own "original
+ * public path" and skip the authorization the rewrite represents. A header the client controls is not an
+ * authorization.
+ *
+ * `EFS_REQUEST_QUERY_HEADER` is scrubbed on the same principle: it carries the visitor's raw query text to
+ * the boundary so a casing redirect can preserve it byte for byte, and the branch that RESOLVED the public
+ * address is the only one allowed to write it.
  */
 function passThroughHeaders(source: Headers): Headers {
   const headers = new Headers(source);
   headers.delete(EFS_IMAGE_PATH_HEADER);
+  headers.delete(EFS_REQUEST_QUERY_HEADER);
   return headers;
 }
 
@@ -179,6 +197,8 @@ function continueWithSelectedSpoke(request: NextRequest, entry: SpokeHostRouting
   // reads this private upstream header to resolve the exact EFS publication binding; any value a
   // client sent under the same name is discarded here.
   headers.set(EFS_REQUEST_PATH_HEADER, request.nextUrl.pathname);
+  // …and the query text the visitor actually sent, so a casing redirect can carry it unchanged (D40-B).
+  headers.set(EFS_REQUEST_QUERY_HEADER, rawQueryOf(request));
   return NextResponse.next({ request: { headers } });
 }
 
@@ -301,6 +321,7 @@ export function proxy(request: NextRequest) {
     const forwarded = passThroughHeaders(request.headers);
     forwarded.delete(SPOKE_SELECTION_HEADER);
     forwarded.set(EFS_REQUEST_PATH_HEADER, pathname);
+    forwarded.set(EFS_REQUEST_QUERY_HEADER, rawQueryOf(request));
     return NextResponse.next({ request: { headers: forwarded } });
   }
 

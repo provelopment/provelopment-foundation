@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 
 import { headers } from "next/headers";
-import { notFound, redirect } from "next/navigation";
+import { notFound, permanentRedirect, redirect } from "next/navigation";
 
 import { loadEfsPageSource, type EfsPageSource } from "@/adapters/content/efs-content";
 import { efsPublicationOwnerForRequest } from "@/config/efs/owner";
@@ -10,6 +10,7 @@ import { legacyTestRuntimeEnabled, missingEfsInstallation } from "./legacy-test-
 import type { SpokeRuntimeContext } from "@/config/installation-runtime";
 import {
   canonicalUrl,
+  caseCorrectedAddress,
   contentSegments,
   entryRedirectPath,
   matchBinding,
@@ -32,7 +33,7 @@ import type { PageVisibility } from "@/core/page-document";
 import type { ContactInquiryOrigin } from "@/core/contact-inquiry";
 import type { ContactOwnerIdentity } from "@/config/contact-receiver";
 import { deploymentPaths } from "@/config/deployment-root";
-import { EFS_REQUEST_PATH_HEADER } from "@/config/efs/request-path";
+import { EFS_REQUEST_PATH_HEADER, EFS_REQUEST_QUERY_HEADER } from "@/config/efs/request-path";
 import {
   loadEfsManifest,
   type EfsEntityDeclaration,
@@ -439,7 +440,22 @@ export async function efsViewForCurrentRequest(
   if (!host) return null;
 
   const allBindings = manifest.publications.flatMap((publication) => publication.bindings);
-  const matched = matchBinding(host, `/${segments.join("/")}`, allBindings);
+
+  /**
+   * `D40` DECISION B — correct the platform segments to their authored capitalization BEFORE anything is
+   * resolved, so the publication, Site, Page and representation below are proved against the CANONICAL
+   * address. A request that is already canonical corrects to itself, so this path is unchanged for it.
+   *
+   * The raw pathname the edge boundary forwarded is the authority for the visitor's own bytes; the decoded
+   * route segments are only a fallback for a caller with no proxy in front of it.
+   */
+  const requestedPath = (await requestHeader(EFS_REQUEST_PATH_HEADER)) ?? `/${segments.join("/")}`;
+  const correction = caseCorrectedAddress(host, requestedPath, allBindings);
+  const addressed = correction
+    ? [...correction.platformSegments, ...segments.slice(correction.platformSegments.length)]
+    : segments;
+
+  const matched = matchBinding(host, `/${addressed.join("/")}`, allBindings);
   if (!matched) {
     // Preserve the released Spoke's root/locale-shorthand completion for a converted host. It is
     // deterministic only when that host has exactly ONE canonical binding; anything ambiguous is
@@ -524,6 +540,20 @@ export async function efsViewForCurrentRequest(
         pageRoute: publicRoute(page),
       }).join("/")}/`,
     );
+  }
+
+  /**
+   * `D40` DECISION B — the publication, Site, Page and representation are established above, so a request
+   * whose binding prefix, Site selector or locale path key differs from the declaration ONLY in case now has
+   * exactly one canonical address. ONE `308`, ONE `Location`: the authored platform spelling, the visitor's
+   * own Page-route text and their original query string, unchanged.
+   *
+   * `permanentRedirect` is the platform's 308. The entry-completion and same-Page fallback redirects above
+   * keep their existing 307 meaning, and nothing below can be reached by a case variant.
+   */
+  if (correction) {
+    const query = (await requestHeader(EFS_REQUEST_QUERY_HEADER)) ?? "";
+    permanentRedirect(`/${correction.platformSegments.join("/")}${correction.pageRouteText}${query}`);
   }
 
   const actual = representation.representation;

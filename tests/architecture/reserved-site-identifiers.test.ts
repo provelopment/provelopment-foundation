@@ -6,17 +6,17 @@ import { RESERVED_SITE_IDS, isReservedSiteId, isSiteId, reservedSiteIdIssue } fr
 
 /**
  * THE IDENTITY CONTRACT'S BOUNDARIES (FOUNDATION-ID-M1, corrected by FOUNDATION-ID-M1R, reduced by
- * `GEO-04` C02)
+ * `GEO-04` C02 and `GEO-04` C04)
  * ============================================================================================
  *
- * FOUNDATION-ID-M1 adds two pure domain modules and their tests. That claim has four checkable
+ * FOUNDATION-ID-M1 added two pure domain modules and their tests. That claim has four checkable
  * parts, and this file checks them:
  *
- *   1. the modules depend on nothing but the domain, so no framework, filesystem, environment or
- *      crypto dependency can have entered them;
- *   2. they are a LEAF of the import graph — every module they reach is inside `src/core/` — so the
- *      dependency can only ever run `src/**` → contracts. Wiring them into configuration and
- *      runtime composition is a USE of the contracts, never a change to their boundary;
+ *   1. the module depends on nothing but the domain, so no framework, filesystem, environment or
+ *      crypto dependency can have entered it;
+ *   2. it is a LEAF of the import graph — everything it reaches is inside `src/core/` — so the
+ *      dependency can only ever run `src/**` → contracts. Wiring it into configuration and
+ *      runtime composition is a USE of the contract, never a change to its boundary;
  *   3. the reserved vocabulary has ONE canonical DECLARATION, so it cannot be restated and drift —
  *      while any module may IMPORT and CALL it;
  *   4. the reservations that protect a released platform namespace still agree with it, while
@@ -27,6 +27,15 @@ import { RESERVED_SITE_IDS, isReservedSiteId, isSiteId, reservedSiteIdIssue } fr
  * composite interface, separator, validator and key are guarded as ABSENT rather than as present,
  * because a contract that is deleted must not be able to reappear beside the authority that
  * replaced it.
+ *
+ * WHAT `GEO-04` C04 CHANGED HERE: the legacy `BusinessId` nominal (`core/business-identity.ts`) is
+ * retired too. It was the geographically associated `b_` identity that `D27` replaced with the
+ * independent EFS `EntityID`; after C02 removed the composite it had no consumer left. Its purity
+ * proof therefore becomes an ABSENCE proof: the module must not exist, no `src/**` module may import
+ * or re-export it, and none of its exported nominal, constants or `mintBusinessId` may be declared
+ * anywhere in the source tree. The EFS `EntityID` authority (`core/efs/identity.ts`) is a different
+ * module with its own format, entropy and tests, and it neither imports that nominal nor delegates
+ * its shape to it.
  *
  * ADOPTION-SAFE, DELIBERATELY (FOUNDATION-ID-M1R). An earlier revision of parts 2 and 3 asserted
  * that NOTHING under `src/` imported these modules, and that nothing outside the authority so much
@@ -41,9 +50,33 @@ import { RESERVED_SITE_IDS, isReservedSiteId, isSiteId, reservedSiteIdIssue } fr
  */
 const srcDirectory = path.join(process.cwd(), "src");
 
-/** The two files this milestone adds — the whole of its source surface, spelled once. */
-const BUSINESS_ID_MODULE = "core/business-identity.ts";
+/** The retired `BusinessId` nominal, and the surviving Site-ID vocabulary, spelled once each. */
+const RETIRED_BUSINESS_ID_MODULE = "core/business-identity.ts";
 const SITE_ID_MODULE = "core/site-identity.ts";
+
+/**
+ * Every name the retired nominal exported (`GEO-04` C04). Guarded as ABSENT, and by DECLARATION
+ * rather than by mention: prose may still explain what was retired — `core/efs/identity.ts` says
+ * plainly that the `b_` prefix is gone — but no module may declare the nominal again.
+ */
+const RETIRED_BUSINESS_ID_SYMBOLS = [
+  "BusinessId",
+  "BusinessIdEntropySource",
+  "BUSINESS_ID_PREFIX",
+  "BUSINESS_ID_PAYLOAD_LENGTH",
+  "BUSINESS_ID_LENGTH",
+  "BUSINESS_ID_ENTROPY_BITS",
+  "BUSINESS_ID_ENTROPY_BYTES",
+  "BUSINESS_ID_BITS_PER_CHARACTER",
+  "BUSINESS_ID_PADDING_BITS",
+  "BUSINESS_ID_ALPHABET",
+  "BUSINESS_ID_FIRST_CHARACTERS",
+  "BUSINESS_ID_EXCLUDED_LETTERS",
+  "normalizeBusinessId",
+  "isBusinessId",
+  "businessIdIssue",
+  "mintBusinessId",
+];
 
 /** Every source file under `src/`, as `/`-separated paths relative to it. */
 function sourceFiles(directory = srcDirectory, prefix = ""): string[] {
@@ -115,11 +148,7 @@ function resolvedSourceFile(specifier: string, fromRelative: string): string | n
   return sourceFiles().includes(candidate) ? candidate : null;
 }
 
-describe("the two new domain modules", () => {
-  it("keeps `business-identity.ts` free of EVERY import, so it is pure data and functions", () => {
-    expect(importSpecifiers(sourceOf(BUSINESS_ID_MODULE))).toEqual([]);
-  });
-
+describe("the surviving domain module", () => {
   it("lets `site-identity.ts` import NOTHING at all — the vocabulary stands alone", () => {
     // `GEO-04` C02 retired the composite, and with it the module's only import. What remains — the
     // grammar and the reservation vocabulary — is self-contained data and functions, so no second
@@ -127,7 +156,7 @@ describe("the two new domain modules", () => {
     expect(importSpecifiers(sourceOf(SITE_ID_MODULE))).toEqual([]);
   });
 
-  it("imports no framework, infrastructure or outer layer in either module", () => {
+  it("imports no framework, infrastructure or outer layer", () => {
     const forbidden = [
       "node:",
       "react",
@@ -144,13 +173,11 @@ describe("the two new domain modules", () => {
       "@/core/site-locale",
     ];
 
-    for (const relativePath of [BUSINESS_ID_MODULE, SITE_ID_MODULE]) {
-      for (const specifier of importSpecifiers(sourceOf(relativePath))) {
-        const violation = forbidden.find(
-          (prefix) => specifier === prefix || specifier.startsWith(prefix),
-        );
-        expect(violation, `${relativePath} imports "${specifier}"`).toBeUndefined();
-      }
+    for (const specifier of importSpecifiers(sourceOf(SITE_ID_MODULE))) {
+      const violation = forbidden.find(
+        (prefix) => specifier === prefix || specifier.startsWith(prefix),
+      );
+      expect(violation, `${SITE_ID_MODULE} imports "${specifier}"`).toBeUndefined();
     }
   });
 
@@ -182,8 +209,7 @@ describe("the two new domain modules", () => {
       }
     }
 
-    // NON-VACUOUS, and stable under adoption: each module is its own leaf — `business-identity.ts`
-    // keeps its consumers, and since `GEO-04` C02 `site-identity.ts` imports nothing at all — so no
+    // NON-VACUOUS, and stable under adoption: `site-identity.ts` imports nothing at all, so no
     // consumer can ever invert the direction and no contract can quietly acquire a dependency.
     expect([...reached].sort()).toEqual([SITE_ID_MODULE]);
   });
@@ -298,11 +324,43 @@ describe("the retired composite Site identity (GEO-04 C02)", () => {
   });
 
   it("keeps the `business-identity` authority OUT of the Site-ID vocabulary", () => {
-    // `business-identity.ts` keeps its own consumers and its retirement is a later bounded seam. What
-    // must hold NOW is only that the Site-ID vocabulary does not depend on it — the import that existed
-    // solely for the composite is what the retirement removed.
+    // The import that existed solely for the composite is what `GEO-04` C02 removed, and `C04` then
+    // retired the nominal itself. What must hold for ever is that the Site-ID vocabulary still does
+    // not depend on — or even name — the retired specifier.
     expect(importSpecifiers(sourceOf(SITE_ID_MODULE))).toEqual([]);
     expect(sourceOf(SITE_ID_MODULE)).not.toContain("business-identity");
+  });
+});
+
+describe("the retired `BusinessId` nominal (GEO-04 C04)", () => {
+  it("no longer exists in the source tree", () => {
+    // `D27` retired the `b_`-prefixed nominal and kept only the opaque generation STRUCTURE for the
+    // independent EFS `EntityID`. `C02` then removed its last production consumer, so the module is
+    // gone: a retired authority that is merely unused is a trap for the next reader.
+    expect(sourceFiles()).not.toContain(RETIRED_BUSINESS_ID_MODULE);
+    expect(() => sourceOf(RETIRED_BUSINESS_ID_MODULE)).toThrow();
+  });
+
+  it("is not imported, required or re-exported by any active `src/**` module", () => {
+    // Non-vacuous by construction: the scan is over every source file, and the specifier is asserted
+    // per file so a single reintroduction names its own path in the failure message.
+    const mentions = sourceFiles().filter((relative) =>
+      sourceOf(relative).includes("business-identity"),
+    );
+    expect(mentions).toEqual([]);
+  });
+
+  it("is not DECLARED again anywhere under `src/` — by name, constant or minter", () => {
+    // Declarations rather than mentions: prose may still explain what was retired, but a second
+    // `BusinessId`, format constant or `mintBusinessId` would be a new identity authority.
+    for (const name of RETIRED_BUSINESS_ID_SYMBOLS) {
+      expect(declarationModules(name), `${name} is declared again`).toEqual([]);
+    }
+
+    // Non-vacuous: the same detector DOES find a name that is still declared, so an empty result
+    // above means absence rather than a broken pattern.
+    expect(declarationModules("RESERVED_SITE_IDS")).toEqual([SITE_ID_MODULE]);
+    expect(declarationModules("ENTITY_ID_PREFIX")).toEqual(["core/efs/identity.ts"]);
   });
 });
 

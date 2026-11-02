@@ -140,26 +140,42 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
     "OS temp only — SEVERAL disposable Installation roots, none of which can be orphaned and all of which are removed by one `afterAll` registered BEFORE anything is created: one `foundation-efs-installation-*` root built at module load by the shared helper, which is FAILURE-ATOMIC (`materializeEfsInstallation` removes its own root if population throws, so a caller never inherits a half-built one) and is handed to this file only on a successful return, where selection and the dynamic import are wrapped in an initialization rollback; plus one `foundation-opengraph-parity-*` root per case, registered before its manifest and capsule are written. Teardown restores the process ENVIRONMENT exactly as it was at module load — `FOUNDATION_EFS_MANIFEST`/`FOUNDATION_EFS_CAPSULE` and every deployment key selection rewrites (`FOUNDATION_DEPLOYMENT_ROOT`/`…_LAYOUT`/`…_CONFIG` and whatever `deploymentEnvironment` resolves), deleting a key the run added — AND removes every owned root as an INDEPENDENT second attempt, so neither failure skips the other, both are reported together, and a root whose removal fails stays tracked and retryable instead of being deregistered. It never writes a committed fixture, a deployment, a generated namespace or a build output (R04-C22-R03-R02)",
   "tests/browser/scratch.mjs": "the guard: OS temp + `tests/browser/.report/` + the generated Spoke namespaces, refusing every other target",
   "tests/browser/matrix.mjs": "the synthetic deployment copy, `.report/`, OS temp and the generated Spoke namespaces a multi-Spoke scenario materialises — all via scratch.mjs",
+  "tests/support/efs-browser-installation.mjs":
+    "OS temp only — every disposable explicit EFS Installation it materialises under the OS temp directory " +
+    "(the runtime-cut fixture copy and the GENERIC translation of the synthetic fixture), each one FAILURE-ATOMIC " +
+    "(a throw after the temp root exists removes exactly that root and rethrows the original error) and removed by " +
+    "`cleanup()`, which is idempotent; the Page declarations and representations a scenario authors through the " +
+    "returned `authoring` surface are written INSIDE the same owned installation. The committed fixtures, a real " +
+    "deployment, a generated namespace and a build output are read-only to it (GEO-04-C09-R02)",
   "tests/browser/cdp.mjs": "the headless-Chrome profile directory it created, under OS temp",
+    "tests/support/efs-runtime-cut.ts":
+      "OS temp only — the disposable copy of the committed EFS fixture it materialises under the OS temp " +
+      "directory (failure-atomic: a failed population removes its own root before the caller receives a " +
+      "handle) and removes by exact ownership, plus the Page DECLARATION and the representation a suite " +
+      "authors INSIDE that copy. The committed fixture, a real deployment, a generated namespace and a " +
+      "build output are read-only to it (C07-R02)",
+
   "tests/browser/efs-schedule.scenario.mjs":
     "OS temp only — a disposable Installation it materialises under the OS temp directory (a COPY of the reference Spoke plus a " +
     "generated Spokes declaration and a per-run schedule manifest) and removes in `finally`. The reference deployment, the " +
     "reference capsule and every committed fixture are read-only to it (GEO-02-R02 F)",
   "tests/browser/multihost.scenario.mjs":
-    "OS temp (its disposable two-Spoke Installation) and `public/spokes/<segment>/**` — the GENERATED " +
+    "OS temp (its disposable two-Spoke Installation), `public/spokes/<segment>/**` — the GENERATED " +
     "namespaces it materialises FROM THE CANONICAL ASSET PLAN (never by inventing files) and removes for the " +
-    "cross-host asset proof",
+    "cross-host asset proof — and the IGNORED build cache `node_modules/.cache/foundation/efs-publications/**`, " +
+    "where it writes this Installation's publication projection ONLY by invoking the production producer and " +
+    "removes it afterwards (GEO-04 C09-R19)",
   "tests/browser/multi-hub.scenario.mjs":
     "OS temp (its disposable IDENTIFIED Installation, and the one-Hub/one-Spoke variant it proves separately) " +
     "plus `public/spokes/<composite segment>/**` — the GENERATED per-member namespaces it materialises FROM " +
     "THE CANONICAL ASSET PLAN (never by inventing files) and removes again, each through the harness's own " +
     "guarded writers. Both dev servers it starts are stopped and the platform identity it exported is " +
     "removed, on success and on failure (M3-P3C)",
-  "tests/browser/required-location.scenario.mjs":
-    "OS temp only: TWO disposable copies of the committed synthetic deployment it materialises, patches (one " +
-    "required-Location policy and one regional page) and removes, each behind its own dev server — every write " +
-    "through the harness's own guarded writers. The committed fixture, the selected deployment and the " +
-    "repository are only ever READ (LOC1)",
+  // `tests/browser/required-location.scenario.mjs` is deliberately ABSENT from this inventory: since R18 it
+  // declares its Pages through the generic Installation's synchronous `authorPage` authoring API in two
+  // separately owned phases, and performs no filesystem write of its own. The retired LOC1 entries described two
+  // patched copies of the committed fixture; both are gone, and every Installation it publishes from is
+  // harness-owned and removed by the harness.
   "tests/browser/parity-chrome.scenario.mjs":
     "OS temp only: TWO disposable copies of the committed synthetic deployment it materialises, patches (one " +
     "presenting the site-wide notice with a long contact address, one without it) and removes, each behind its " +
@@ -191,10 +207,9 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
     "binds five publications to five prefixes of ONE hostname) it authors for the shared-host publication " +
     "proofs, and the caller removes. It writes inside the root it creates or is given and nowhere else, so " +
     "the committed synthetic fixture, the selected deployment and `public/**` are only ever READ (A1, R1)",
-  "tests/browser/hub-switcher.scenario.mjs":
-    "OS temp only: the disposable four-Spoke Installation (materialised through that fixture builder) and its " +
-    "dev server; the browser reads the rendered pages. Every write goes through the harness's own guarded " +
-    "writers, and the copy is removed when the run ends (R1)",
+  // `tests/browser/hub-switcher.scenario.mjs` is deliberately ABSENT from this inventory: since R16 it performs
+  // no filesystem write of its own. The four-Spoke Installation owns its tree and removes it through its own
+  // idempotent `cleanup()`, and the browser only reads the rendered pages.
   "tests/browser/header-identity.scenario.mjs":
     "OS temp (the disposable copy of the committed synthetic deployment it re-configures for each identity " +
     "variant, and the disposable four-Spoke Installation that fixture builder authors) plus the GENERATED " +
@@ -213,10 +228,9 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
     "OS temp only: the disposable explicit Installation it assembles for the EFS fixture's declared Spoke, removed when the scenario ends; the repository, committed fixture and deployment are only ever READ (R05)",
   "tests/browser/efs-semantic.scenario.mjs":
     "OS temp only: the disposable explicit Installation declaring the neutral publication's real Spoke, removed when the scenario ends; the repository and committed fixture are only ever READ (R05)",
-  "tests/browser/unlisted-visibility.scenario.mjs":
-    "OS temp only: the disposable copy of the committed synthetic fixture it re-configures and authors its own " +
-    "public and unlisted pages into, behind its own dev server — every write through the harness's own guarded " +
-    "writers, and the copy removed when the run ends (TEMPLATE-PV-A1)",
+  // `tests/browser/unlisted-visibility.scenario.mjs` is deliberately ABSENT from this inventory: since R17 it
+  // declares its Pages through the generic Installation's synchronous `authorPage` authoring API and performs no
+  // filesystem write of its own. The Installation it publishes from is harness-owned and removed by the harness.
   "tests/support/efs-installation.ts":
     "OS temp only: the disposable explicit Installation trees (flat or identified Spoke Hubs) used by the EFS ownership proofs; copied from the committed synthetic fixture and removed by exact ownership (R05)",
   "tests/integration/efs-ownership-runtime.test.ts":
@@ -307,7 +321,6 @@ const TEST_SCRATCH_WRITERS: Record<string, string> = {
     "(a platform namespace plus two contexts' own, with the same basename deliberately in two of them), " +
     "removed by exact ownership. No served output root is written and the canonical deployment is only " +
     "ever READ (S3F2A2-R1)",
-  "tests/integration/json-page-rendering.test.ts": "the synthetic deployment's JSON page tree (ISO-H2)",
   "tests/support/synthetic-deployment-root.ts": "the synthetic deployment's disposable copy in OS temp (ISO-H2)",
   "tests/support/disposable-deployment.ts": "a byte-identical COPY of the selected deployment in OS temp (ISO-B3C2B)",
   "tests/unit/asset-source-resolution.test.ts": "OS temp asset trees it creates",
@@ -528,7 +541,13 @@ describe("the browser harness writes only into its own scratch", () => {
       .map((name) => name.trim())
       .filter((name) => name.length > 0)
       .sort();
-    expect(imported).toEqual(["cpSync", "mkdir", "rm", "rmdir", "rmSync", "writeFile"].sort());
+    // `rmdir` left the harness with the last legacy content-tree fixture (GEO-04 C09-R13): no scenario
+    // prunes a directory any more, because no scenario writes into a legacy content tree — a Page is
+    // DECLARED through a server's own `prepareEfs` seam, and its Installation is removed with the server.
+    // `writeFileSync` JOINED it: the one synchronous write the harness still needs (an undeclared decoy
+    // inside the served capsule, placed by a synchronous `prepareEfs` hook) was reaching `node:fs` raw and
+    // bypassing this guard, which this test caught the moment the assertion above stopped masking it.
+    expect(imported).toEqual(["cpSync", "mkdir", "rm", "rmSync", "writeFile", "writeFileSync"].sort());
 
     const mutating = [
       "writeFile",

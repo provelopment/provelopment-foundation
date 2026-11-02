@@ -25,6 +25,7 @@
 // Next's, and the operator reads the run's report from the console.
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { request as httpRequest } from "node:http";
 import { dirname, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -45,9 +46,24 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..", "..");
 const NEXT_BIN = join(ROOT, "node_modules", "next", "dist", "bin", "next");
 const PORT = 4300 + (Math.floor(Math.random() * 400) % 400);
-const BASE = `http://localhost:${PORT}`;
-const HOME = "/ww/en";
-const ABOUT = "/ww/en/about";
+/**
+ * THE SHIPPED REFERENCE'S OWN PUBLIC ROUTES, ON ITS OWN DECLARED HOST (GEO-04 C09-R15).
+ *
+ * Verified first-hand from `deployment/efs/manifest.json` before use, not carried over: every binding of
+ * `foundation-publication` has `prefix: []`, `siteMode: "closed"`, `siteIds: ["main"]` and
+ * `defaultLocale: "en-001"`, so the locale is the FIRST address segment — `/en-001` and `/en-001/about`.
+ *
+ * The HOST is part of the proof, not a convenience. The reference's boundary matches the exact `Host`
+ * claim, and `localhost` is refused there (a sibling deployment scenario pins that refusal at 404). Driving
+ * the real hostname against a local server is the harness's own supported mechanism
+ * (`Cdp.connect(chrome, { hostResolverRules })`): the mapping lives only inside this Chrome process and the
+ * production hostname dispatch still matches the authored claim, so no alias and no permissive fallback is
+ * introduced. The retired `/ww/en` was a legacy Site code that no binding publishes.
+ */
+const HOST = "foundation-template.provelopment.com";
+const BASE = `http://${HOST}:${PORT}`;
+const HOME = "/en-001";
+const ABOUT = "/en-001/about";
 
 const rows = [];
 function check(name, ok, detail = "") {
@@ -472,15 +488,36 @@ async function stopServer(proc) {
   }
 }
 
-async function waitForServer(url, timeoutMs = 300000) {
+/**
+ * One bounded request to the LOCAL server under the DECLARED Host.
+ *
+ * Node has no mapping for the reference's real hostname (only Chrome gets one), so the readiness probe
+ * speaks HTTP directly and sends the authored `Host` itself — the same claim the browser will send. A 404
+ * here is the boundary refusing a host, which is exactly what must not be mistaken for "not ready yet".
+ */
+function statusViaDeclaredHost(pathname, timeoutMs = 10000) {
+  return new Promise((resolve) => {
+    const request = httpRequest(
+      { host: "127.0.0.1", port: PORT, path: pathname, method: "GET", headers: { host: HOST } },
+      (response) => {
+        response.resume();
+        resolve(response.statusCode ?? 0);
+      },
+    );
+    request.setTimeout(timeoutMs, () => {
+      request.destroy();
+      resolve(0);
+    });
+    request.on("error", () => resolve(0));
+    request.end();
+  });
+}
+
+async function waitForServer(pathname, timeoutMs = 300000) {
   const end = Date.now() + timeoutMs;
   while (Date.now() < end) {
-    try {
-      const response = await fetch(url, { redirect: "manual" });
-      if (response.status >= 200 && response.status < 400) return true;
-    } catch {
-      /* not listening yet */
-    }
+    const status = await statusViaDeclaredHost(pathname);
+    if (status >= 200 && status < 400) return true;
     await sleep(250);
   }
   return false;
@@ -583,7 +620,7 @@ async function runProductionContinuity() {
     stdio: "ignore",
     windowsHide: true,
   });
-  const started = await waitForServer(`${BASE}${HOME}`);
+  const started = await waitForServer(HOME);
   check("production.servingProductionOutput", started, `${BASE}${HOME}`);
   if (!started) {
     await stopServer(server);
@@ -592,7 +629,7 @@ async function runProductionContinuity() {
 
   let cdp = null;
   try {
-    cdp = await Cdp.connect(chrome);
+    cdp = await Cdp.connect(chrome, { hostResolverRules: `MAP ${HOST} 127.0.0.1` });
     await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: RECORDER });
     await cdp.setViewport(1280, 900);
     await cdp.navigate(`${BASE}${HOME}`);
@@ -641,19 +678,37 @@ async function runProductionContinuity() {
     await waitReady(cdp);
     await firstPaintRows(cdp, "openRefresh", "open");
 
-    // NAV1D-V2 — SELECTING A DESTINATION DISMISSES THE OVERLAY: each leg below starts with the rail
-    // OPEN and must end CLOSED on the destination, through the rail's own state owner (never route
-    // state, never a breakpoint).
-    await continuityLeg(cdp, { label: "open.homeToAbout", selector: '#shell-sidebar-desktop-rail a[href$="/about"]', path: ABOUT, expected: "true", expectedState: "true", closesOnSelection: true });
-    await cdp.clickCenter("#shell-sidebar-desktop-rail .ui-sidebar-toggle");
-    await sleep(250);
-    await continuityLeg(cdp, { label: "open.aboutToHome", selector: "#shell-sidebar-desktop-rail ul li:first-child a", path: HOME, expected: "true", expectedState: "true", closesOnSelection: true });
+    // NAV-POLICY — THE ACCEPTED SOURCE CONTRACT, NOT A MEASUREMENT OF CONVENIENCE.
+    //
+    // `SIDEBAR_SELECTION_POLICY_BY_BAND` is `{ mobile: "close", tablet: "preserve", desktop: "preserve" }` and
+    // `closeForSelection` routes through `railDismissesOnSelection`: on this desktop band a destination
+    // selection PRESERVES the visitor's preference, so an OPEN rail stays OPEN and only an explicit toggle
+    // changes it. Both legs below are therefore run from a VERIFIED OPEN precondition and must end OPEN.
+    //
+    // R15's own defect, corrected here: it toggled the rail CLOSED between the two legs and then asserted the
+    // closed state it had just created — so its `open.aboutToHome` case never had the precondition it claimed,
+    // and its "Home behaves differently" reading was an artefact of the test's own setup, not of the product.
+    const startsOpen = async (label) => {
+      const state = await probe(cdp);
+      check(
+        `production.${label}.startsOpen`,
+        state.collapsed === "false" && state.stored === "open",
+        JSON.stringify(state),
+      );
+      return state;
+    };
+
+    await startsOpen("open.homeToAbout");
+    await continuityLeg(cdp, { label: "open.homeToAbout", selector: '#shell-sidebar-desktop-rail a[href$="/about"]', path: ABOUT, expected: "false", expectedState: "false" });
+
+    // NO disclosure toggle here: Home is selected from the SAME OPEN preference the visitor set, which is the
+    // only way the `preserve` policy can be observed on the second destination.
+    await startsOpen("open.aboutToHome");
+    await continuityLeg(cdp, { label: "open.aboutToHome", selector: "#shell-sidebar-desktop-rail ul li:first-child a", path: HOME, expected: "false", expectedState: "false" });
 
     // ── the reciprocal proof for the state that already looked smooth ─────────────────────────────
-    // The selection legs above end CLOSED by contract, so open the rail again (a visitor action) before
-    // the explicit-toggle proof below.
-    await cdp.clickCenter("#shell-sidebar-desktop-rail .ui-sidebar-toggle");
-    await sleep(250);
+    // Both selection legs above ended OPEN (policy `preserve`), so the rail is closed DELIBERATELY, once, by a
+    // visitor toggle — and only that interval is recorded.
     await resetRecorder(cdp);
     await cdp.clickCenter("#shell-sidebar-desktop-rail .ui-sidebar-toggle");
     await sleep(250);
@@ -669,6 +724,12 @@ async function runProductionContinuity() {
       semanticsAgree(closedSemantics.facts, "closed") && (await probe(cdp)).stored === "closed",
       `semantics=${closedSemantics.projection}`,
     );
+    const closedState = await probe(cdp);
+    check(
+      "production.closed.homeToAbout.startsClosed",
+      closedState.collapsed === "true" && closedState.stored === "closed",
+      JSON.stringify(closedState),
+    );
     await continuityLeg(cdp, { label: "closed.homeToAbout", selector: '#shell-sidebar-desktop-rail a[href$="/about"]', path: ABOUT, expected: "true", expectedState: "true" });
 
     // ── the reciprocal whole-document case: a stored CLOSED preference, on an actual reload ───────
@@ -677,41 +738,55 @@ async function runProductionContinuity() {
     await firstPaintRows(cdp, "closedRefresh", "closed");
 
     // ── a route-changing selector while OPEN is the same contract ────────────────────────────────
+    //
+    // GEO-04 C09-R15: the reference publishes ONE Site (`main`) on every binding, so the retired site
+    // selector is gone — replacing it with a `ww` alias or a second Site would be inventing publication
+    // authority. The SHIPPED shell still offers its DECLARED locales (`en-001`, `de-DE`), and a language
+    // change is the same route-changing interaction: it must land on the declared qualified route, keep the
+    // rail's state, commit no opposite state and start no width transition. Absence of the control is a
+    // FAILURE here, never a silent pass.
     await cdp.clickCenter("#shell-sidebar-desktop-rail .ui-sidebar-toggle");
     await sleep(250);
-    const site = JSON.parse(
+    const language = JSON.parse(
       await cdp.evaluate(`(() => {
-        const control = document.querySelector('select[data-selector="site"]');
+        const control = document.querySelector('select[data-selector="language"]');
         if (!control) return JSON.stringify({ current: null, next: null });
         const next = [...control.options].map((option) => option.value).find((value) => value !== control.value) ?? null;
         return JSON.stringify({ current: control.value, next: next });
       })()`),
     );
-    if (site.next) {
+    check(
+      "production.selector.languageChangeWhileOpen.hasAnotherDeclaredLocale",
+      Boolean(language.next),
+      `control=${JSON.stringify(language)}`,
+    );
+    if (language.next) {
       await resetRecorder(cdp);
       await cdp.evaluate(`(() => {
-        const control = document.querySelector('select[data-selector="site"]');
-        control.value = ${JSON.stringify(site.next)};
+        const control = document.querySelector('select[data-selector="language"]');
+        control.value = ${JSON.stringify(language.next)};
         control.dispatchEvent(new Event('change', { bubbles: true }));
         return true;
       })()`);
-      const switched = `/${site.next}/en/about`;
+      const switched = `/${language.next}/about`;
       const ready = await waitReady(cdp, switched);
       const after = await probe(cdp);
       const observed = await readRecorder(cdp);
-      check("production.selector.siteChangeWhileOpen.keepsState", ready && after.path === switched && after.collapsed === "false", JSON.stringify(after));
       check(
-        "production.selector.siteChangeWhileOpen.commitsNoOppositeState",
+        "production.selector.languageChangeWhileOpen.keepsState",
+        ready && after.path === switched && after.collapsed === "false",
+        JSON.stringify(after),
+      );
+      check(
+        "production.selector.languageChangeWhileOpen.commitsNoOppositeState",
         observed.writes.filter((write) => write.value !== "false").length === 0,
         `writes=${JSON.stringify(observed.writes)}`,
       );
       check(
-        "production.selector.siteChangeWhileOpen.startsNoWidthTransition",
+        "production.selector.languageChangeWhileOpen.startsNoWidthTransition",
         observed.transitions.length === 0,
         `transitions=${JSON.stringify(observed.transitions)}`,
       );
-    } else {
-      check("production.selector.siteChangeWhileOpen.keepsState", false, "no second site is configured");
     }
 
     // ── hydration / console ──────────────────────────────────────────────────────────────────────

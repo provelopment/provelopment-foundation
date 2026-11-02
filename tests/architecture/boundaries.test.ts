@@ -563,7 +563,13 @@ describe("Phase M — location selector + region-aware navigation boundaries", (
     // catch-all route, which names those reserved slugs so exactly one route serves each.
     expect(page).toContain("CONNECT_ROUTE_PATH");
     expect(page).toContain("CONTACT_ROUTE_PATH");
-    expect(page).toContain('"connect"');
+    // GEO-04 C09-R13 — the Connect surface moved beside the route (`efs-connect.tsx`) when the EFS request
+    // path took ownership of it, and the reserved slug itself is declared ONCE, as
+    // `CONNECT_PAGE_ROUTE_PATH` in `dedicated-pages.tsx` (the module `server-composition.tsx` names as the
+    // single owner of specialised chrome). The claim is unchanged: exactly one route serves each reserved
+    // slug, and each slug literal is authored in exactly one place.
+    const dedicated = readFileSync(path.join(APP_DIRECTORY, "[[...segments]]", "dedicated-pages.tsx"), "utf8");
+    expect(dedicated).toContain('"connect"');
     expect(page).toContain('"contact"');
   });
 

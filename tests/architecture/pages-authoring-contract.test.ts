@@ -171,8 +171,13 @@ describe("pages-authoring contract — exactly two first-class modes", () => {
     const routeFiles = readdirSync(path.join(srcDirectory, "app/[[...segments]]"))
       .filter((entry) => entry.endsWith(".tsx"))
       .sort();
+    // `efs-connect.tsx` is a COMPONENT beside the one route, not a route of its own: the EFS runtime cut
+    // (GEO-04 C09) moved the Connect surface out of `server-composition.tsx` so the EFS request path owns
+    // it, and it composes the SAME already-resolved view the route handed it. The census therefore records
+    // it, and still records no nested route directory below — one URL shape, one route.
     expect(routeFiles).toEqual([
       "dedicated-pages.tsx",
+      "efs-connect.tsx",
       "error.tsx",
       "global-error.tsx",
       "layout.tsx",

@@ -243,7 +243,23 @@ describe("the reservation authority", () => {
     expect(source).toContain("...RESERVED_SITE_ID_GROUPS.platform");
     expect(source).toContain("...RESERVED_SITE_ID_GROUPS.administration");
     expect(source).toContain("...RESERVED_SITE_ID_GROUPS.routing");
-    expect(RESERVED_SITE_IDS).toHaveLength(13);
+    expect(source).toContain("...RESERVED_SITE_ID_GROUPS.retired");
+    expect(RESERVED_SITE_IDS).toHaveLength(14);
+  });
+
+  it("reserves `ww` as a RETIRED Site identity, and keeps the one-way SOURCE conversion", () => {
+    // D28 retired the worldwide Site. The word is therefore not a Site any author may re-adopt — and
+    // refusing it here is what makes `ww` unusable as an EFS Site identity without inventing an alias
+    // such as `001` or a new public `/ww` claim.
+    expect(RESERVED_SITE_IDS).toContain("ww");
+    expect(isSiteId("ww")).toBe(true); // reserved, NOT malformed — the two answers stay two answers
+    expect(isReservedSiteId("ww")).toBe(true);
+    expect(isReservedSiteId("WW")).toBe(true); // case-insensitive, like every reservation
+    expect(reservedSiteIdIssue("ww")).toMatch(/retired/i);
+    expect(reservedSiteIdIssue("main")).toBeNull();
+    // A descriptive Site that merely LOOKS geographic is still a valid Site ID: the reservation is one
+    // word, not a geography classifier.
+    expect(reservedSiteIdIssue("germany")).toBeNull();
   });
 });
 

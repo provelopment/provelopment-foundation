@@ -82,13 +82,26 @@ describe("EFS semantic boundary (R03)", () => {
     expect(owner).not.toContain("hostClaimantsInInstallation(index, host)");
   });
 
-  it("allows the retired resolver only through the non-production test utility", () => {
-    const utility = source("app/[[...segments]]/legacy-test-runtime.ts");
-    expect(utility).toContain('process.env.NODE_ENV !== "production"');
-    expect(utility).toContain("FOUNDATION_ENABLE_LEGACY_TEST_RUNTIME");
+  it("cannot reach the retired resolver through any switch or fallback branch", () => {
+    // C07 — the non-production request utility is GONE. Its module, its environment variable and the
+    // request branch that could select it must never come back; the only answer is EFS or refusal.
     const request = source("app/[[...segments]]/efs-request.ts");
-    expect(request).toContain("if (legacyTestRuntimeEnabled()) return null;");
+    expect(request).not.toContain("legacyTestRuntimeEnabled");
+    expect(request).not.toContain("FOUNDATION_ENABLE_LEGACY_TEST_RUNTIME");
+    expect(request).not.toContain("legacy-test-runtime");
     expect(request).toContain("missingEfsInstallation();");
+
+    for (const file of [
+      "app/[[...segments]]/page.tsx",
+      "app/[[...segments]]/layout.tsx",
+      "app/robots.ts",
+      "app/sitemap.ts",
+    ]) {
+      const text = source(file);
+      expect(text, file).not.toContain("legacyTestRuntimeEnabled");
+      expect(text, file).not.toContain("ENABLE_LEGACY_TEST_RUNTIME");
+      expect(text, file).toContain("missingEfsInstallation");
+    }
   });
 
   it("keeps the EFS resolver and locale authority free of Site/country inference", () => {

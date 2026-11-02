@@ -23,7 +23,7 @@ import {
   type EfsBinding,
   type EfsSiteMode,
 } from "@/core/efs/publication";
-import { siteIdIssue } from "@/core/site-identity";
+import { reservedSiteIdIssue, siteIdIssue } from "@/core/site-identity";
 import { IMPLICIT_SPOKE_HUB_ID, IMPLICIT_SPOKE_ID } from "@/core/spoke";
 
 /**
@@ -261,6 +261,11 @@ export function validateEfsManifest(input: unknown): EfsManifestResult {
         const siteId = text(rawSite.id, `${siteAt}.id`, issues);
         const siteIssue = siteIdIssue(siteId);
         if (siteIssue) issues.push(`${siteAt}.id: ${siteIssue}`);
+        // An AUTHORING boundary applies BOTH rules, grammar first, so a spelling fault is never
+        // misreported as a reservation — and `ww`, the retired worldwide identity, is refused here
+        // rather than being silently re-adopted as a descriptive Site (`C08` row 5).
+        const siteReservation = reservedSiteIdIssue(siteId);
+        if (siteReservation) issues.push(`${siteAt}.id: ${siteReservation}`);
         if (siteIds.has(siteId)) issues.push(`${siteAt}.id duplicates Site "${siteId}" in its Facet.`);
         siteIds.add(siteId);
         const siteProperties = propertyBag(rawSite.properties, siteAt, issues);
@@ -447,6 +452,10 @@ export function validateEfsManifest(input: unknown): EfsManifestResult {
     if (presentationSiteCode !== undefined) {
       const presentationIssue = siteIdIssue(presentationSiteCode);
       if (presentationIssue) issues.push(`${at}.presentationSiteCode: ${presentationIssue}`);
+      // NOTE: the RESERVATION is deliberately NOT applied here. This value is a descriptive key into
+      // the owning Spoke's own configuration — an ordinary conversion copies that configuration
+      // byte-identically, so a legacy `ww` presentation key remains legitimate while `ww` is refused as
+      // an EFS Site ID (`C08` row 5 distinguishes the two, exactly as the grammar note above does).
     }
 
     const bindings: EfsBinding[] = [];

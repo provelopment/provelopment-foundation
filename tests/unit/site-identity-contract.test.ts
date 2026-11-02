@@ -160,6 +160,9 @@ describe("the reserved Site-ID vocabulary", () => {
     platform: ["api", "assets", "system", "internal", "spokes"],
     administration: ["admin", "auth", "account"],
     routing: ["default", "preview", "dashboard", "settings", "status"],
+    // The RETIRED group: `ww` was the worldwide Site identity, retired by D28. It stays a grammatical
+    // Site ID and becomes an unauthorable one (`C08` row 5).
+    retired: ["ww"],
   };
 
   it("declares exactly the approved groups, and no others", () => {
@@ -176,11 +179,12 @@ describe("the reserved Site-ID vocabulary", () => {
       ...RESERVED_SITE_ID_GROUPS.platform,
       ...RESERVED_SITE_ID_GROUPS.administration,
       ...RESERVED_SITE_ID_GROUPS.routing,
+      ...RESERVED_SITE_ID_GROUPS.retired,
     ];
 
     expect(RESERVED_SITE_IDS).toEqual(derived);
-    expect(RESERVED_SITE_IDS).toHaveLength(13);
-    expect(new Set(RESERVED_SITE_IDS).size).toBe(13);
+    expect(RESERVED_SITE_IDS).toHaveLength(14);
+    expect(new Set(RESERVED_SITE_IDS).size).toBe(14);
     for (const word of Object.values(APPROVED).flat()) {
       expect(RESERVED_SITE_IDS, word).toContain(word);
     }

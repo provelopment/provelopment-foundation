@@ -478,9 +478,9 @@ export function explicitSingleWebsiteEfsSeed(
         // projected EFS identity, exactly as the Facet declaration is.
         id: `${SPOKE_ID}-${safeSegment(site.code)}-publication`,
         spokeId: SPOKE_ID,
-        // The PRESENTATION code stays the legacy source code: the shell, host/prefix and every
-        // `/ww/...` address keep resolving exactly as before. Decoupling presentation from EFS
-        // identity is a later, separately authorized increment.
+        // The PRESENTATION code stays the legacy source code: it is a DESCRIPTIVE KEY into the owning
+        // Spoke's own configuration (which an ordinary conversion copies byte-identically), not an EFS
+        // Site identity — so the retired `ww` reservation does not apply to it (`C08` row 5 scope).
         presentationSiteCode: site.code,
         entityId,
         facetId: FACET_ID,

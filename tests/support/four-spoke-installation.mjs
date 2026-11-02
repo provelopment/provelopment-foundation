@@ -36,7 +36,7 @@
  *
  * Plain ESM with JSDoc types: the browser scenario runs under plain `node`.
  */
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -191,13 +191,251 @@ function spokeReadme(spoke) {
 }
 
 /**
+ * THE EFS PUBLICATION OF ONE HUB (GEO-04 C09-R16).
+ *
+ * `spokes.json` and the per-Spoke `site.config.json`/dictionaries/content tree are what the HUB-SCOPED
+ * SWITCHER reads: membership, authored order and ownership. They are NOT a publication authority — the
+ * request runtime is EFS-only, so an Installation with no authored manifest answers nothing. Until R16 this
+ * fixture wrote only the legacy tree, which is why the scenario's readiness probe never answered.
+ *
+ * The EFS half is explicit in every field that could otherwise be guessed:
+ *
+ *   ONE PUBLICATION PER SPOKE, naming its OWN `spokeId` — never one generic default Spoke
+ *   ONE OPAQUE, DISTINCT ENTITY per Spoke — authored here, never derived from a hostname
+ *   SITE ID `main`; `ww` stays the Spoke's PRESENTATION key (one of the fourteen reserved words, so it can
+ *     never be an EFS Site ID)
+ *   `prefix: []`, `siteMode: "closed"`, `siteIds: ["main"]` — every public address is `/<locale>/<route>`
+ *   the catalog STAGING host and the INSPECTION host are EXPLICIT additional bindings of the Spoke that owns
+ *     them, not a fallback to whichever Spoke happens to be first
+ *   `docs` publishes TWO qualified locales (`en-001`, `de-DE`) with real localized bodies, the others one
+ */
+export const HUB_EFS_FACET = "site";
+/** The EFS Site ID every publication declares. */
+export const HUB_EFS_SITE = "main";
+/** The EFS locales a Spoke publishes, translated ONCE from its legacy locale codes. */
+const HUB_EFS_LOCALE_BY_LEGACY = { en: "en-001", de: "de-DE" };
+/** One authored, opaque Entity per Spoke. These are identities of THIS fixture, not of any hostname. */
+const HUB_EFS_ENTITY = {
+  primary: "e_0000000000000000000000d001",
+  docs: "e_0000000000000000000000d002",
+  catalog: "e_0000000000000000000000d003",
+  support: "e_0000000000000000000000d004",
+};
+/** The German wording, authored here rather than guessed at read time. */
+const HUB_EFS_GERMAN = { primary: "Hauptbereich", docs: "Dokumentation", catalog: "Katalog", support: "Support" };
+
+/** The qualified locale of a legacy Spoke locale code. */
+function efsLocale(code) {
+  return HUB_EFS_LOCALE_BY_LEGACY[code] ?? code;
+}
+
+/** A Home body in the fixture's own JSON page schema, naming the Spoke that publishes it. */
+function homeRepresentation(spoke, locale) {
+  const german = locale.startsWith("de");
+  return `${JSON.stringify(
+    {
+      schemaVersion: 1,
+      title: spoke.siteName,
+      description: german
+        ? `Startseite von ${spoke.siteName}, veröffentlicht als EFS-Seite.`
+        : `The Home Page of ${spoke.siteName}, published as an EFS Page.`,
+      sections: [
+        {
+          type: "prose",
+          heading: german ? "Veröffentlicht durch diesen Spoke" : "Published by this Spoke",
+          body: german
+            ? `Diese Seite gehört zum Spoke \`${spoke.id}\` und zu keinem anderen.`
+            : `This page belongs to Spoke \`${spoke.id}\` and to no other.`,
+        },
+      ],
+    },
+    null,
+    2,
+  )}\n`;
+}
+
+/** A Markdown page body in the fixture's own schema. */
+function markdownRepresentation(title, description, body) {
+  return ["---", `title: ${title}`, `description: ${description}`, "---", "", body, ""].join("\n");
+}
+
+function aboutRepresentation(spoke, locale) {
+  const german = locale.startsWith("de");
+  return markdownRepresentation(
+    `${spoke.siteName} — ${german ? "Über uns" : "About"}`,
+    `${spoke.siteName} ${german ? "Über-uns-Seite." : "About Page."}`,
+    german
+      ? `Diese Über-uns-Seite wird vom Spoke \`${spoke.id}\` veröffentlicht.`
+      : `This About Page is published by Spoke \`${spoke.id}\`.`,
+  );
+}
+
+function onlyRepresentation(spoke, locale) {
+  const german = locale.startsWith("de");
+  return markdownRepresentation(
+    `${spoke.siteName} — ${spoke.onlyRoute}`,
+    `${spoke.siteName} ${german ? "eigene Seite." : "Spoke-owned Page."}`,
+    german
+      ? `\`${spoke.onlyRoute}\` existiert nur im Spoke \`${spoke.id}\` (${HUB_EFS_GERMAN[spoke.id]}).`
+      : `\`${spoke.onlyRoute}\` exists only inside Spoke \`${spoke.id}\`.`,
+  );
+}
+
+/** One declared Page, with a representation per locale it publishes. */
+function efsPage(id, route, locales, label) {
+  return {
+    id,
+    route: [...route],
+    fallbackLocaleKey: locales[0],
+    representations: locales.map((locale) => ({ locale })),
+    properties: { "nav.label": { value: label, public: true } },
+  };
+}
+
+/** One binding: an explicit Host claim of THIS Spoke, with a closed Site and its declared locales. */
+function efsBinding({ id, host, entityId, locales, defaultLocale, canonical, aliasOf = null }) {
+  return {
+    id,
+    host,
+    prefix: [],
+    entityId,
+    facetId: HUB_EFS_FACET,
+    siteIds: [HUB_EFS_SITE],
+    siteMode: "closed",
+    defaultSiteId: HUB_EFS_SITE,
+    locales: [...locales],
+    defaultLocale,
+    canonical,
+    // A non-canonical binding is an ALIAS and must NAME the canonical binding it mirrors — the manifest
+    // authority refuses an alias that names nothing, points at another alias, or changes Entity/Facet/Site
+    // ownership.
+    ...(aliasOf === null ? {} : { aliasOf }),
+  };
+}
+
+/** Write `<root>/efs/manifest.json` and `<root>/efs/capsule/**` for all four Spokes of this Hub. */
+function writeEfsInstallation(root) {
+  const capsule = path.join(root, "efs", "capsule");
+  const manifestPath = path.join(root, "efs", "manifest.json");
+  mkdirSync(capsule, { recursive: true });
+
+  const entities = [];
+  const publications = [];
+
+  for (const spoke of HUB_SPOKES) {
+    const entityId = HUB_EFS_ENTITY[spoke.id];
+    const locales = spoke.locales.map(efsLocale);
+    const defaultLocale = locales[0];
+
+    const writeRepresentation = (route, locale, extension, body) => {
+      const directory = path.join(capsule, entityId, HUB_EFS_FACET, HUB_EFS_SITE, "pages", route);
+      mkdirSync(directory, { recursive: true });
+      writeFileSync(path.join(directory, `${locale}.${extension}`), body, "utf8");
+    };
+    for (const locale of locales) {
+      writeRepresentation("home", locale, "json", homeRepresentation(spoke, locale));
+      writeRepresentation("about", locale, "md", aboutRepresentation(spoke, locale));
+      writeRepresentation(spoke.onlyRoute, locale, "md", onlyRepresentation(spoke, locale));
+    }
+
+    entities.push({
+      id: entityId,
+      properties: {
+        "brand.name": { value: spoke.siteName, public: true },
+        "contact.email": { value: `hello@${spoke.hostname}`, public: true },
+      },
+      facets: [
+        {
+          id: HUB_EFS_FACET,
+          properties: {},
+          sites: [
+            {
+              id: HUB_EFS_SITE,
+              properties: {},
+              pages: [
+                efsPage("home", ["home"], locales, "Home"),
+                efsPage("about", ["about"], locales, "About"),
+                efsPage(spoke.onlyRoute, [spoke.onlyRoute], locales, spoke.onlyRoute),
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    const bindings = [
+      efsBinding({ id: `binding-${spoke.id}`, host: spoke.hostname, entityId, locales, defaultLocale, canonical: true }),
+    ];
+    // An ADDITIONAL hostname claim (the catalog's staging host) is an explicit binding of the SAME Spoke.
+    for (const alias of spoke.hostAliases ?? []) {
+      bindings.push(
+        efsBinding({
+          id: `binding-${spoke.id}-additional`,
+          host: alias,
+          entityId,
+          locales,
+          defaultLocale,
+          canonical: false,
+          aliasOf: `binding-${spoke.id}`,
+        }),
+      );
+    }
+    // The INSPECTION hostname is an explicit authorized binding of the Spoke the policy nominates — never a
+    // default-Spoke fallback, which is exactly what the routing rule exists to refuse.
+    if (HUB_INSPECTION.spokeId === spoke.id) {
+      bindings.push(
+        efsBinding({
+          id: `binding-${spoke.id}-inspection`,
+          host: HUB_INSPECTION.hostname,
+          entityId,
+          locales,
+          defaultLocale,
+          canonical: false,
+          aliasOf: `binding-${spoke.id}`,
+        }),
+      );
+    }
+
+    publications.push({
+      id: `switcher-${spoke.id}`,
+      spokeId: spoke.id,
+      entityId,
+      facetId: HUB_EFS_FACET,
+      presentationSiteCode: "ww",
+      bindings,
+    });
+  }
+
+  writeFileSync(manifestPath, `${JSON.stringify({ entities, publications }, null, 2)}\n`, "utf8");
+  return { manifest: manifestPath, capsule };
+}
+
+/**
  * THE DISPOSABLE INSTALLATION, in the caller's own OS-temp domain.
  *
  * @param {string} repositoryRoot the repository root (the committed fixture is READ from it)
- * @returns {{ root: string, spokes: typeof HUB_SPOKES, inspection: typeof HUB_INSPECTION }}
+ * @returns {{ root: string, manifest: string, capsule: string, spokes: typeof HUB_SPOKES, inspection: typeof HUB_INSPECTION, cleanup: () => void }}
  */
 export function materializeFourSpokeInstallation(repositoryRoot) {
   const root = mkdtempSync(path.join(tmpdir(), "foundation-four-spoke-"));
+  try {
+    return buildFourSpokeInstallation(repositoryRoot, root);
+  } catch (error) {
+    // FAILURE ATOMICITY: a materialisation that throws leaves NOTHING behind.
+    try {
+      rmSync(root, { recursive: true, force: true });
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        "the four-Spoke Installation failed to materialise AND could not be cleaned up",
+      );
+    }
+    throw error;
+  }
+}
+
+/** Build the tree inside an already-created root; the exported entry point owns failure atomicity. */
+function buildFourSpokeInstallation(repositoryRoot, root) {
   const fixture = fixtureRoot(repositoryRoot);
 
   for (const spoke of HUB_SPOKES) {
@@ -242,5 +480,22 @@ export function materializeFourSpokeInstallation(repositoryRoot) {
     )}\n`,
   );
 
-  return { root, spokes: HUB_SPOKES, inspection: HUB_INSPECTION };
+  // THE EFS PUBLICATION, authored beside the legacy tree: the request runtime is EFS-only, so this is what
+  // actually serves each Spoke's Home/About/own-route Pages at `/<locale>/<route>`.
+  const efs = writeEfsInstallation(root);
+
+  let removed = false;
+  return {
+    root,
+    manifest: efs.manifest,
+    capsule: efs.capsule,
+    spokes: HUB_SPOKES,
+    inspection: HUB_INSPECTION,
+    /** Idempotent. The SCENARIO owns this Installation, so a stopped server never deletes it. */
+    cleanup() {
+      if (removed) return;
+      removed = true;
+      rmSync(root, { recursive: true, force: true });
+    },
+  };
 }

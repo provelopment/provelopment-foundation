@@ -154,22 +154,43 @@ export function PageImage({
 }
 
 /**
+ * THE PER-RENDER PAGE-ROUTE RESOLVER (GEO-04 C09-R06).
+ *
+ * `route` names another PAGE of this site. On a legacy locale-first deployment the address of any
+ * Page is `/<locale>/<route>`, which is what this resolver replaces for a caller that knows the
+ * EFFECTIVE publication — an EFS binding whose public path carries a Site prefix and a qualified
+ * locale key (`/main/en-001/services`).
+ *
+ * It is an ARGUMENT, like `resolveLink`: supplied per render by whoever composed the page, never
+ * stored, never module state, never a React context. `null` is a first-class answer — a route this
+ * render cannot address (invalid grammar, no verified binding) renders its label alone rather than a
+ * guessed path. When it is absent the legacy locale-first behavior is preserved EXACTLY, so every
+ * released non-EFS caller keeps the hrefs it always had.
+ */
+export type PageRouteResolver = (routePath: string) => string | null;
+
+/**
  * The destination of one action, in the visitor's locale — or `null` when this render has none.
  *
  * `href` is the author's classified destination, used as written. `route` names another PAGE of this
- * site, so it is resolved against the locale of the URL being rendered — the author never writes a
- * locale prefix, and a translated site cannot link to the wrong language. `link` names a DECLARED
- * application link (A8 Phase F): the resolver supplied for this render answers with an href, or with
- * nothing. `null` is a first-class answer, not an error — an action the host does not offer has no
- * destination, and its label is shown as text rather than as a link to nowhere.
+ * site, so it is resolved for the URL being rendered — the author never writes a locale prefix, and a
+ * translated site cannot link to the wrong language. `link` names a DECLARED application link (A8
+ * Phase F): the resolver supplied for this render answers with an href, or with nothing. `null` is a
+ * first-class answer, not an error — an action the host does not offer has no destination, and its
+ * label is shown as text rather than as a link to nowhere.
  */
 export function destinationHref(
   action: PageAction,
   locale: string,
   resolveLink?: PageLinkIdResolver,
+  resolveRoute?: PageRouteResolver,
 ): string | null {
   if (action.href !== undefined) return action.href;
-  if (action.route !== undefined) return `/${locale}/${action.route}`;
+  if (action.route !== undefined) {
+    // A supplied resolver OWNS this answer, including its `null`: a route it cannot address must not
+    // silently fall back to a prefix-less guess that would 404 on the very binding being rendered.
+    return resolveRoute === undefined ? `/${locale}/${action.route}` : resolveRoute(action.route);
+  }
   if (action.link === undefined || resolveLink === undefined) return null;
   return resolveLink(action.link);
 }
@@ -190,6 +211,7 @@ export function ActionLinks({
   className,
   defaultVariant = "primary",
   resolveLink,
+  resolveRoute,
 }: {
   readonly actions: readonly PageAction[];
   readonly locale: string;
@@ -198,11 +220,13 @@ export function ActionLinks({
   readonly defaultVariant?: "primary" | "secondary" | "link";
   /** The per-render application-link resolver (A8 Phase F). */
   readonly resolveLink?: PageLinkIdResolver;
+  /** The per-render page-route resolver (GEO-04 C09-R06); absent means the legacy locale-first path. */
+  readonly resolveRoute?: PageRouteResolver;
 }) {
   return (
     <ul className={["flex flex-wrap gap-3", className].filter(Boolean).join(" ")}>
       {actions.map((action, index) => {
-        const href = destinationHref(action, locale, resolveLink);
+        const href = destinationHref(action, locale, resolveLink, resolveRoute);
         const treatment = ACTION_CLASS[action.variant ?? defaultVariant];
         // NO DESTINATION, STILL A CONTROL: the author's label keeps its variant and its place in the
         // page, and only the anchor is absent — the same shape a Markdown marker takes when its

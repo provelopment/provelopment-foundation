@@ -10,10 +10,9 @@ import {
   efsTwitterCard,
   efsViewForCurrentRequest,
 } from "./efs-request";
+import { efsConnectAuthoredPage, efsConnectPresentation } from "./efs-connect";
 import { efsScheduleStatusLabels } from "./efs-status-labels";
-import { legacyTestRuntimeEnabled, missingEfsInstallation } from "./legacy-test-runtime";
-import { pageForContext, pageMetadataForContext, spokeServerComposition } from "./server-composition";
-import { requestPublicDestination } from "./request-context";
+import { missingEfsInstallation } from "./efs-refusal";
 
 /**
  * THE ONE PUBLIC PAGE ROUTE — the request-selected caller of the shared server composition (M13/M16/M17)
@@ -79,18 +78,25 @@ export async function generateMetadata({ params }: PageRouteProps): Promise<Meta
       ...(image === undefined ? {} : { twitter: efsTwitterCard(efs, image.url) }),
     };
   }
-  if (!legacyTestRuntimeEnabled()) missingEfsInstallation();
-  const { context, destination } = await requestPublicDestination(segments);
-  return pageMetadataForContext(
-    spokeServerComposition(context),
-    destination.segments as string[],
-  );
+  return missingEfsInstallation();
 }
+
 
 export default async function PageRoute({ params }: PageRouteProps) {
   const segments = (await params).segments ?? [];
   const efs = await efsViewForCurrentRequest(segments);
   if (efs) {
+    // GEO-04 C09-R08 — THE SPECIALISED CONNECT COMPOSITION, WHEN THE PAGE DECLARES IT. A Page whose
+    // validated declared route is the `connect` leaf renders through the SAME approved composition the
+    // legacy route uses (dictionary heading, authored body, ONE grid of configured methods, screened
+    // icons, text fallbacks, authoritative destinations) under THIS request's owning Spoke. Every other
+    // Page — and every Spoke with no compatible presentation — keeps the generic EFS view below, so
+    // behavior changes only where a real declared Connect Page exists.
+    const connectPage = efsConnectAuthoredPage(efs);
+    if (connectPage) {
+      const presentation = efsConnectPresentation(efs, connectPage);
+      if (presentation) return presentation;
+    }
     return (
       <EfsPageView
         view={efs}
@@ -99,7 +105,5 @@ export default async function PageRoute({ params }: PageRouteProps) {
       />
     );
   }
-  if (!legacyTestRuntimeEnabled()) missingEfsInstallation();
-  const { context, destination } = await requestPublicDestination(segments);
-  return pageForContext(spokeServerComposition(context), destination.segments as string[]);
+  return missingEfsInstallation();
 }

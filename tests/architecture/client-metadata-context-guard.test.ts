@@ -134,16 +134,18 @@ describe("M14 — metadata surfaces guard", () => {
     expect(model).toContain("dictionaryAccessForRuntimeContext(context)");
   });
 
-  it("keeps sitemap and robots context-bound", () => {
-    for (const [route, contextFile, delegate] of [
-      [SITEMAP, SITEMAP_CONTEXT, "sitemapForContext"],
-      [ROBOTS, ROBOTS_CONTEXT, "robotsForContext"],
+  it("keeps sitemap and robots EFS-declaration-bound", () => {
+    for (const [route, contextFile, efsToken] of [
+      [SITEMAP, SITEMAP_CONTEXT, "efsSitemapForCurrentRequest"],
+      [ROBOTS, ROBOTS_CONTEXT, "efsSitemapUrlForCurrentRequest"],
     ] as const) {
       const source = code(route);
       expect(source, relative(route)).not.toContain('from "@/config"');
       expect(source, relative(route)).not.toContain("siteConfig");
-      expect(source, relative(route)).toContain("runtimeContextForRequest()");
-      expect(source, relative(route)).toContain(delegate);
+      // C07-R02 — discovery answers the request's own EFS binding. The compatibility context seam is no
+      // longer reachable from an App Router route in any environment.
+      expect(source, relative(route)).toContain(efsToken);
+      expect(source, relative(route)).not.toContain("runtimeContextForRequest()");
 
       const composition = code(contextFile);
       expect(composition, relative(contextFile)).not.toContain('from "@/config"');

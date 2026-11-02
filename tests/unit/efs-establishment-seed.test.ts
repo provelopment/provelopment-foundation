@@ -224,6 +224,8 @@ describe("ordinary establishment decouples the legacy worldwide Site from EFS Si
     expect(configMoved?.bytes).toEqual(configSource?.bytes);
 
     // The public contract is untouched: the legacy code still owns the prefix, the host and the shell.
+    // `presentationSiteCode` is a descriptive key into that Spoke's own config, which is copied
+    // byte-identically — so it stays `ww` while `ww` is refused as an EFS SITE ID (`C08` row 5).
     const publication = manifest.publications[0];
     expect(publication.presentationSiteCode).toBe("ww");
     expect(publication.bindings[0].prefix).toEqual(["ww"]);

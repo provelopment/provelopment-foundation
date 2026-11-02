@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "title": "Runtime Cut Preview",
+  "visibility": "unlisted",
+  "description": "A declared but unlisted representation: reachable directly, never advertised.",
+  "sections": [
+    { "type": "prose", "body": "Unlisted Pages answer their own URL and stay out of sitemap, alternates and navigation." }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "title": "Runtime Cut Catalogue",
+  "description": "The JSON representation of this Page.",
+  "sections": [
+    { "type": "prose", "body": "JSON WINS: this declarative representation takes precedence over the Markdown file beside it." }
+  ]
+}

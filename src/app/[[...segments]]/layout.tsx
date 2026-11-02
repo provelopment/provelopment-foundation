@@ -1,12 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Plus_Jakarta_Sans } from "next/font/google";
 
-import {
-  layoutForContext,
-  layoutForEfsContext,
-  layoutMetadataForContext,
-  spokeServerComposition,
-} from "./server-composition";
+import { layoutForEfsContext } from "./server-composition";
 import {
   efsDescription,
   efsLanguageAlternates,
@@ -15,8 +10,7 @@ import {
   efsTitle,
   efsViewForCurrentRequest,
 } from "./efs-request";
-import { legacyTestRuntimeEnabled, missingEfsInstallation } from "./legacy-test-runtime";
-import { requestPublicDestination } from "./request-context";
+import { missingEfsInstallation } from "./efs-refusal";
 import { assetUrl } from "@/core/efs/publication";
 import "../globals.css";
 
@@ -97,12 +91,7 @@ export async function generateMetadata({ params }: LocaleLayoutProps): Promise<M
       },
     };
   }
-  if (!legacyTestRuntimeEnabled()) missingEfsInstallation();
-  const { context, destination } = await requestPublicDestination(segments);
-  return layoutMetadataForContext(
-    spokeServerComposition(context),
-    destination.segments as string[],
-  );
+  return missingEfsInstallation();
 }
 
 export default async function LocaleLayout({ children, params }: LocaleLayoutProps) {
@@ -123,15 +112,5 @@ export default async function LocaleLayout({ children, params }: LocaleLayoutPro
       </html>
     );
   }
-  // The context is the one the REQUEST selected (the boundary's exact hostname claim), and the shared
-  // composition derives the whole document from it. Only the isolated non-production test utility may
-  // reach this path; a real installation must have a verified EFS publication.
-  if (!legacyTestRuntimeEnabled()) missingEfsInstallation();
-  const { context, destination } = await requestPublicDestination(segments);
-  return layoutForContext(
-    spokeServerComposition(context),
-    destination.segments as string[],
-    children,
-    HTML_CLASS_NAME,
-  );
+  return missingEfsInstallation();
 }

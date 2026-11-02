@@ -219,6 +219,12 @@ describe("deployment-owned paths are spelled in ONE place", () => {
       "tests/integration/efs-publication-projection.test.ts",
       "tests/browser/shared-host-production.mjs",
       "tests/browser/shared-host.scenario.mjs",
+      // GEO-04 C09-R19: the multi-host scenario now authors an EXPLICIT EFS publication, so its Spoke asset
+      // namespaces are authorized by the BUILD's publication projection — the same Node-tooling boundary the
+      // shared-host scenario already sits on. It reads that authority to produce the projection with the
+      // production producer before its server starts, and removes it afterwards. The `src/**` assertion above
+      // is untouched: nothing in the application imports this module.
+      "tests/browser/multihost.scenario.mjs",
       "tests/architecture/deployment-root-guard.test.ts",
       "tests/architecture/write-ownership-guard.test.ts",
       "tests/browser/matrix.mjs",

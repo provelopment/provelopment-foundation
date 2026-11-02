@@ -1,16 +1,23 @@
 // tests/browser/multihost.scenario.mjs
-// THE MULTI-HOST SPOKE RUNTIME PROOF (FOUNDATION-MULTISITE-M16/M17).
+// THE MULTI-HOST SPOKE RUNTIME PROOF (FOUNDATION-MULTISITE-M16/M17; EFS-authored by GEO-04 C09-R19).
 //
 // ONE disposable Installation declaring TWO Spokes (`tests/support/multihost-installation.mjs`) is served by
-// its OWN dev server, and every request below travels the REAL public path:
+// its OWN dev server from its OWN explicit EFS publication, and every request below travels the REAL public
+// path:
 //
 //   HTTP request -> src/proxy.ts -> exact hostname claim -> private upstream selection header
   //   (x-foundation-spoke-segment) -> the public catch-all route -> ONE explicit SpokeRuntimeContext ->
   //   the existing M13/M14 renderer
 //
 // Nothing is bypassed: no request calls the composition directly, no request sets the PRIVATE SELECTION header itself, and the
-// public pathname is never the internal one. The two Spokes deliberately expose the SAME logical coordinates
-// (`/ww/en/about`) with DIFFERENT facts, so "same URL, different content" is proved rather than assumed.
+// public pathname is never the internal one.
+//
+// THE PUBLICATION IS AUTHORED, NOT INFERRED (R19). Each Spoke
+// publishes its OWN EFS Entity, a closed Site `main` and ONE qualified locale `en-001`, with real
+// Home/About/own-route representations, and its canonical host is bound to that Entity. `ww` is the Spoke's
+// PRESENTATION key only — a reserved word, so it can never be an EFS Site ID — which is why the retired
+// `/ww/en/about` address is REFUSED here instead of served. Both Spokes expose the SAME public coordinates
+// (`/en-001/about`) with DIFFERENT facts, so "same URL, different content" is proved rather than assumed.
 //
 // OWNERSHIP. This is a FOUNDATION contract (a platform capability, not one deployment's copy), so it lives in
 // the harness's own directory and runs in the foundation scope. It writes only where the harness owns writes:
@@ -27,6 +34,12 @@ import {
   MULTIHOST_INSPECTION,
   MULTIHOST_SPOKES,
 } from "../support/multihost-installation.mjs";
+// THE BUILD'S OWN AUTHORITIES (GEO-04 C09-R19): a multi-Spoke EFS Installation's presentation-asset rights are
+// the BUILD's projection of its publication bindings, so the scenario produces that projection with the
+// PRODUCTION producer — never by hand-writing its JSON — and removes it afterwards (the shared-host precedent).
+import { efsManifestSelection, efsProjectionPath, installationSpokes } from "../../src/config/deployment-build.mjs";
+import { producePublicationProjection } from "../../scripts/efs/publication-projection.mjs";
+import { rmSync } from "node:fs";
 // The FOUNDATION's CDP client, reused (never re-implemented): the harness passes the browser BINARY, exactly
 // as it does to a deployment-owned scenario, and each scenario owns the client it opens and closes.
 import { Cdp } from "./cdp.mjs";
@@ -36,6 +49,22 @@ export const id = "multihost";
 
 /** The ports this scenario tries, so a busy port is a retry rather than a failure. */
 const PORT_OFFSETS = [21, 22, 23];
+
+/**
+ * THE DECLARED EFS ADDRESSES (GEO-04 C09-R19).
+ *
+ * Both Spokes publish ONE closed Site (`main`) with ONE qualified locale and an EMPTY prefix, so every public
+ * address is `<locale>/<route>`: Home is `/en-001`, About `/en-001/about`, and each Spoke's own route
+ * `/en-001/<onlyRoute>`. The OpenGraph card is the Site/locale root card. These are the ONLY public
+ * coordinates this scenario probes — the retired `/ww/en` grammar is asserted to be REFUSED, never used.
+ */
+const HOME_PATH = "/en-001";
+const ABOUT_PATH = "/en-001/about";
+const OG_IMAGE_PATH = "/en-001/opengraph-image";
+/** The one address whose declaration no Spoke makes. */
+const UNDECLARED_PATH = "/en-001/undeclared";
+/** The retired grammar: refused on every host, because no publication and no fixture authors it any more. */
+const RETIRED_PATH = "/ww/en/about";
 
 /**
  * ONE request with an EXPLICIT `Host` header — the boundary's whole input.
@@ -132,6 +161,91 @@ function factsFor(spoke, fixture) {
 }
 
 /**
+ * THE DECLARED / UNDECLARED MATRIX ON THE WIRE, BEFORE CHROME (GEO-04 C09-R19 §4A).
+ *
+ * Every row names the Host that must answer, the address it asks for, and the outcome the AUTHORED publication
+ * promises — plus the representation's own marker, so a 200 can never be a different Spoke's page.
+ */
+async function runClaimMatrix(harness, rows, port, installation) {
+  const [alpha, beta] = installation.spokes;
+  const alphaFixture = MULTIHOST_SPOKES[0];
+  const betaFixture = MULTIHOST_SPOKES[1];
+  const hostOf = (spoke) => `${spoke.hostname}:${port}`;
+  const cases = [
+    { host: hostOf(alpha), label: "alpha-home", pathname: HOME_PATH, status: 200, marker: alphaFixture.tagline },
+    { host: hostOf(alpha), label: "alpha-about", pathname: ABOUT_PATH, status: 200, marker: alphaFixture.aboutBody },
+    {
+      host: hostOf(alpha),
+      label: "alpha-own-page",
+      pathname: `${HOME_PATH}/${alpha.onlyRoute}`,
+      status: 200,
+      marker: `${alpha.siteName} authors ${alpha.onlyRoute}`,
+    },
+    { host: hostOf(beta), label: "beta-home", pathname: HOME_PATH, status: 200, marker: betaFixture.tagline },
+    { host: hostOf(beta), label: "beta-about", pathname: ABOUT_PATH, status: 200, marker: betaFixture.aboutBody },
+    {
+      host: hostOf(beta),
+      label: "beta-own-page",
+      pathname: `${HOME_PATH}/${beta.onlyRoute}`,
+      status: 200,
+      marker: `${beta.siteName} authors ${beta.onlyRoute}`,
+    },
+    // A Spoke's own Page is NOT the other Spoke's.
+    { host: hostOf(alpha), label: "alpha-foreign-page", pathname: `${HOME_PATH}/${beta.onlyRoute}`, status: 404, marker: null },
+    { host: hostOf(beta), label: "beta-foreign-page", pathname: `${HOME_PATH}/${alpha.onlyRoute}`, status: 404, marker: null },
+    // No declaration, no Page.
+    { host: hostOf(alpha), label: "alpha-undeclared", pathname: UNDECLARED_PATH, status: 404, marker: null },
+    { host: hostOf(beta), label: "beta-undeclared", pathname: UNDECLARED_PATH, status: 404, marker: null },
+    // The retired grammar is never revived — on the host that used to serve it, or any other.
+    { host: hostOf(alpha), label: "alpha-retired-grammar", pathname: RETIRED_PATH, status: 404, marker: null },
+    { host: hostOf(beta), label: "beta-retired-grammar", pathname: RETIRED_PATH, status: 404, marker: null },
+    // Fail closed: no default Spoke, no guess, no wildcard.
+    { host: "unclaimed.localhost", label: "unclaimed-host", pathname: ABOUT_PATH, status: 404, marker: null },
+    {
+      host: `${beta.hostname}.impostor.example`,
+      label: "suffix-impostor",
+      pathname: ABOUT_PATH,
+      status: 404,
+      marker: null,
+    },
+    // The platform's inspection hosts are ALPHA's, never Beta's.
+    {
+      host: installation.inspection.hostname,
+      label: "inspection-host",
+      pathname: ABOUT_PATH,
+      status: 200,
+      marker: alphaFixture.aboutBody,
+    },
+    {
+      host: installation.inspection.branchHostname,
+      label: "inspection-branch-host",
+      pathname: ABOUT_PATH,
+      status: 200,
+      marker: alphaFixture.aboutBody,
+    },
+  ];
+
+  for (const testCase of cases) {
+    const response = await requestWithHost(port, testCase.host, testCase.pathname);
+    const hasMarker = testCase.marker === null || response.body.includes(testCase.marker);
+    // OWNERSHIP, ROW BY ROW: an Alpha-answered row must never carry Beta's identity, a Beta-answered row must
+    // never carry Alpha's, and a REFUSED row must carry neither Spoke's page at all.
+    const isAlphaRow = testCase.label.startsWith("alpha-") || testCase.label.startsWith("inspection");
+    const isBetaRow = testCase.label.startsWith("beta-");
+    const ownMarker = isBetaRow ? betaFixture.aboutBody : alphaFixture.aboutBody;
+    const foreignMarker = isBetaRow ? alphaFixture.aboutBody : betaFixture.aboutBody;
+    const leaksForeign =
+      testCase.status === 200 ? response.body.includes(foreignMarker) : response.body.includes(ownMarker) || response.body.includes(foreignMarker);
+    harness.check(
+      rows,
+      `${testCase.label}: ${testCase.pathname} on ${testCase.host} → ${testCase.status}`,
+      response.status === testCase.status && hasMarker && !leaksForeign,
+      `status=${response.status} marker=${hasMarker} foreign=${leaksForeign}${isAlphaRow || isBetaRow ? "" : " (refused row)"}`,
+    );
+  }
+}
+
+/**
  * THE SAME PUBLIC PATHNAME, TWO SPOKES: A/B/A/B, then the refusals and the per-host surfaces.
  *
  * Every request carries the hostname the claim is made for, and every assertion reads the RENDERED document
@@ -144,13 +258,13 @@ async function runHostProof(harness, rows, port, installation) {
   const hostOf = (spoke) => `${spoke.hostname}:${port}`;
   const get = (host, pathname) => requestWithHost(port, host, pathname);
 
-  const first = await get(hostOf(alpha), "/ww/en/about");
-  const second = await get(hostOf(beta), "/ww/en/about");
-  const third = await get(hostOf(alpha), "/ww/en/about");
-  const fourth = await get(hostOf(beta), "/ww/en/about");
+  const first = await get(hostOf(alpha), "/en-001/about");
+  const second = await get(hostOf(beta), "/en-001/about");
+  const third = await get(hostOf(alpha), "/en-001/about");
+  const fourth = await get(hostOf(beta), "/en-001/about");
 
-  harness.check(rows, "alpha /ww/en/about is served (200)", first.status === 200, `status=${first.status}`);
-  harness.check(rows, "beta /ww/en/about is served (200)", second.status === 200, `status=${second.status}`);
+  harness.check(rows, "alpha /en-001/about is served (200)", first.status === 200, `status=${first.status}`);
+  harness.check(rows, "beta /en-001/about is served (200)", second.status === 200, `status=${second.status}`);
 
   const alphaChecks = [
     ["names the Alpha site", first.body.includes(alphaFacts.name)],
@@ -196,9 +310,9 @@ async function runHostProof(harness, rows, port, installation) {
   );
 
   // ── the internal namespace is rewrite-only ───────────────────────────────────────────────────────────
-  const direct = await get(hostOf(alpha), `/~spoke/${alpha.segment}/ww/en/about`);
-  const directBeta = await get(hostOf(beta), `/~spoke/${beta.segment}/ww/en/about`);
-  const crossInternal = await get(hostOf(alpha), `/~spoke/${beta.segment}/ww/en/about`);
+  const direct = await get(hostOf(alpha), `/~spoke/${alpha.segment}/en-001/about`);
+  const directBeta = await get(hostOf(beta), `/~spoke/${beta.segment}/en-001/about`);
+  const crossInternal = await get(hostOf(alpha), `/~spoke/${beta.segment}/en-001/about`);
   harness.check(rows, "a DIRECT /~spoke request on its own host is refused", direct.status === 404, `status=${direct.status}`);
   harness.check(rows, "a DIRECT /~spoke request on Beta is refused", directBeta.status === 404, `status=${directBeta.status}`);
   harness.check(rows, "a DIRECT cross-Spoke /~spoke request is refused", crossInternal.status === 404, `status=${crossInternal.status}`);
@@ -248,29 +362,54 @@ async function runSurfaceProof(harness, rows, port, installation) {
   harness.check(
     rows,
     "Alpha sitemap uses the Alpha origin",
-    alphaSitemap.body.includes(`${alphaFacts.origin}/ww/en`),
+    alphaSitemap.body.includes(`${alphaFacts.origin}/en-001`),
     alphaSitemap.body.slice(0, 160),
   );
   harness.check(
     rows,
     "Alpha sitemap carries Alpha's OWN authored route",
-    alphaSitemap.body.includes(`${alphaFacts.origin}/ww/en/${alpha.onlyRoute}`),
+    alphaSitemap.body.includes(`${alphaFacts.origin}/en-001/${alpha.onlyRoute}`),
     "",
   );
+  harness.check(
+    rows,
+    "Alpha sitemap never advertises Beta's OWN authored route",
+    !alphaSitemap.body.includes(`/en-001/${beta.onlyRoute}`),
+    alphaSitemap.body.includes(`/en-001/${beta.onlyRoute}`) ? "a foreign Page was published" : "",
+  );
   harness.check(rows, "Alpha sitemap contains no Beta URL", !alphaSitemap.body.includes(beta.hostname), "");
+  // THE RETIRED GRAMMAR IS NOT A DISCOVERY ADDRESS: no `/ww/en` loc survives anywhere.
+  harness.check(
+    rows,
+    "Alpha sitemap advertises no address in the retired grammar",
+    !alphaSitemap.body.includes("/ww/en"),
+    alphaSitemap.body.slice(0, 160),
+  );
   harness.check(
     rows,
     "Beta sitemap uses the Beta origin",
-    betaSitemap.body.includes(`${betaFacts.origin}/ww/en`),
+    betaSitemap.body.includes(`${betaFacts.origin}/en-001`),
     betaSitemap.body.slice(0, 160),
   );
   harness.check(
     rows,
     "Beta sitemap carries Beta's OWN authored route",
-    betaSitemap.body.includes(`${betaFacts.origin}/ww/en/${beta.onlyRoute}`),
+    betaSitemap.body.includes(`${betaFacts.origin}/en-001/${beta.onlyRoute}`),
     "",
   );
+  harness.check(
+    rows,
+    "Beta sitemap never advertises Alpha's OWN authored route",
+    !betaSitemap.body.includes(`/en-001/${alpha.onlyRoute}`),
+    betaSitemap.body.includes(`/en-001/${alpha.onlyRoute}`) ? "a foreign Page was published" : "",
+  );
   harness.check(rows, "Beta sitemap contains no Alpha URL", !betaSitemap.body.includes(alpha.hostname), "");
+  harness.check(
+    rows,
+    "Beta sitemap advertises no address in the retired grammar",
+    !betaSitemap.body.includes("/ww/en"),
+    betaSitemap.body.slice(0, 160),
+  );
   harness.check(
     rows,
     "Alpha robots advertises the Alpha sitemap",
@@ -285,13 +424,24 @@ async function runSurfaceProof(harness, rows, port, installation) {
   );
 
   for (const spoke of installation.spokes) {
-    const image = await get(hostOf(spoke), "/ww/en/opengraph-image");
+    // THE EFS OPEN GRAPH CARD (`GEO-03` R04-C21). The ACCEPTED public address is the Site/locale root card:
+    // `<prefix>/<locale>/opengraph-image`. It is not a per-Page identity. Two candidates are probed so a failure
+    // reports what the running publication actually answers instead of a bare status.
+    const candidates = [OG_IMAGE_PATH, `${HOME_PATH}/home/opengraph-image`, "/opengraph-image"];
+    const measured = [];
+    for (const candidate of candidates) {
+      const response = await get(hostOf(spoke), candidate);
+      measured.push(
+        `${candidate}=${response.status}:${String(response.headers["content-type"] ?? "none").split(";")[0]}`,
+      );
+    }
+    const image = await get(hostOf(spoke), OG_IMAGE_PATH);
     const type = String(image.headers["content-type"] ?? "");
     harness.check(
       rows,
-      `${spoke.id}: /ww/en/opengraph-image is an image (200 + image/png)`,
+      `${spoke.id}: ${OG_IMAGE_PATH} is the site/locale card (200 + image/png)`,
       image.status === 200 && type.startsWith("image/png"),
-      `status=${image.status} type=${type || "(none)"}`,
+      `status=${image.status} type=${type || "(none)"} | ${measured.join(" ")}`,
     );
   }
 }
@@ -302,7 +452,7 @@ async function runHostnameProof(harness, rows, port, installation) {
   const facts = factsFor(alpha, MULTIHOST_SPOKES[0]);
   const get = (host, pathname) => requestWithHost(port, host, pathname);
 
-  const upper = await get("Alpha.LocalHost", "/ww/en/about");
+  const upper = await get("Alpha.LocalHost", "/en-001/about");
   harness.check(
     rows,
     "a differently-CASED host resolves to its claim",
@@ -310,7 +460,7 @@ async function runHostnameProof(harness, rows, port, installation) {
     `status=${upper.status}`,
   );
 
-  const trailingStop = await get("alpha.localhost.", "/ww/en/about");
+  const trailingStop = await get("alpha.localhost.", "/en-001/about");
   harness.check(
     rows,
     "the DNS-root spelling of the same host resolves",
@@ -318,13 +468,13 @@ async function runHostnameProof(harness, rows, port, installation) {
     `status=${trailingStop.status}`,
   );
 
-  const suffix = await get("sub.alpha.localhost", "/ww/en/about");
+  const suffix = await get("sub.alpha.localhost", "/en-001/about");
   harness.check(rows, "a SUBDOMAIN no Spoke claimed does NOT resolve", suffix.status === 404, `status=${suffix.status}`);
 
-  const betaSuffix = await get(`${beta.hostname}.attacker.example`, "/ww/en/about");
+  const betaSuffix = await get(`${beta.hostname}.attacker.example`, "/en-001/about");
   harness.check(rows, "a claimed host as a SUFFIX of another host resolves nothing", betaSuffix.status === 404, `status=${betaSuffix.status}`);
 
-  const unknown = await get("unknown.localhost", "/ww/en/about");
+  const unknown = await get("unknown.localhost", "/en-001/about");
   const leaked = unknown.body.includes(facts.name) || unknown.body.includes(MULTIHOST_SPOKES[1].siteName);
   harness.check(rows, "an UNCLAIMED hostname fails closed (404)", unknown.status === 404, `status=${unknown.status}`);
   harness.check(rows, "the unclaimed hostname is answered by NO Spoke's content", !leaked, "");
@@ -335,40 +485,79 @@ async function runHostnameProof(harness, rows, port, installation) {
     `location=${unknown.headers.location ?? "(none)"}`,
   );
 
-  // ── THE BARE ROOT completes INSIDE the Spoke the host selected (M17 §5) ──────────────────────────────
-  // `/` names NO segments, so it is the OPTIONAL catch-all's own case: the same request-context and
-  // Site/locale completion flow as every other public path — resolved inside the Spoke THIS host selected,
-  // and answered with a PUBLIC redirect. It must never be a 404, and it must never leave this Spoke.
+  // ── THE BARE ROOT completes INSIDE the Spoke the host selected (M17 §5; EFS entry rule R19) ──────────
+  // `/` names NO segments, so it is the OPTIONAL catch-all's own case: the EFS entry-completion rule selects
+  // the binding's declared default locale and answers with a PUBLIC redirect. The ACTUAL status and Location
+  // are recorded here rather than assumed: what matters is that the target is the owner's DECLARED Home, that
+  // it stays inside this Spoke, and that an unclaimed host's root is still refused.
   const hostFor = (spoke) => `${spoke.hostname}:${port}`;
   const alphaRoot = await get(hostFor(alpha), "/");
-  const betaRoot = await get(hostFor(beta), `/`);
-  const alphaRootLocation = alphaRoot.headers.location ?? "";
-  const betaRootLocation = betaRoot.headers.location ?? "";
+  const betaRoot = await get(hostFor(beta), "/");
+  const alphaRootLocation = (alphaRoot.headers.location ?? "").trim();
+  const betaRootLocation = (betaRoot.headers.location ?? "").trim();
+  const completed = (status) => status >= 300 && status < 400;
 
-  harness.check(rows, "Alpha's ROOT completes with a public redirect, never a 404", alphaRoot.status === 307 || alphaRoot.status === 302, `status=${alphaRoot.status}`);
-  harness.check(rows, "Beta's ROOT completes with a public redirect, never a 404", betaRoot.status === 307 || betaRoot.status === 302, `status=${betaRoot.status}`);
-  harness.check(rows, "Alpha's ROOT completes to a PUBLIC path (no internal prefix)", alphaRootLocation.startsWith("/") && !alphaRootLocation.includes("~spoke"), `location=${alphaRootLocation}`);
-  harness.check(rows, "Beta's ROOT completes to a PUBLIC path (no internal prefix)", betaRootLocation.startsWith("/") && !betaRootLocation.includes("~spoke"), `location=${betaRootLocation}`);
+  harness.check(
+    rows,
+    "Alpha's ROOT completes with a public redirect, never a 404",
+    completed(alphaRoot.status),
+    `status=${alphaRoot.status} location=${alphaRootLocation || "(none)"}`,
+  );
+  harness.check(
+    rows,
+    "Beta's ROOT completes with a public redirect, never a 404",
+    completed(betaRoot.status),
+    `status=${betaRoot.status} location=${betaRootLocation || "(none)"}`,
+  );
+  harness.check(
+    rows,
+    "Alpha's ROOT completes to a PUBLIC path (no internal prefix)",
+    alphaRootLocation.startsWith("/") && !alphaRootLocation.includes("~spoke"),
+    `location=${alphaRootLocation}`,
+  );
+  harness.check(
+    rows,
+    "Beta's ROOT completes to a PUBLIC path (no internal prefix)",
+    betaRootLocation.startsWith("/") && !betaRootLocation.includes("~spoke"),
+    `location=${betaRootLocation}`,
+  );
   // The SAME public pathname on two hosts — the completion is per host, not a shared answer.
-  harness.check(rows, "both ROOTS complete to the same PUBLIC pathname on their own host", alphaRootLocation === betaRootLocation, `alpha=${alphaRootLocation} beta=${betaRootLocation}`);
+  harness.check(
+    rows,
+    "both ROOTS complete to the same PUBLIC pathname on their own host",
+    alphaRootLocation === betaRootLocation,
+    `alpha=${alphaRootLocation} beta=${betaRootLocation}`,
+  );
+  // …and the completion lands on the OWNER's declared Home Page, not an invented address.
+  harness.check(
+    rows,
+    "the completed ROOT is the binding's declared Home (its declared locale)",
+    alphaRootLocation === `${HOME_PATH}/` || alphaRootLocation === HOME_PATH,
+    `location=${alphaRootLocation} expected=${HOME_PATH}`,
+  );
 
-  const alphaHome = await get(hostFor(alpha), alphaRootLocation);
-  const betaHome = await get(hostFor(beta), betaRootLocation);
+  const alphaHome = await get(hostFor(alpha), HOME_PATH);
+  const betaHome = await get(hostFor(beta), HOME_PATH);
   harness.check(
     rows,
     "Alpha's completed ROOT renders ALPHA's own chrome (its own dictionary wording)",
     alphaHome.status === 200 && alphaHome.body.includes(MULTIHOST_SPOKES[0].navigationLabels["/"]),
-    `status=${alphaHome.status}`,
+    `status=${alphaHome.status} location=${alphaRootLocation}`,
   );
   harness.check(
     rows,
     "Beta's completed ROOT renders BETA's own chrome (its own dictionary wording)",
     betaHome.status === 200 && betaHome.body.includes(MULTIHOST_SPOKES[1].navigationLabels["/"]),
-    `status=${betaHome.status}`,
+    `status=${betaHome.status} location=${betaRootLocation}`,
   );
 
   const unknownRoot = await get("unknown.localhost", "/");
-  harness.check(rows, "even an unclaimed host's ROOT is refused (no default Spoke)", unknownRoot.status === 404, `status=${unknownRoot.status}`);
+  harness.check(
+    rows,
+    "even an unclaimed host's ROOT is refused (no default Spoke)",
+    unknownRoot.status === 404,
+    `status=${unknownRoot.status}`,
+  );
 }
 
 /**
@@ -397,18 +586,19 @@ async function runInspectionProof(harness, rows, port, installation) {
 
   for (const [label, host] of surfaces) {
     const root = await get(host, "/");
-    const about = await get(host, "/ww/en/about");
-    const again = await get(host, "/ww/en/about");
+    const about = await get(host, "/en-001/about");
+    const again = await get(host, "/en-001/about");
 
     harness.check(
       rows,
-      `${label}: the root completes into the nominated Spoke's own locale`,
-      root.status === 307 && /\/ww\/(?:en|de)$/.test((root.headers.location ?? "").trim()),
+      `${label}: the root completes into the nominated Spoke's own declared locale`,
+      (root.status === 307 || root.status === 308 || root.status === 302) &&
+        /^\/en-001\/?$/.test((root.headers.location ?? "").trim()),
       `status=${root.status} location=${root.headers.location ?? "(none)"}`,
     );
     harness.check(
       rows,
-      `${label}: /ww/en/about is served by the nominated Spoke`,
+      `${label}: /en-001/about is served by the nominated Spoke`,
       about.status === 200 && about.body.includes(alphaFacts.name) && about.body.includes(alphaFacts.content),
       `status=${about.status}`,
     );
@@ -445,47 +635,70 @@ async function runInspectionProof(harness, rows, port, installation) {
     "unknown.example.com",
   ];
   for (const host of refused) {
-    const answer = await get(host, "/ww/en/about");
+    const answer = await get(host, "/en-001/about");
     harness.check(rows, `an unrecognised host is still refused: ${host}`, answer.status === 404, `status=${answer.status}`);
   }
 }
 
 
 
-/** Waits until the dev server answers ANYTHING (a dev server compiles on the first request). */
-async function waitForAnyResponse(port, timeoutMs = 240000) {
-  const end = Date.now() + timeoutMs;
-  while (Date.now() < end) {
+/**
+ * WAIT UNTIL THE CLAIMED HOST ANSWERS ITS DECLARED PAGE (GEO-04 C09-R19).
+ *
+ * The superseded probe sent `127.0.0.1` as the `Host` and accepted ANY response: a loopback literal is a host no
+ * EFS binding claims, so the only thing it could report was "the port is listening" — it would have called a 404
+ * or a 500 "ready". Readiness of a publication is a CLAIM, so this waits for Alpha's own hostname at its own
+ * declared About address, answering 200 with Alpha's own body. A live port that answers anything else is a
+ * DECLARATION fault, and the error names the host, path and status that produced it.
+ */
+async function waitForClaimedPage(port, timeoutMs = 120000) {
+  const host = MULTIHOST_SPOKES[0].hostname;
+  const deadline = Date.now() + timeoutMs;
+  let last = "no attempt";
+  while (Date.now() < deadline) {
     try {
-      await requestWithHost(port, `127.0.0.1:${port}`, "/");
-      return true;
-    } catch {
-      await sleep(500);
+      const response = await requestWithHost(port, host, ABOUT_PATH);
+      if (response.status === 200 && response.body.includes(MULTIHOST_SPOKES[0].aboutBody)) return;
+      last = `status=${response.status}`;
+    } catch (error) {
+      last = error instanceof Error ? error.message : String(error);
     }
+    await sleep(400);
   }
-  return false;
+  throw new Error(`the two-Spoke Installation never served ${ABOUT_PATH} on ${host} (${last})`);
 }
 
 /**
  * Starts the dev server for THIS Installation, trying the next port when one is already taken.
  *
- * The hosting platform's OWN identity for the build is exported first (M20 §23): `VERCEL_URL` and
- * `VERCEL_BRANCH_URL` are exactly what a Vercel build is given, and the dev server INHERITS this process's
- * environment — so the proof exercises the production mechanism rather than a test-only switch.
+ * The Installation is handed over as the EXPLICIT descriptor (`efsInstallation`): the server serves exactly that
+ * publication and no process-global deployment override is used. The hosting platform's OWN identity for the
+ * build (`VERCEL_URL`/`VERCEL_BRANCH_URL`) is offered on the child's environment, exactly as a platform build
+ * receives it — while those values authorize nothing the EFS manifest does not claim.
  */
 async function startServer(harness, installation) {
-  let last = null;
   const platformIdentity = { ...MULTIHOST_INSPECTION };
   process.env["VERCEL_URL"] = platformIdentity.hostname;
   process.env["VERCEL_BRANCH_URL"] = platformIdentity.branchHostname;
+  let failure = null;
+  let lastServer = null;
   for (const offset of PORT_OFFSETS) {
     const port = harness.port(offset);
-    const server = harness.startDevServer(port, { deploymentRoot: installation.root });
-    if (await waitForAnyResponse(port)) return { server, port };
-    last = server;
-    await harness.stopServer(server);
+    const server = harness.startDevServer(port, { efsInstallation: installation });
+    lastServer = server;
+    try {
+      await waitForClaimedPage(port);
+      return { server, port };
+    } catch (error) {
+      failure = error;
+      await harness.stopServer(server);
+    }
   }
-  throw new Error(`no port answered among ${PORT_OFFSETS.map((o) => harness.port(o)).join(", ")} — last log: ${last ? last.log().slice(-400) : "(none)"}`);
+  throw new Error(
+    `${failure instanceof Error ? failure.message : String(failure)}\n--- dev server output ---\n${
+      lastServer === null ? "(none)" : lastServer.log().slice(-1200)
+    }`,
+  );
 }
 
 /**
@@ -493,14 +706,14 @@ async function startServer(harness, installation) {
  *
  * `alpha.localhost` and `beta.localhost` are loopback names a browser resolves itself, so the navigation
  * exercises the same dispatch the HTTP proof does — and adds the one fact only a browser can report: the
- * address bar. It must read `/ww/en/about` and never the internal namespace.
+ * address bar. It must read `/en-001/about` and never the internal namespace.
  */
 async function runBrowserProof(harness, rows, chrome, port, installation) {
   const cdp = await Cdp.connect(chrome);
   try {
     for (const spoke of installation.spokes) {
       const fixture = MULTIHOST_SPOKES.find((candidate) => candidate.id === spoke.id);
-      const url = `http://${spoke.hostname}:${port}/ww/en/about`;
+      const url = `http://${spoke.hostname}:${port}/en-001/about`;
       let observed = null;
 
       await cdp.navigate(url);
@@ -516,7 +729,7 @@ async function runBrowserProof(harness, rows, chrome, port, installation) {
       harness.check(
         rows,
         `${spoke.id}: a BROWSER keeps the public pathname`,
-        observed !== null && observed.path === "/ww/en/about",
+        observed !== null && observed.path === "/en-001/about",
         `path=${observed ? observed.path : "(no observation)"}`,
       );
       harness.check(
@@ -536,10 +749,10 @@ async function runBrowserProof(harness, rows, chrome, port, installation) {
   // answered by a full document reload. The sentinel lives on `window`, so a reload destroys it — which is
   // exactly what makes it a proof. (The superseded rewrite served this click with a whole new document.)
   const softHost = installation.spokes[0].hostname;
-  await cdp.navigate(`http://${softHost}:${port}/ww/en`);
+  await cdp.navigate(`http://${softHost}:${port}${HOME_PATH}`);
   await sleep(2500);
   await cdp.evaluate("window.__foundationSoftNavSentinel = 'set-before-the-click'");
-  const aboutLink = `[...document.querySelectorAll('a')].find((a) => a.getAttribute('href') === '/ww/en/about')`;
+  const aboutLink = `[...document.querySelectorAll('a')].find((a) => a.getAttribute('href') === ${JSON.stringify(ABOUT_PATH)})`;
   const softHref = await cdp.evaluate(
     `(() => { const link = ${aboutLink}; return link ? link.getAttribute('href') : null; })()`,
   );
@@ -551,20 +764,20 @@ async function runBrowserProof(harness, rows, chrome, port, installation) {
     softObserved = await cdp.evaluate(
       `(() => ({ path: location.pathname, sentinel: window.__foundationSoftNavSentinel ?? null, text: document.body ? document.body.textContent || "" : "" }))()`,
     );
-    if (softObserved !== null && softObserved.path === "/ww/en/about") break;
+    if (softObserved !== null && softObserved.path === "/en-001/about") break;
     await sleep(300);
   }
 
   harness.check(
     rows,
     "an internal Link is authored as a PUBLIC path (no internal prefix)",
-    softHref === "/ww/en/about",
+    softHref === "/en-001/about",
     `href=${softHref}`,
   );
   harness.check(
     rows,
     "a Link click is a SOFT client transition that COMMITS on the public pathname",
-    softObserved !== null && softObserved.path === "/ww/en/about",
+    softObserved !== null && softObserved.path === "/en-001/about",
     `path=${softObserved !== null ? softObserved.path : "(no observation)"}`,
   );
   harness.check(
@@ -635,7 +848,7 @@ const RENDERED_SHELL_ICONS_PROBE = `(() => {
 async function runShellAssetProof(harness, rows, port, installation) {
   for (const spoke of installation.spokes) {
     const host = `${spoke.hostname}:${port}`;
-    const page = await requestWithHost(port, host, "/ww/en/about");
+    const page = await requestWithHost(port, host, "/en-001/about");
     harness.check(
       rows,
       `${spoke.id}: the page carrying the shell is served for the asset inspection`,
@@ -694,7 +907,7 @@ async function runShellAssetBrowserProof(harness, rows, chrome, port, installati
   try {
     for (const spoke of installation.spokes) {
       const fixture = MULTIHOST_SPOKES.find((candidate) => candidate.id === spoke.id);
-      await cdp.navigate(`http://${spoke.hostname}:${port}/ww/en/about`);
+      await cdp.navigate(`http://${spoke.hostname}:${port}/en-001/about`);
       const deadline = Date.now() + 60000;
       let ready = false;
       while (Date.now() < deadline && !ready) {
@@ -734,6 +947,34 @@ async function runShellAssetBrowserProof(harness, rows, chrome, port, installati
   }
 }
 
+/**
+ * PUBLISH THIS INSTALLATION'S PRESENTATION-ASSET RIGHTS (GEO-04 C09-R19).
+ *
+ * A Spoke's `/spokes/<segment>/assets/**` namespace is HOST-BOUND and, once an EFS runtime is configured, the
+ * BUILD's verified publication projection is the only authority that can authorize it — `spokes.json` alone
+ * grants nothing (that is the released `R04-C24` rule, not a test convenience). The projection is produced by
+ * the PRODUCTION producer into the repository's ignored cache, so the running build makes its own decision from
+ * the same bytes a real build would; the scenario removes it afterwards.
+ */
+async function publishPresentationRights(harness, installation) {
+  const selection = efsManifestSelection(installation.root, {});
+  const spokeIdentities = (installationSpokes(installation.root).spokes ?? []).map((spoke) => ({
+    id: spoke.id,
+    spokeHubId: spoke.spokeHubId,
+  }));
+  const projected = await producePublicationProjection({
+    root: installation.root,
+    manifestPath: selection.path,
+    explicit: false,
+    spokeIdentities,
+    repositoryRoot: harness.repositoryRoot,
+  });
+  if (projected.status !== "projected") {
+    throw new Error(`the publication projection was refused: ${String((projected.issues ?? []).join("; "))}`);
+  }
+  return efsProjectionPath(installation.root, harness.repositoryRoot);
+}
+
 /** Removes exactly the namespaces this scenario created — the generated segments alpha and beta. */
 function removeNamespaces(harness, installation) {
   for (const spoke of installation.spokes) {
@@ -755,12 +996,17 @@ export async function run(chrome, harness) {
   const rows = [];
   const installation = materializeMultihostInstallation({ repositoryRoot: harness.repositoryRoot });
   let server = null;
+  let projectionFile = null;
 
   try {
     for (const spoke of installation.spokes) await materializeNamespace(harness, installation, spoke);
+    // The BUILD's rights for these namespaces, produced by the production producer before the server starts.
+    projectionFile = await publishPresentationRights(harness, installation);
     const started = await startServer(harness, installation);
     server = started.server;
 
+    // THE AUTHORED CLAIMS, ON THE WIRE, BEFORE CHROME OPENS (GEO-04 C09-R19 §4A).
+    await runClaimMatrix(harness, rows, started.port, installation);
     await runHostProof(harness, rows, started.port, installation);
     await runSurfaceProof(harness, rows, started.port, installation);
     await runHostnameProof(harness, rows, started.port, installation);
@@ -783,6 +1029,14 @@ export async function run(chrome, harness) {
       /* the server is already gone */
     }
     removeNamespaces(harness, installation);
+    // The projection is a build artefact ABOUT this Installation: it must not outlive it.
+    if (projectionFile !== null) {
+      try {
+        rmSync(projectionFile, { force: true });
+      } catch {
+        /* already gone */
+      }
+    }
     installation.cleanup();
     // The platform identity was exported for this scenario's build alone; the harness's own environment is
     // left exactly as it was found.

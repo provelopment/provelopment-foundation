@@ -194,23 +194,30 @@ export function siteIdIssue(value: unknown): string | null {
  * THE APPROVED RESERVED SITE-ID VOCABULARY (FOUNDATION-ID-M1)
  * =========================================================
  *
- * ONE authority, three groups, and the complete collection DERIVED from them — so a word can never
- * be reserved in one place and absent in another.
+ * ONE authority, FOUR groups, and the complete collection DERIVED from them — so a word can never
+ * be reserved in one place and absent in another. The vocabulary is the fourteen words those groups
+ * hold, and nothing else.
  *
  * These words are reserved because Foundation itself needs them: they name platform paths, runtime
- * namespaces, administration surfaces and routing/operator surfaces that a Site must never shadow.
- * A reserved word being well-formed is the POINT (see the module note): reservation is a semantic
- * rule over a valid syntax, which is why it is a separate function from `siteIdIssue`.
+ * namespaces, administration surfaces, routing/operator surfaces, and one RETIRED Site identity. A
+ * reserved word being well-formed is the POINT (see the module note): reservation is a semantic rule
+ * over a valid syntax, which is why it is a separate function from `siteIdIssue`.
  *
  * The list is deliberately CLOSED and small. `health` is NOT here: it remains an unapproved
  * candidate, and reserving a word is a breaking change for any configuration already using it, so
  * the vocabulary only grows by an explicit decision.
  *
- * `ww` — the retired worldwide Site word — is NOT here yet, and that is deliberate, not a waiver:
- * the legacy establishment inputs still author it as an EFS Site, so reserving it now would make the
- * platform's own establishment output invalid. Enforcing the prohibition is a MANDATORY open
- * `GEO-04` dependency that lands with, or after, the establishment/legacy-runtime reconciliation, and
- * it is never satisfied by leaving the word unreserved for good.
+ * `ww` — the retired worldwide Site word — IS reserved, in the `retired` group (`GEO-04` C08). The
+ * earlier concern was real and is answered rather than waived: the establishment inputs used to
+ * author it as an EFS Site, so it is refused exactly where that matters — at the EFS AUTHORING
+ * boundary (`src/config/efs/manifest.ts`), which applies the grammar and then the reservation to a
+ * declared Site ID. The C03 one-way ordinary-seed conversion still projects the legacy `ww` SOURCE
+ * onto the neutral Site `main`, so the platform's own establishment output is valid.
+ *
+ * Two things that are NOT Site IDs keep working and must not be confused with the reservation: an
+ * already-authored opaque binding path segment (a public address claim, preserved verbatim), and a
+ * `presentationSiteCode` — a descriptive key into the owning Spoke's own configuration, not an EFS
+ * content Site identity.
  *
  * Three neighbouring categories are NOT in this vocabulary, for two different reasons:
  *
@@ -227,13 +234,16 @@ export function siteIdIssue(value: unknown): string | null {
  *     the site segment. Reserving them here would import a routing concern into the identity
  *     vocabulary.
  */
-export type ReservedSiteIdGroup = "platform" | "administration" | "routing";
+export type ReservedSiteIdGroup = "platform" | "administration" | "routing" | "retired";
 
 /** Why each group exists, named in the diagnosis so an author learns the rule, not just the fact. */
 const RESERVED_SITE_ID_GROUP_REASONS: Readonly<Record<ReservedSiteIdGroup, string>> = {
   platform: "it names a platform-controlled path, namespace or surface",
   administration: "it is reserved for administration surfaces a Site never owns",
   routing: "it is reserved for routing and operator surfaces a Site never owns",
+  retired:
+    "it names a RETIRED Site identity — `ww` was the worldwide Site, retired by D28; a Site may not " +
+    "re-adopt the word, and the one-way establishment SOURCE conversion still maps it to `main`",
 };
 
 /** The approved groups, in the order they are declared — the ONE authority for the vocabulary. */
@@ -242,10 +252,11 @@ export const RESERVED_SITE_ID_GROUPS: Readonly<Record<ReservedSiteIdGroup, reado
     platform: Object.freeze(["api", "assets", "system", "internal", "spokes"]),
     administration: Object.freeze(["admin", "auth", "account"]),
     routing: Object.freeze(["default", "preview", "dashboard", "settings", "status"]),
+    retired: Object.freeze(["ww"]),
   });
 
 /**
- * Every reserved Site ID — DERIVED from the three groups, never restated.
+ * Every reserved Site ID — DERIVED from the four groups, never restated.
  *
  * A word is reserved iff it appears in one of `RESERVED_SITE_ID_GROUPS`; there is no second list to
  * keep in step, and the contract test asserts the derivation rather than a copy of the words.
@@ -254,6 +265,7 @@ export const RESERVED_SITE_IDS: readonly string[] = Object.freeze([
   ...RESERVED_SITE_ID_GROUPS.platform,
   ...RESERVED_SITE_ID_GROUPS.administration,
   ...RESERVED_SITE_ID_GROUPS.routing,
+  ...RESERVED_SITE_ID_GROUPS.retired,
 ]);
 
 /** The reverse index: which group reserved a word, for the diagnosis and for `isReservedSiteId`. */

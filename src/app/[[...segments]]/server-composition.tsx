@@ -303,11 +303,17 @@ import {
   resolveUiConfig,
   type ResolvedUiConfig,
 } from "@/core/ui";
-import { ConnectPageContent, ContactPageContent, StarterHome } from "./dedicated-pages";
+import {
+  ConnectPageContent,
+  CONNECT_PAGE_ROUTE_PATH,
+  ContactPageContent,
+  StarterHome,
+} from "./dedicated-pages";
 
 
-/** URLs whose chrome is specialised (`./dedicated-pages`). */
-const CONNECT_ROUTE_PATH = "connect";
+/** URLs whose chrome is specialised (`./dedicated-pages`). The Connect leaf is named ONCE, there, so the
+ * legacy dispatch and the EFS Connect adapter (`./efs-connect`) cannot drift apart. */
+const CONNECT_ROUTE_PATH = CONNECT_PAGE_ROUTE_PATH;
 const CONTACT_ROUTE_PATH = "contact";
 
 /**
@@ -1346,8 +1352,38 @@ export function efsShellPresentationConfig(
     defaultSite: site,
     hubs: [],
     defaultLocale: site.defaultLocale,
+    // A BINDING LOCALE IS QUALIFIED; A SPOKE DICTIONARY KEY IS A LANGUAGE BASE (GEO-04 C09-R12).
+    //
+    // `localePathKey` yields the canonical QUALIFIED tag (`en-001`, `de-DE`), while a Spoke declares its
+    // locales by LANGUAGE BASE (`en`, `de`) and must own a dictionary for each — the Spoke schema
+    // refuses a qualified code outright, so this correspondence cannot be authored away on the test
+    // side. Comparing the two strings directly matched NOTHING, so the projection was empty for every
+    // EFS Site, `siteConfig.locales.length > 1` was never true, and the shared shell could never offer
+    // a Language control: the header's contextual row was unreachable. The comparison is now made on
+    // the one relation the two authorities actually share — the documented language base
+    // (`languageBaseOf`, `config/i18n/registry.ts`: `fr-ca` → `fr`). No locale is inferred from a Site,
+    // a host or a prefix in either direction, and no new locale becomes offerable: the binding's own
+    // declared locales are still the only ones projected onto the Site.
+    // A BINDING LOCALE AND A SPOKE LOCALE ARE COMPARED ON THEIR LANGUAGE BASE, ON BOTH SIDES
+    // (GEO-04 C09-R12, corrected by C09-R13).
+    //
+    // `localePathKey` yields a canonical qualified tag (`en-001`, `de-de`). A Spoke declares its own locale
+    // codes, and BOTH forms are genuinely in service: the generic synthetic fixture declares LANGUAGE BASES
+    // (`en`, `de`), while the reference deployment's own Spoke declares QUALIFIED codes (`en-001`, `de-de`).
+    // Comparing the binding key's base against the Spoke's RAW code therefore matched the fixture and
+    // matched NOTHING in the reference deployment, whose projection was empty — so its shared shell could
+    // offer no Language control. That is the same defect this comparison exists to prevent, reintroduced by
+    // fixing one caller's shape: four reference-deployment shell tests caught it, green at the parent
+    // revision and red on this candidate. Reducing BOTH sides to the documented language base
+    // (`languageBaseOf`, `config/i18n/registry.ts`: `fr-ca` -> `fr`) is the one relation the two authorities
+    // actually share. No locale is inferred from a Site, a host or a prefix in either direction, and no new
+    // locale becomes offerable: the binding's own declared locales remain the only ones projected.
     locales: source.locales.filter((entry) =>
-      view.binding.locales.some((locale) => localePathKey(locale) === entry.code),
+      view.binding.locales.some(
+        (locale) =>
+          (localePathKey(locale).split("-")[0] ?? localePathKey(locale)) ===
+          (entry.code.split("-")[0] ?? entry.code),
+      ),
     ),
     sitePageOverrides: overrides,
     name: brandName,

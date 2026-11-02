@@ -26,7 +26,7 @@
  * (`tests/architecture/write-ownership-guard.test.ts`) proves both the guard's answers and that the
  * harness routes every mutation through it.
  */
-import { cpSync as copySync, rmSync as removeSync } from "node:fs";
+import { cpSync as copySync, rmSync as removeSync, writeFileSync as fsWriteFileSync } from "node:fs";
 import { mkdir as fsMkdir, rm as fsRm, rmdir as fsRmdir, writeFile as fsWriteFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -172,4 +172,16 @@ export function cpSync(source, target, ...rest) {
 /** `node:fs`'s `rmSync`, refusing any target the harness does not own. */
 export function rmSync(target, ...rest) {
   return removeSync(assertHarnessWritable(target, "remove"), ...rest);
+}
+
+/**
+ * `node:fs`'s `writeFileSync`, refusing any target the harness does not own.
+ *
+ * The SYNCHRONOUS form exists because a `prepareEfs` hook runs before Next is spawned and is synchronous by
+ * contract: a scenario that must place an UNDECLARED decoy INSIDE the served capsule (proving a loose file
+ * is not a published Page) cannot await. Without this wrapper that write bypassed the guard entirely, which
+ * is exactly what the write-ownership architecture test refuses (GEO-04 C09-R13).
+ */
+export function writeFileSync(target, ...rest) {
+  return fsWriteFileSync(assertHarnessWritable(target, "write"), ...rest);
 }

@@ -13,7 +13,7 @@ import { Grid } from "@/components/ui/grid";
  */
 
 /** `hero`: the page's opening statement. The page title above it IS the h1. */
-export function HeroSection({ section, locale, resolveLink }: SectionViewProps<"hero">) {
+export function HeroSection({ section, locale, resolveLink, resolveRoute }: SectionViewProps<"hero">) {
   return (
     <section className={sectionClassName(section.surface, section.align)}>
       {section.eyebrow ? (
@@ -21,7 +21,7 @@ export function HeroSection({ section, locale, resolveLink }: SectionViewProps<"
       ) : null}
       {section.lede ? <MarkdownField text={section.lede} resolveLink={resolveLink} className="mt-3 text-lg text-muted-foreground" /> : null}
       {section.actions ? (
-        <ActionLinks actions={section.actions} locale={locale} resolveLink={resolveLink} className={section.align === "center" ? "mt-6 justify-center" : "mt-6"} />
+        <ActionLinks actions={section.actions} locale={locale} resolveLink={resolveLink} resolveRoute={resolveRoute} className={section.align === "center" ? "mt-6 justify-center" : "mt-6"} />
       ) : null}
       {section.support ? <MarkdownField text={section.support} resolveLink={resolveLink} className="mt-4 text-sm text-muted-foreground" /> : null}
     </section>
@@ -92,7 +92,7 @@ export function GallerySection({ section, id, resolveLink }: SectionViewProps<"g
  * portfolio listing or a set of articles is built from. A card may carry an image, a
  * short meta line, a Markdown body and one action.
  */
-export function CardsSection({ section, locale, id, resolveLink }: SectionViewProps<"cards">) {
+export function CardsSection({ section, locale, id, resolveLink, resolveRoute }: SectionViewProps<"cards">) {
   return (
     <section
       className={sectionClassName(section.surface, undefined)}
@@ -117,6 +117,7 @@ export function CardsSection({ section, locale, id, resolveLink }: SectionViewPr
                 defaultVariant="link"
                 className="mt-4"
                 resolveLink={resolveLink}
+                resolveRoute={resolveRoute}
               />
             ) : null}
           </li>

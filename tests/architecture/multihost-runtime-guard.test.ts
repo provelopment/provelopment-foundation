@@ -39,23 +39,29 @@ describe("M16/M17 — the render path", () => {
     for (const file of ["src/app/sitemap.ts", "src/app/robots.ts", PAGE, LAYOUT, REQUEST]) {
       expect(read(file), file).not.toContain("currentBuildRuntimeContext");
     }
-    expect(read("src/app/sitemap.ts")).toContain("runtimeContextForRequest");
-    expect(read("src/app/robots.ts")).toContain("runtimeContextForRequest");
+    expect(read("src/app/sitemap.ts")).toContain("efsSitemapForCurrentRequest");
+    expect(read("src/app/robots.ts")).toContain("efsSitemapUrlForCurrentRequest");
     expect(read(INTERNAL_IMAGE)).toContain("runtimeContextForCurrentRequest");
     expect(read(REQUEST)).toContain("runtimeContextForCurrentRequest");
     expect(read(REQUEST)).toContain("SPOKE_SELECTION_HEADER");
   });
 
-  it("the PUBLIC route consumes the request-selected context and reuses the shared renderer", () => {
+  it("the PUBLIC route consumes the request-selected EFS binding and reuses the shared renderer", () => {
     for (const file of [PAGE, LAYOUT]) {
       const source = read(file);
-      expect(source, file).toContain("requestPublicDestination");
-      expect(source, file).toContain("./server-composition");
+      // C07-R02 — the request boundary resolves the request's own binding and declared Page. There is no
+      // second resolver and no non-production switch: a request either resolves here or is refused.
+      expect(source, file).toContain("efsViewForCurrentRequest");
+      expect(source, file).toContain("./efs-refusal");
+      expect(source, file).not.toContain("legacyTestRuntimeEnabled");
       // No hostname resolution and no global configuration in the App Router code.
       expect(source, file).not.toContain("hostRoutingForBuild");
       expect(source, file).not.toContain("normalizeHostname");
       expect(source, file).not.toContain("siteConfig");
     }
+    // ONE presentation path: the shared EFS page view, and the shell from the shared composition.
+    expect(read(PAGE)).toContain("EfsPageView");
+    expect(read(LAYOUT)).toContain("./server-composition");
     // ONE renderer: the shared composition is the only page/layout/metadata composition.
     expect(read(COMPOSITION)).toContain("export async function pageForContext");
     expect(read(COMPOSITION)).toContain("export async function layoutForContext");

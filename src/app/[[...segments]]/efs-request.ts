@@ -6,7 +6,7 @@ import { notFound, permanentRedirect, redirect } from "next/navigation";
 
 import { loadEfsPageSource, type EfsPageSource } from "@/adapters/content/efs-content";
 import { efsPublicationOwnerForRequest } from "@/config/efs/owner";
-import { legacyTestRuntimeEnabled, missingEfsInstallation } from "./legacy-test-runtime";
+import { missingEfsInstallation } from "./efs-refusal";
 import type { SpokeRuntimeContext } from "@/config/installation-runtime";
 import {
   canonicalUrl,
@@ -152,9 +152,8 @@ function runtime(): LoadedRuntime | null {
     if (override !== undefined || existsSync(capsulePath) || existsSync(dirname(manifestPath))) {
       throw new Error(`EFS manifest is missing at ${manifestPath}; the capsule cannot be served.`);
     }
-    // No EFS configuration at all. Only the isolated, non-production test utility may answer; a
-    // real installation receives a controlled setup diagnostic instead of an alternate runtime.
-    if (legacyTestRuntimeEnabled()) return null;
+    // No EFS configuration at all: this Installation declares no publication authority, and there is
+    // no second runtime to answer instead. The refusal is identical in development, test and production.
     missingEfsInstallation();
   }
   if (!existsSync(capsulePath)) {

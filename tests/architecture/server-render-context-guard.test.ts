@@ -122,8 +122,11 @@ describe("M13 — shared server composition guard", () => {
       // M17 — the boundary consumes the Spoke the REQUEST selected (the boundary's exact hostname claim,
       // carried on a private upstream header). The one-Spoke compatibility seam is no longer the page
       // authority; it remains available to legitimate compatibility tooling.
-      expect(source, relative(boundary)).toContain("requestPublicDestination");
-      expect(source, relative(boundary)).toContain("spokeServerComposition");
+      // C07-R02 — the boundary consumes the request's own EFS binding; the compatibility seam is not
+      // reachable from a Next entrypoint, and the refusal is the only alternative to a resolved Page.
+      expect(source, relative(boundary)).toContain("efsViewForCurrentRequest");
+      expect(source, relative(boundary)).toContain("missingEfsInstallation");
+      expect(source, relative(boundary)).not.toContain("requestPublicDestination");
       expect(source, relative(boundary)).not.toContain("currentBuildRuntimeContext");
       // The boundary only CHOOSES the context; it renders nothing itself.
       expect(source, relative(boundary)).not.toContain("getDictionary(");

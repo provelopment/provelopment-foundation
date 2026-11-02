@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "title": "Runtime Cut Startseite",
+  "description": "Deutsche Repräsentation derselben Seite.",
+  "sections": [
+    { "type": "prose", "body": "Diese Startseite wird ausschließlich aus einer expliziten EFS-Deklaration ausgeliefert." }
+  ]
+}

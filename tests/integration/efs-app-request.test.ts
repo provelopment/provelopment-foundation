@@ -20,7 +20,6 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { materializeEfsInstallation, selectEfsInstallation } from "../support/efs-installation";
-import { LEGACY_TEST_RUNTIME_ENV } from "@/app/[[...segments]]/legacy-test-runtime";
 import { EFS_REQUEST_PATH_HEADER } from "@/config/efs/request-path";
 
 // The canonical fixture's publications name REAL Spokes (`acme-spoke`). Declare that Spoke in a
@@ -314,14 +313,12 @@ describe("EFS actual App Router request branch (S3-E3)", () => {
     );
   });
 
-  it("gives a controlled setup diagnostic when a production installation has no EFS declaration", async () => {
+  it("gives the same controlled diagnostic when an installation declares no EFS manifest", async () => {
     delete process.env.FOUNDATION_EFS_MANIFEST;
     delete process.env.FOUNDATION_EFS_CAPSULE;
-    delete process.env[LEGACY_TEST_RUNTIME_ENV];
     await expect(request("my.provelopment.com", "/acme-co/en-001/about")).rejects.toThrow(
       /declares no EFS manifest/,
     );
-    process.env[LEGACY_TEST_RUNTIME_ENV] = "1";
   });
 
   // THE RESERVED HOME PAGE HAS EXACTLY ONE PUBLIC ADDRESS: its binding's locale root (GEO-03 R04-C23). `home` is that

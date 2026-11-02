@@ -186,8 +186,14 @@ describe("the harness keeps ONE readiness vocabulary", () => {
     const transitions = lines
       .map((line, index) => ({ line, index }))
       .filter(({ line }) => /await cdp\.evaluate\(multisiteChoose\("(site|language)"/.test(line));
-    // The multisite scenario's client transitions: three Language choices and four Site choices.
-    expect(transitions.length).toBeGreaterThanOrEqual(7);
+    // The multisite scenario's client ROUTE transitions are its LANGUAGE choices: two of them, one into the
+    // second qualified locale and one back (GEO-04 C09-R13). There is no Site transition to count any more —
+    // each Site is published behind its OWN closed single-Site binding, so a Site "switch" is not an
+    // interaction this model offers, and requiring one would re-introduce the geography this stage retires.
+    // The per-transition loop below is unchanged and remains the guard's real protection: whatever
+    // transitions exist must await the route they produce.
+    expect(transitions.length).toBeGreaterThanOrEqual(2);
+    expect(lines.some((line) => /await cdp\.evaluate\(multisiteChoose\("site"/.test(line))).toBe(false);
     for (const { line, index } of transitions) {
       const next = lines.slice(index + 1, index + 4).find((candidate) => candidate.includes("waitReady("));
       expect(next, `after ${line.trim()}`).toBeDefined();
@@ -196,5 +202,13 @@ describe("the harness keeps ONE readiness vocabulary", () => {
     // A Layout choice changes presentation, not the route: it is not a transition and is not awaited as
     // one (React flushes a discrete change event before the next evaluation, so there is no window).
     expect(lines.some((line) => /multisiteChoose\("layout"/.test(line))).toBe(true);
+  });
+
+  it("waits for a DESCRIPTOR's own publication, never materialising a generic Installation beside it", () => {
+    // GEO-04 C09-R19: an `efsInstallation` descriptor is the caller's Installation. The harness must not also
+    // build its own throwaway one — it would be served by nothing, owned by nobody and still have to be cleaned.
+    expect(harness).toContain('const generic = synthetic && deploymentRoot === null && efsInstallation === null;');
+    // The descriptor branch still selects the DESCRIPTOR's environment, in that order.
+    expect(harness).toContain("installationEnvironment(efsInstallation)");
   });
 });

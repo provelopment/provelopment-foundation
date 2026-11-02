@@ -1,149 +1,177 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-// GENERIC ISOLATION (ISO-B1C): deployment-owned state (dictionaries, authored pages, deployment
-// configuration) comes from the SYNTHETIC test deployment, never from the repository's own
-// deployment. See tests/support/synthetic-deployment.ts — the copy is disposable and the committed
-// fixture is only ever its source.
+/**
+ * THE DISCOVERY CONTRACT OF ONE EXPLICIT EFS PUBLICATION (`C07-R02`)
+ * ==================================================================
+ *
+ * `robots.txt` and `sitemap.xml` are answered from an explicit EFS declaration and nothing else: the
+ * request's Host selects a claimed binding, the binding selects a declared Site and its declared
+ * representations, and only representations that are PUBLIC are advertised.
+ *
+ * Every expectation here comes from the fixture's OWN authored declaration — never from calling the
+ * production sitemap to build its own expected value — so a regression that publishes an unlisted Page,
+ * invents a route, leaks another owner's origin or answers an unclaimed host fails here.
+ *
+ * RETIRED WITH THIS MIGRATION (geography-only rows, itemized):
+ *   S-1 "leads with the root entry and covers every configured locale" — `/<site>/<locale>` roots of
+ *       `site.config.json` sites are retired by D28: an EFS Page address comes from its binding and its
+ *       declared route, never from a Site-code spelling.
+ *   S-2 "every published URL belongs to a configured site AND one of that site's locales" — a Site code
+ *       is not a URL segment for a closed binding; the surviving invariant (every URL belongs to the
+ *       requesting binding's own origin) is asserted instead.
+ *   S-3 "never leaks an unconfigured regional combination" + "emits only genuinely configured regional
+ *       landings and regional pages" — regional landings and `pageBindings` are retired by D28 with no
+ *       EFS equivalent; replaced by the undeclared-source and unlisted exclusions below.
+ *   S-4 "emits no collection route" — the collection model is gone; the surviving invariants are that
+ *       every published URL is a declared Page address and that no undeclared source can appear.
+ *   S-5 "publishes exactly the inventory the site actually serves" — its expectation was built from
+ *       `createPageSources`, the retired composition; replaced by explicit declared-address checks.
+ *   S-6 "keeps every pre-existing sitemap invariant (robots + locale coverage)" — same retired input.
+ * PRESERVED: canonical origin, only-public and only-declared inventory, truthful robots authority, no
+ * ghost routes, no cross-owner URL, and an unclaimed host publishing nothing.
+ */
 
-import robots from "@/app/robots";
-import sitemap from "@/app/sitemap";
-import { createPageSources } from "@/adapters/content/page-sources";
-import { siteConfig } from "@/config";
-import { HOME_CONTENT_SLUG } from "@/core/page-content";
-import { regionsForLocale, bindingsForSite } from "@/core/regional-pages";
-import { sitePath } from "@/core/site";
+const state = vi.hoisted(() => ({ headers: new Map<string, string>() }));
 
-describe("Phase S — sitemap & robots contract (deterministic, config/content-derived)", () => {
-  it("robots references the configured absolute sitemap URL", async () => {
-    expect((await robots()).sitemap).toBe(`${siteConfig.url}/sitemap.xml`);
+vi.mock("next/headers", () => ({
+  headers: async () => ({ get: (key: string) => state.headers.get(key) ?? null }),
+}));
+
+vi.mock("next/navigation", () => ({
+  notFound: () => {
+    throw new Error("NOT_FOUND");
+  },
+  redirect: (pathname: string) => {
+    throw new Error(`REDIRECT:${pathname}`);
+  },
+  permanentRedirect: (pathname: string) => {
+    throw new Error(`PERMANENT_REDIRECT:${pathname}`);
+  },
+}));
+
+import {
+  materializeRuntimeCutFixture,
+  materializeRuntimeCutInstallation,
+  RUNTIME_CUT_HOST,
+  RUNTIME_CUT_UNCLAIMED_HOST,
+  selectRuntimeCutFixture,
+} from "../support/efs-runtime-cut";
+import { selectEfsInstallation } from "../support/efs-installation";
+
+const installation = materializeRuntimeCutInstallation();
+selectEfsInstallation(installation.root);
+
+const fixture = materializeRuntimeCutFixture();
+const restoreDeclaration = selectRuntimeCutFixture(fixture);
+
+vi.resetModules();
+const { default: robots } = await import("@/app/robots");
+const { default: sitemap } = await import("@/app/sitemap");
+
+afterAll(() => {
+  restoreDeclaration();
+  fixture.cleanup();
+  installation.cleanup();
+});
+
+function atHost(host: string) {
+  state.headers.set("host", host);
+}
+
+
+describe("robots.txt advertises the requesting binding's own sitemap", () => {
+  beforeEach(() => state.headers.clear());
+
+  it("names the canonical origin of the claimed binding", async () => {
+    atHost(RUNTIME_CUT_HOST);
+    const result = await robots();
+    expect(result.sitemap).toBe(`https://${RUNTIME_CUT_HOST}/sitemap.xml`);
+    expect(result.rules).toEqual({ userAgent: "*", allow: "/" });
   });
 
-  it("sitemap leads with the root entry and covers every configured locale", async () => {
-    const entries = await sitemap();
-    const urls = entries.map((entry) => entry.url);
-
-    expect(urls[0]).toBe(siteConfig.url);
-    // S1 — a locale root is a URL INSIDE a site: `/ww/en`, never a bare `/en`.
-    for (const site of siteConfig.sites) {
-      for (const { path } of site.locales) {
-        expect(urls, `locale root ${site.code}/${path}`).toContain(
-          `${siteConfig.url}${sitePath(site, path)}`,
-        );
-      }
-    }
-    expect(entries[0].lastModified).toBeInstanceOf(Date);
+  it("advertises the prefixed binding's own origin, not the root binding's", async () => {
+    atHost("managed.runtime-cut.test");
+    expect((await robots()).sitemap).toBe("https://managed.runtime-cut.test/sitemap.xml");
   });
 
-  it("every published URL belongs to a configured site AND one of that site's locales", async () => {
-    const entries = await sitemap();
-    for (const entry of entries.slice(1)) {
-      const [siteCode, localePath] = entry.url.slice(siteConfig.url.length + 1).split("/");
-      const site = siteConfig.sites.find((candidate) => candidate.code === siteCode);
-      // No foreign site prefix…
-      expect(site, entry.url).toBeDefined();
-      // …and no locale the site does not actually serve.
-      expect(site?.locales.map((locale) => locale.path), entry.url).toContain(localePath);
-    }
+  it("advertises no sitemap at all for a host no binding claims", async () => {
+    atHost(RUNTIME_CUT_UNCLAIMED_HOST);
+    const result = await robots();
+    expect(result.sitemap).toBeUndefined();
+    expect(result.rules).toEqual({ userAgent: "*", allow: "/" });
   });
 
-  it("never leaks an unconfigured regional combination", async () => {
-    const entries = await sitemap();
-    const allRegionIds = new Set(Object.keys(siteConfig.regions));
-
-    for (const entry of entries) {
-      // S1 — the URL is `/<site>/<locale>/<region>…`, so a region sits at index 2.
-      const segments = entry.url.slice(siteConfig.url.length + 1).split("/").filter(Boolean);
-      if (segments.length >= 3 && allRegionIds.has(segments[2])) {
-        expect(
-          siteConfig.pageBindings.some(
-            (binding) =>
-              binding.site === segments[0] &&
-              binding.locale === segments[1] &&
-              binding.region === segments[2],
-          ),
-          entry.url,
-        ).toBe(true);
-      }
-    }
-  });
-
-  it("emits no collection route: every route it publishes is an authored page or a region", async () => {
-    // A1E: there is no offerings/blog/portfolio/testimonials collection. A route in the
-    // sitemap is therefore always the locale root, an authored page route (which is the
-    // ONLY thing that can produce `/offerings/...`, `/blog/...` and so on) or a
-    // configured regional landing/page. Nothing is invented by a feature flag.
-    const urls = (await sitemap()).map((entry) => entry.url);
-    const regionIds = new Set(Object.keys(siteConfig.regions));
-
-    for (const url of urls) {
-      const segments = url.slice(siteConfig.url.length + 1).split("/").filter(Boolean);
-      const isRegionRoute = segments.length >= 3 && regionIds.has(segments[2]);
-      if (isRegionRoute) continue;
-      // Non-regional: the root, or a page the site actually authored — after `/<site>/<locale>`.
-      const routePath = segments.slice(2).join("/");
-      if (routePath.length === 0) continue;
-      expect(routePath, url).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*$/);
-    }
-  });
-
-  it("emits only genuinely configured regional landings and regional pages", async () => {
-    const urls = (await sitemap()).map((entry) => entry.url);
-
-    for (const binding of siteConfig.pageBindings) {
-      const path =
-        binding.slug === null
-          ? `/${binding.site}/${binding.locale}/${binding.region}`
-          : `/${binding.site}/${binding.locale}/${binding.region}/${binding.slug}`;
-      expect(urls, binding.locale + binding.region + (binding.slug ?? "")).toContain(
-        `${siteConfig.url}${path}`,
-      );
-    }
+  it("never invents a disallow rule for a declared unlisted Page", async () => {
+    atHost(RUNTIME_CUT_HOST);
+    expect(JSON.stringify(await robots()).toLowerCase()).not.toContain("disallow");
   });
 });
-describe("Phase T — trust/publishing sitemap contract (derived inventory)", () => {
-  it("publishes exactly the inventory the site actually serves", async () => {
+
+describe("sitemap.xml advertises exactly what this binding publishes", () => {
+  beforeEach(() => state.headers.clear());
+
+  it("lists every declared, public Page address under the binding's origin", async () => {
+    atHost(RUNTIME_CUT_HOST);
     const urls = (await sitemap()).map((entry) => entry.url);
-    const pages = createPageSources({ sites: siteConfig.sites });
 
-    // The expected set is derived from the SAME composition the routes use, so the
-    // assertion is "the sitemap advertises what the site serves" rather than a frozen
-    // list: no phantom route for content that does not exist, and no missing entry for
-    // content that does.
-    const expected = new Set<string>([siteConfig.url]);
-    // S1 — the same derivation, PER SITE: the sitemap advertises exactly what each site serves.
-    for (const site of siteConfig.sites) {
-      const siteBindings = bindingsForSite(siteConfig.pageBindings, site.code);
-      for (const { path } of site.locales) {
-        expected.add(`${siteConfig.url}${sitePath(site, path)}`);
-        for (const routePath of await pages.listRoutes(site.code, path)) {
-          // The home page's real URL is the locale root, never `/<site>/<locale>/home`.
-          if (routePath === HOME_CONTENT_SLUG) continue;
-          expected.add(`${siteConfig.url}${sitePath(site, path, routePath)}`);
-        }
-        for (const region of regionsForLocale(siteBindings, path)) {
-          expected.add(`${siteConfig.url}${sitePath(site, path, region)}`);
-        }
-      }
+    for (const address of [
+      "/en-001",
+      "/en-001/about",
+      "/en-001/catalogue",
+      "/en-001/guide/start",
+      "/de-de",
+    ]) {
+      expect(urls, address).toContain(`https://${RUNTIME_CUT_HOST}${address}`);
     }
-    for (const binding of siteConfig.pageBindings) {
-      if (binding.slug !== null) {
-        expected.add(
-          `${siteConfig.url}/${binding.site}/${binding.locale}/${binding.region}/${binding.slug}`,
-        );
-      }
-    }
-
-    expect(new Set(urls)).toEqual(expected);
-    expect(new Set(urls).size, "no duplicate URLs").toBe(urls.length);
+    expect(urls.every((url) => url.startsWith(`https://${RUNTIME_CUT_HOST}/`))).toBe(true);
   });
 
-  it("keeps every pre-existing sitemap invariant (robots + locale coverage)", async () => {
-    expect((await robots()).sitemap).toBe(`${siteConfig.url}/sitemap.xml`);
+  it("omits the unlisted representation", async () => {
+    atHost(RUNTIME_CUT_HOST);
     const urls = (await sitemap()).map((entry) => entry.url);
-    for (const site of siteConfig.sites) {
-      for (const { path } of site.locales) {
-        expect(urls).toContain(`${siteConfig.url}${sitePath(site, path)}`);
-      }
+    expect(urls.some((url) => url.includes("/preview"))).toBe(false);
+  });
+
+  it("omits a source file that exists in the capsule without a declaration", async () => {
+    atHost(RUNTIME_CUT_HOST);
+    const urls = (await sitemap()).map((entry) => entry.url);
+    // `pages/notes/en-001.md` exists on disk and is undeclared: existence is not publication.
+    expect(urls.some((url) => url.includes("/notes"))).toBe(false);
+  });
+
+  it("invents no regional landing and no Site-code segment", async () => {
+    atHost(RUNTIME_CUT_HOST);
+    const urls = (await sitemap()).map((entry) => entry.url);
+    for (const url of urls) {
+      const segments = url.slice(`https://${RUNTIME_CUT_HOST}/`.length).split("/").filter(Boolean);
+      // The retired geography produced `/<site>/<locale>/<region>`; an EFS address begins with a
+      // declared locale tag and carries neither a region tier nor a Site code.
+      expect(["en-001", "de-de"], url).toContain(segments[0]);
+      expect(segments.join("/"), url).not.toMatch(/(^|\/)(ww|eu|apac)(\/|$)/);
     }
+  });
+
+  it("never advertises the Home Page at a literal /home address", async () => {
+    atHost(RUNTIME_CUT_HOST);
+    const urls = (await sitemap()).map((entry) => entry.url);
+    expect(urls.some((url) => url.endsWith("/home"))).toBe(false);
+  });
+
+  it("publishes nothing for a host no binding claims", async () => {
+    atHost(RUNTIME_CUT_UNCLAIMED_HOST);
+    expect(await sitemap()).toEqual([]);
+  });
+
+  it("keeps each binding's inventory on its own origin and prefix", async () => {
+    atHost(RUNTIME_CUT_HOST);
+    const root = (await sitemap()).map((entry) => entry.url);
+    atHost("managed.runtime-cut.test");
+    const managed = (await sitemap()).map((entry) => entry.url);
+
+    expect(root.some((url) => url.startsWith("https://managed.runtime-cut.test"))).toBe(false);
+    expect(managed.some((url) => url.startsWith(`https://${RUNTIME_CUT_HOST}/`))).toBe(false);
+    expect(
+      managed.every((url) => url.startsWith("https://managed.runtime-cut.test/managed/")),
+    ).toBe(true);
   });
 });

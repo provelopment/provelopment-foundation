@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import { createElement } from "react";
@@ -756,6 +756,42 @@ const SRC = path.join(process.cwd(), "src");
 const MODEL = path.join(SRC, "app", "[[...segments]]", "efs-shell-nav-model.ts");
 
 /**
+ * THE ONE PREAUTHORIZED IMPORTER — AND IT DOES NOT EXIST YET.
+ *
+ * R06 originally refused EVERY application importer of this model. That blanket condition collided with
+ * the next intended order: the non-live EFS ownership adapter must legitimately import
+ * `efsPrimaryNavigationModel` to compose a Site's primary navigation, so the model could never gain its
+ * one intended consumer without first defeating an accepted guard.
+ *
+ * The enduring safety property is therefore not "nobody imports this model" but "**no unauthorized**
+ * live import". This is ONE exact repository-relative path — not a basename, directory, glob or prefix
+ * — so a same-named module elsewhere, an added route or layout, an adjacent server compositor and a
+ * newly named EFS helper all still fail. Preauthorizing the path is all this correction does; creating
+ * it is a separate order.
+ */
+const OWNERSHIP_ADAPTER = "src/app/[[...segments]]/efs-shell-nav-ownership.ts";
+
+/**
+ * Repository-relative POSIX path for a scanned module. `path.relative` makes the decision independent
+ * of where the checkout sits on disk, and folding the separator keeps ONE comparison working on Windows
+ * (backslash) and POSIX (slash) instead of two subtly different ones.
+ */
+function repoPath(file: string): string {
+  return path.relative(process.cwd(), file).split(path.sep).join("/");
+}
+
+/**
+ * The guard's decision, extracted as a PURE function so it can be proved against synthetic input
+ * without ever planting a violating module in the tree. Takes repository-relative importer paths and
+ * returns exactly those that are NOT the single preauthorized adapter, in input order.
+ */
+function unauthorizedImporters(importerPaths: readonly string[]): string[] {
+  return importerPaths
+    .map((file) => file.replace(/\\/g, "/"))
+    .filter((file) => file !== OWNERSHIP_ADAPTER);
+}
+
+/**
  * Comments are stripped FIRST. Several modules legitimately NAME the authorities they refuse to use in
  * prose (this one does), so a text search that counted those would report a dependency the compiler
  * never sees. This is the same technique the accepted Stage A guard uses.
@@ -779,11 +815,82 @@ function applicationModules(directory: string = SRC): string[] {
 }
 
 describe("source guard — nothing live imports this model yet", () => {
-  it("has NO application importer, so the live shell still runs the old path", () => {
-    const importers = applicationModules()
+  it("has NO UNAUTHORIZED application importer, so the live shell still runs the old path", () => {
+    // The FULL repository-wide scan is kept — every `.ts`/`.tsx` module under `src/`, the model itself
+    // excluded, comments stripped. Narrowing the EXCEPTION must never narrow the DETECTION: checking
+    // only the seven known live files would silently admit any new unauthorized importer elsewhere.
+    const observed = applicationModules()
       .filter((file) => file !== MODEL)
-      .filter((file) => withoutComments(readFileSync(file, "utf8")).includes("efs-shell-nav-model"));
-    expect(importers).toEqual([]);
+      .filter((file) => withoutComments(readFileSync(file, "utf8")).includes("efs-shell-nav-model"))
+      .map(repoPath);
+
+    // THE ENDURING INVARIANT: the only importer of this model may ever be the one preauthorized,
+    // non-live adapter. Anything else — a route, a layout, a compositor, a helper, a lookalike
+    // filename in another directory — is a violation.
+    expect(unauthorizedImporters(observed)).toEqual([]);
+
+    // CHECKPOINT FACT (R08), deliberately SELF-EXPIRING rather than permanent: while the adapter does
+    // not exist, nothing at all may import the model. Once a later order creates it this branch simply
+    // stops asserting and the invariant above carries on, so the successor meets no contradictory
+    // guard and this file never needs a second corrective order.
+    if (!existsSync(path.join(process.cwd(), ...OWNERSHIP_ADAPTER.split("/")))) {
+      expect(observed).toEqual([]);
+    }
+  });
+
+  /**
+   * POSITIVE CONTROL — the guard above must be able to FAIL.
+   *
+   * `expect(unauthorizedImporters(observed)).toEqual([])` would pass trivially on a tree with no
+   * importers at all, which proves nothing about detection. These cases feed the same pure classifier
+   * synthetic repository-relative paths, so an unauthorized LIVE surface, an unrelated application
+   * importer and a same-named module in another directory are each shown to be REPORTED — asserted by
+   * the exact returned paths, not merely "returns an array". The strings are test data only: no
+   * production module becomes an importer and the tree stays free of the adapter.
+   */
+  describe("importer classification — one exact preauthorized path, everything else refused", () => {
+    it("allows exactly the one preauthorized non-live adapter", () => {
+      expect(unauthorizedImporters([OWNERSHIP_ADAPTER])).toEqual([]);
+    });
+
+    it("reports a live App Router surface even beside the allowed adapter", () => {
+      expect(
+        unauthorizedImporters([OWNERSHIP_ADAPTER, "src/app/[[...segments]]/layout.tsx"]),
+      ).toEqual(["src/app/[[...segments]]/layout.tsx"]);
+    });
+
+    it("reports unrelated application importers, so this is not a route-only exemption", () => {
+      expect(
+        unauthorizedImporters([
+          "src/components/site/context-nav-links.tsx",
+          "src/core/efs/publication.ts",
+          OWNERSHIP_ADAPTER,
+        ]),
+      ).toEqual(["src/components/site/context-nav-links.tsx", "src/core/efs/publication.ts"]);
+    });
+
+    it("reports the SAME basename elsewhere — the allowlist is a path, not a filename", () => {
+      expect(
+        unauthorizedImporters([
+          "src/another-place/efs-shell-nav-ownership.ts",
+          "src/app/[[...segments]]/efs-shell-nav-ownership.tsx",
+          "src/app/[[...segments]]/efs-shell-nav-ownership.ts.bak",
+        ]),
+      ).toEqual([
+        "src/another-place/efs-shell-nav-ownership.ts",
+        "src/app/[[...segments]]/efs-shell-nav-ownership.tsx",
+        "src/app/[[...segments]]/efs-shell-nav-ownership.ts.bak",
+      ]);
+    });
+
+    it("normalizes Windows separators before deciding, on either platform", () => {
+      expect(
+        unauthorizedImporters(["src\\app\\[[...segments]]\\efs-shell-nav-ownership.ts"]),
+      ).toEqual([]);
+      expect(unauthorizedImporters(["src\\app\\[[...segments]]\\layout.tsx"])).toEqual([
+        "src/app/[[...segments]]/layout.tsx",
+      ]);
+    });
   });
 
   it("is not reachable from the route, layout, composition or the accepted EFS modules", () => {
@@ -796,10 +903,13 @@ describe("source guard — nothing live imports this model yet", () => {
       "app/[[...segments]]/efs-shell-destinations.ts",
       "components/site/context-nav-links.tsx",
     ]) {
-      expect(
-        withoutComments(readFileSync(path.join(SRC, file), "utf8")),
-        file,
-      ).not.toContain("efs-shell-nav-model");
+      const source = withoutComments(readFileSync(path.join(SRC, file), "utf8"));
+      expect(source, file).not.toContain("efs-shell-nav-model");
+      // …nor the forthcoming non-live intermediate. A live entrypoint importing the adapter directly
+      // would reach the model without ever appearing in the importer allowlist above, so the narrowed
+      // exception must not become a way around this guard. This remains a STRING-LEVEL source guard —
+      // not a transitive dependency graph; deeper reachability is a review question at cutover time.
+      expect(source, file).not.toContain("efs-shell-nav-ownership");
     }
   });
 

@@ -560,3 +560,106 @@ describe("authored destinations — contradictory input fails closed", () => {
     });
   });
 });
+
+describe("R04-A — a Site-ID-shaped Page route of the CURRENT Site resolves", () => {
+  /** Munich declares the SAME public route, so only Berlin's own declaration may answer a Berlin view. */
+  const MUNICH_SAME_ROUTE = page("munich-guide", ["munich", "guide"], "en-001");
+  const BERLIN_SITE_SHAPED = page("berlin-munich-guide", ["munich", "guide"], "en-001");
+  const BERLIN_OWN_ID = page("berlin-own-guide", ["berlin", "guide"], "en-001");
+  const berlinPages = [BERLIN_SITE_SHAPED, BERLIN_OWN_ID] as const;
+
+  const siteShapedView: EfsShellDestinationSource = view({
+    binding: ALPHA,
+    site: site("berlin", berlinPages),
+    facet: {
+      id: "alpha",
+      sites: [site("berlin", berlinPages), site("munich", [MUNICH_SAME_ROUTE])],
+    },
+    locale: "en-001",
+    localeKey: "en-001",
+    pageRoute: ["munich", "guide"],
+    navigation: [
+      nav(ALPHA, "berlin", "en-001", "berlin-munich-guide", "Munich guide", ["munich", "guide"]),
+      nav(ALPHA, "berlin", "en-001", "berlin-own-guide", "Berlin guide", ["berlin", "guide"]),
+    ],
+  });
+
+  it("resolves a sibling-Site-ID-first route that the CURRENT Site actually declares", () => {
+    expect(resolve("/munich/guide", siteShapedView)).toEqual({
+      kind: "published",
+      href: href(ALPHA, "berlin", "en-001", ["munich", "guide"]),
+      pageId: "berlin-munich-guide",
+    });
+  });
+
+  it("publishes it under Berlin's base and never under Munich's", () => {
+    const result = resolve("/munich/guide", siteShapedView);
+    if (result.kind !== "published") throw new Error("expected published");
+    expect(result.href).toBe("/alpha/berlin/en-001/munich/guide");
+    expect(result.href).not.toBe(href(ALPHA, "munich", "en-001", ["munich", "guide"]));
+    expect(result.pageId).toBe(BERLIN_SITE_SHAPED.id);
+    expect(result.pageId).not.toBe(MUNICH_SAME_ROUTE.id);
+  });
+
+  it("resolves a route beginning with the CURRENT Site's own ID", () => {
+    expect(resolve("/berlin/guide", siteShapedView)).toEqual({
+      kind: "published",
+      href: href(ALPHA, "berlin", "en-001", ["berlin", "guide"]),
+      pageId: "berlin-own-guide",
+    });
+  });
+
+  it("still refuses a Site-shaped route that nothing of this Site declares", () => {
+    expect(resolve("/munich/archive", siteShapedView)).toEqual({
+      kind: "unavailable",
+      reason: "site-scoped-authored-route",
+    });
+  });
+
+  it("keeps a declared but UNLISTED Site-shaped Page at not-published", () => {
+    const unlisted: EfsShellDestinationSource = {
+      ...siteShapedView,
+      site: site("berlin", [...berlinPages, page("berlin-archive", ["munich", "archive"], "en-001")]),
+    };
+    expect(resolve("/munich/archive", unlisted)).toEqual({
+      kind: "unavailable",
+      reason: "not-published",
+    });
+  });
+});
+
+describe("R04-B — the navigation entry must be an EXACT supported address", () => {
+  const GUIDE = page("berlin-munich-guide", ["munich", "guide"], "en-001");
+  const pageList = [GUIDE] as const;
+
+  const only = (hrefValue: string): EfsShellDestinationSource =>
+    view({
+      binding: ALPHA,
+      site: site("berlin", pageList),
+      facet: { id: "alpha", sites: [site("berlin", pageList)] },
+      locale: "en-001",
+      localeKey: "en-001",
+      pageRoute: ["munich", "guide"],
+      navigation: [{ pageId: GUIDE.id, label: "Guide", href: hrefValue, current: true }],
+    });
+
+  it("accepts the exact address and returns it verbatim", () => {
+    const exact = href(ALPHA, "berlin", "en-001", ["munich", "guide"]);
+    const result = resolve("/munich/guide", only(exact));
+    expect(result).toEqual({ kind: "published", href: exact, pageId: GUIDE.id });
+  });
+
+  it.each([
+    ["/alpha/berlin/it-it/munich/guide", "unsupported locale"],
+    ["/alpha/berlin/en-001/extra/munich/guide", "extra segment between locale and Page route"],
+    ["/alpha/munich/en-001/munich/guide", "a sibling Site's selector"],
+    ["/beta/berlin/en-001/munich/guide", "another binding's prefix"],
+    ["/en-001/munich/guide", "the binding prefix and Site selector dropped"],
+    ["/alpha/berlin/en-001/munich/guide?x=1", "a query string appended"],
+  ])("refuses %s (%s)", (contradictory) => {
+    expect(resolve("/munich/guide", only(contradictory))).toEqual({
+      kind: "unavailable",
+      reason: "not-this-binding",
+    });
+  });
+});

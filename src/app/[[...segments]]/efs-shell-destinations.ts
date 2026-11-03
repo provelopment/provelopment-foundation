@@ -1,6 +1,7 @@
 import type { EfsView } from "./efs-request";
 import { shellAddressesForEfsView } from "./efs-shell-addresses";
-import { publicPathBase } from "@/core/efs/publication";
+import { contentSegments } from "@/core/efs/publication";
+import { localePathKey } from "@/core/efs/locales";
 import { pageRoutePathSegments } from "@/core/page-route-path";
 
 /**
@@ -49,8 +50,24 @@ import { pageRoutePathSegments } from "@/core/page-route-path";
  * integrated cutover.
  *
  * FAIL CLOSED. Contradictory input is refused rather than resolved: two declared Pages claiming one public
- * route, two different addresses for one Page in the navigation, or a navigation href that does not belong
- * to this binding's base or does not end at this Page's route.
+ * route, two different addresses for one Page in the navigation, or a navigation href that is not one of the
+ * exact addresses this binding may publish that Page at.
+ *
+ * R04 CORRECTIONS. Two defects in the first cut are fixed here. Both were genuine policy errors, not an
+ * architecture problem, and neither changes D31, the EFS declaration/representation schemas or the accepted
+ * R02 projection:
+ *
+ *   · DECLARATION BEFORE DIAGNOSIS. The first cut refused any authored route whose first segment happened to
+ *     equal a Facet Site id. But the EFS manifest does not reserve Site IDs as Page-route prefixes, so a Site
+ *     may lawfully declare `munich/guide` while the same Facet also contains a Site `munich` — and the old
+ *     guard silently dropped that genuinely published current-Site Page. The current Site's own declaration
+ *     now decides, and the Site-id-shaped outcome survives only as a diagnostic for a route nothing here
+ *     declares.
+ *   · WHOLE ADDRESS, NOT A PREFIX AND A SUFFIX. The first cut tested `startsWith(base + "/")` and
+ *     `endsWith("/" + route)`, which accepted a contradictory entry smuggling an unsupported locale or an
+ *     extra segment between the binding base and the Page route. The entry must now be a member of the exact
+ *     address set `contentSegments` produces for this binding, this Site and this Page across the locales the
+ *     binding actually declares.
  */
 
 /**
@@ -152,23 +169,30 @@ export function resolveEfsShellInternalDestination(input: {
   if (firstSegment === undefined) return { kind: "unavailable", reason: "unusable-authored-route" };
   const first = firstSegment.toLowerCase();
 
-  // A first segment naming a Site of this Facet is a fully Site-scoped address — including another Site's.
-  // This resolver only ever answers for the CURRENT Site, so it refuses rather than risk selecting a
-  // sibling Site's Page that happens to share a route name.
-  if (view.facet.sites.some((site) => site.id.toLowerCase() === first)) {
-    return { kind: "unavailable", reason: "site-scoped-authored-route" };
-  }
-
   // `home` is an internal authoring name; the published Home address is the Site+locale root via `/`.
   if (segments.length === 1 && first === RESERVED_HOME_ROUTE) {
     return { kind: "unavailable", reason: "reserved-home-route" };
   }
 
+  // DECLARATION FIRST (R04-A). The EFS manifest does not reserve Site IDs as forbidden first Page-route
+  // segments, so a Site may lawfully declare `munich/guide` while the same Facet also contains a Site
+  // `munich`. An authored Site-relative link is NOT a public request: it names a Page of the CURRENT Site,
+  // and a Site selector only exists inside the public address the binding already owns (D31 §3). So this
+  // Site's own declaration decides, and the first segment is never read as a Site selector here — reading
+  // it as one would silently DROP a genuinely published current-Site Page.
   const wanted = routeKey(segments);
   const declared = view.site.pages.filter((page) => routeKey(page.route) === wanted);
   if (declared.length > 1) return { kind: "unavailable", reason: "conflicting-page-identity" };
   const [page] = declared;
-  if (page === undefined) return { kind: "unavailable", reason: "no-declared-page" };
+  if (page === undefined) {
+    // A DIAGNOSTIC label only, applied because nothing of this Site declares the route. Neither branch may
+    // select a sibling Site's Page, and neither is a publication decision.
+    const siteShaped = view.facet.sites.some((site) => site.id.toLowerCase() === first);
+    return {
+      kind: "unavailable",
+      reason: siteShaped ? "site-scoped-authored-route" : "no-declared-page",
+    };
+  }
 
   // Publication is decided by the verified navigation — never by this resolver, never by `binding.locales`.
   // An unlisted, missing, private or refused representation simply has no entry to return.
@@ -179,15 +203,25 @@ export function resolveEfsShellInternalDestination(input: {
   const [entry] = entries;
   if (entry === undefined) return { kind: "unavailable", reason: "not-published" };
 
-  // The address must belong to THIS binding (its prefix, plus the Site selector when the binding is open)
-  // and must end at THIS Page's public route. The locale segment is deliberately NOT pinned: a Page served
-  // through its declared fallback representation is published at the fallback's own locale key, and the
-  // verified navigation entry is already the authority for which one that is.
-  const base = publicPathBase(view.binding, view.site.id);
-  const basePath = base.length === 0 ? "" : `/${base.join("/")}`;
-  if (!entry.href.startsWith(`${basePath}/`) || !entry.href.endsWith(`/${routeKey(page.route)}`)) {
-    return { kind: "unavailable", reason: "not-this-binding" };
+  // R04-B — FULL ADDRESS MEMBERSHIP. A two-sided prefix/suffix test accepts a contradictory entry that
+  // inserts an unsupported locale or an extra segment between the binding base and the Page route, so the
+  // whole address is compared instead. The legitimate address space is enumerated with the ONE address
+  // authority, `contentSegments`, over every locale the binding ACTUALLY declares (via `localePathKey`),
+  // which is what keeps a Page's verified fallback representation eligible without pinning this check to
+  // the current request's locale. `entry.href` is then returned VERBATIM: this is a postcondition on an
+  // already-verified entry, never an address-selection algorithm, and nothing recomputes the href.
+  const addresses = new Set<string>();
+  for (const locale of view.binding.locales) {
+    addresses.add(
+      `/${contentSegments(view.binding, {
+        siteId: view.site.id,
+        locale,
+        localeKey: localePathKey(locale),
+        pageRoute: page.route,
+      }).join("/")}`,
+    );
   }
+  if (!addresses.has(entry.href)) return { kind: "unavailable", reason: "not-this-binding" };
 
   return { kind: "published", href: entry.href, pageId: page.id };
 }

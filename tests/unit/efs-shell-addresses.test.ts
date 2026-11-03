@@ -482,6 +482,3 @@ describe("EFS shell address projection — stable ordering and purity", () => {
     expect(first.navigation).not.toBe(second.navigation);
   });
 });
-
-
-

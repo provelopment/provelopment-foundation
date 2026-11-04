@@ -18,9 +18,9 @@ const baseUrl = "https://example.com";
 
 const sites = resolveSites({
   input: [
-    { code: "ca", locales: ["en", "fr"], defaultLocale: "en" },
+    { code: "ca", locales: [{ path: "en", canonical: "en-CA" }, { path: "fr", canonical: "fr-CA" }], defaultLocale: "en" },
     // Another site that ALSO serves French — never an alternate of a Canadian page.
-    { code: "fr", locales: ["fr"], defaultLocale: "fr" },
+    { code: "fr", locales: [{ path: "fr", canonical: "fr-FR" }], defaultLocale: "fr" },
   ],
   defaultLocale: "en",
   locales: ["en", "fr"],

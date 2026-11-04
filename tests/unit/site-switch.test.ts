@@ -27,7 +27,16 @@ import {
 /** The deployment: Canada (en/fr), France (fr), and a Worldwide site (fr only). */
 const { sites } = resolveSites({
   input: [
-    { code: "ca", label: "Canada", locales: ["en", "fr"], defaultLocale: "en" },
+    // A country variant is DECLARED, never inferred from the Site name (`GEO-04` Stage C-A).
+    {
+      code: "ca",
+      label: "Canada",
+      locales: [
+        { path: "en", canonical: "en-CA" },
+        { path: "fr", canonical: "fr-CA" },
+      ],
+      defaultLocale: "en",
+    },
     { code: "fr", label: "France", locales: ["fr"], defaultLocale: "fr" },
     { code: "ww", label: "Worldwide", locales: ["fr"], defaultLocale: "fr" },
   ],

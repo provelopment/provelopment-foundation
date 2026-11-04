@@ -1,74 +1,65 @@
 /**
- * THE SITE-CODE CONTRACT (FOUNDATION-S1)
- * =====================================
+ * THE SITE-CODE CONTRACT (FOUNDATION-S1; GEOGRAPHIC AUTHORITY RETIRED BY `GEO-04` STAGE C-A)
+ * ========================================================================================
  *
- * A SITE is identified by a two-letter code, and this module is the ONE authority for which
- * codes exist. A site is normally a COUNTRY — `ca`, `fr`, `ch`, `id`, `jp` — and Foundation
- * additionally reserves `ww` for a WORLDWIDE / GLOBAL site, which is deliberately not a country
- * and may not be presented as one.
+ * A configuration Site code was once a CLOSED set of ISO 3166-1 alpha-2 country codes plus a reserved
+ * `ww`. That made a Site a country: it decided which codes could exist, and a language inside a Site
+ * inherited the country's own variant (`ca` + `en` → `en-CA`).
  *
- * WHY A CLOSED SET. The site code is simultaneously a content directory name, a URL segment and
- * (later, optionally) a hostname mapping key, so it must be predictable and machine-checkable:
- * arbitrary prose (`canada`, `main`, `my-office`) is refused, and the reference list below is the
- * single place the accepted codes are declared — never restated in a schema, a route or a
- * component.
+ * A Site is NOT a country (`GEO-04` R13/D28, `GEO-03` R04 presentation identity). A Site code is a
+ * **descriptive configuration key** — `main`, `workshop`, `corporate`, `chickens`, `product-support` —
+ * and, where an author really does run one Site per country, a country-shaped word is simply one such
+ * key. It is not a country, a locale, a location, an EFS SiteID or a public URL selector.
  *
- * CASE. Directories and URLs are LOWERCASE (`ca`, `ww`); a configuration may write `CA` and is
- * normalised here, so `CA` and `ca` can never mean two different sites. (Locale path keys follow
- * the same rule — see `@/core/locale`.)
+ * THE GRAMMAR HAS ONE AUTHORITY: `@/core/site-identity`
+ * ----------------------------------------------------
+ * This module no longer restates an accepted set. It delegates the grammar to `siteIdIssue`/`isSiteId`,
+ * which owns the content-slug family (`^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$`) and its single refinement (a
+ * Site ID begins with a letter). `.`, `..`, `/`, `\`, `%`, `_`, `~` and spaces are therefore not
+ * representable at all — no path separator, no traversal, no Windows path.
+ *
+ * Two authorities disagreeing was this module's worst property: `resolveSites` already accepted any
+ * well-formed descriptive key while `isSiteCode` refused it, so `pageResolutionCandidates` returned no
+ * candidates for a perfectly authored Site named `main`. One grammar now answers both.
+ *
+ * RESERVATION IS A DIFFERENT QUESTION, IN A DIFFERENT MODULE
+ * ---------------------------------------------------------
+ * `ww` is a RETIRED Site identity (`@/core/site-identity` `RESERVED_SITE_ID_GROUPS.retired`): it may not
+ * be an EFS SiteID or a public prefix. It survives here only as the historical *label* `Worldwide`, so a
+ * converted deployment's presentation label does not change meaning under its own feet.
+ *
+ * CASE. Directories and URLs are LOWERCASE; a configuration may write `CA` and is reported as a lowercase
+ * mistake rather than silently normalised, because the code is also a directory name.
  *
  * Framework-neutral: pure data + types only. No React, Next.js, filesystem or configuration.
  */
+import { isSiteId, siteIdIssue } from "./site-identity";
 
-/** The reserved code for a Worldwide / Global site: not a country. */
+/** The retired worldwide token, kept ONLY as the historical label `Worldwide` (never an EFS SiteID). */
 export const WORLDWIDE_SITE_CODE = "ww";
 
 /**
- * A SITE CODE — a recognized two-letter country code (`ca`, `fr`) or the reserved `ww`.
+ * A SITE CODE — a descriptive configuration key (`main`, `workshop`, `corporate`, `ca`).
  *
  * The alias exists so the site-scoped contracts (`@/core/page-source`, the page composition)
  * can name their site dimension in the SAME vocabulary as this authority, instead of spelling
- * an anonymous `string` that could hold anything.
+ * an anonymous `string` that could hold anything. It is a CONFIGURATION identity, not a country.
  */
 export type SiteCode = string;
-
-/**
- * The recognized ISO 3166-1 alpha-2 country codes (lowercase), Foundation's maintained reference
- * list. A code that is not here is refused: typos and invented codes fail loudly at build time
- * rather than publishing a site nobody can find.
- */
-export const COUNTRY_SITE_CODES: readonly string[] = [
-  "ad", "ae", "af", "ag", "ai", "al", "am", "ao", "aq", "ar", "as", "at", "au", "aw", "ax", "az",
-  "ba", "bb", "bd", "be", "bf", "bg", "bh", "bi", "bj", "bl", "bm", "bn", "bo", "bq", "br", "bs",
-  "bt", "bv", "bw", "by", "bz", "ca", "cc", "cd", "cf", "cg", "ch", "ci", "ck", "cl", "cm", "cn",
-  "co", "cr", "cu", "cv", "cw", "cx", "cy", "cz", "de", "dj", "dk", "dm", "do", "dz", "ec", "ee",
-  "eg", "eh", "er", "es", "et", "fi", "fj", "fk", "fm", "fo", "fr", "ga", "gb", "gd", "ge", "gf",
-  "gg", "gh", "gi", "gl", "gm", "gn", "gp", "gq", "gr", "gs", "gt", "gu", "gw", "gy", "hk", "hm",
-  "hn", "hr", "ht", "hu", "id", "ie", "il", "im", "in", "io", "iq", "ir", "is", "it", "je", "jm",
-  "jo", "jp", "ke", "kg", "kh", "ki", "km", "kn", "kp", "kr", "kw", "ky", "kz", "la", "lb", "lc",
-  "li", "lk", "lr", "ls", "lt", "lu", "lv", "ly", "ma", "mc", "md", "me", "mf", "mg", "mh", "mk",
-  "ml", "mm", "mn", "mo", "mp", "mq", "mr", "ms", "mt", "mu", "mv", "mw", "mx", "my", "mz", "na",
-  "nc", "ne", "nf", "ng", "ni", "nl", "no", "np", "nr", "nu", "nz", "om", "pa", "pe", "pf", "pg",
-  "ph", "pk", "pl", "pm", "pn", "pr", "ps", "pt", "pw", "py", "qa", "re", "ro", "rs", "ru", "rw",
-  "sa", "sb", "sc", "sd", "se", "sg", "sh", "si", "sj", "sk", "sl", "sm", "sn", "so", "sr", "ss",
-  "st", "sv", "sx", "sy", "sz", "tc", "td", "tf", "tg", "th", "tj", "tk", "tl", "tm", "tn", "to",
-  "tr", "tt", "tv", "tw", "tz", "ua", "ug", "um", "us", "uy", "uz", "va", "vc", "ve", "vg", "vi",
-  "vn", "vu", "wf", "ws", "ye", "yt", "za", "zm", "zw",
-];
-
-/** Every site code Foundation accepts: the country codes plus the reserved `ww`. */
-export const SITE_CODES: readonly string[] = [...COUNTRY_SITE_CODES, WORLDWIDE_SITE_CODE];
-
-const SITE_CODE_SET = new Set(SITE_CODES);
 
 /** Normalises any configuration spelling to the canonical lowercase path form. */
 export function normalizeSiteCode(value: string): string {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 
-/** True when `value` is a recognized site code (`ca`, `fr`, `ww`, …), case-insensitively. */
+/**
+ * True when `value` is a well-formed Site code, case-insensitively.
+ *
+ * The grammar is `@/core/site-identity`'s — one authority for Site syntax. A country-shaped key
+ * (`ca`) and a descriptive key (`chickens`) are the same kind of thing, because neither is a country.
+ */
 export function isSiteCode(value: string): boolean {
-  return SITE_CODE_SET.has(normalizeSiteCode(value));
+  return isSiteId(normalizeSiteCode(value));
 }
 
 /** True when the code names the Worldwide / Global site (never an ordinary country). */
@@ -76,48 +67,52 @@ export function isWorldwideSiteCode(value: string): boolean {
   return normalizeSiteCode(value) === WORLDWIDE_SITE_CODE;
 }
 
-/** True when the code is recognized AND already written in the canonical lowercase spelling. */
+/**
+ * True when the code is well-formed AND already written in the canonical lowercase spelling.
+ *
+ * A configured code is NOT silently normalised (below), so this answers "may this exact string be used
+ * as a directory name and configuration key as written?".
+ */
 export function isCanonicalSiteCode(value: string): boolean {
   return (
     typeof value === "string" &&
     value === value.trim() &&
     value === value.toLowerCase() &&
-    SITE_CODE_SET.has(value)
+    isSiteId(value)
   );
 }
 
 /**
- * The ONE actionable diagnosis for a configured site code, or `null` when it is usable.
+ * The ONE actionable diagnosis for a configured Site code, or `null` when it is usable.
  *
- * A configured code is NOT silently normalised: the code is simultaneously the content folder and
- * the URL segment, so `CA` must be reported as a lowercase mistake rather than accepted and quietly
- * turned into `ca` — the author would otherwise believe a directory named `CA` works.
+ * A configured code is NOT silently normalised: the code is simultaneously the content folder and the
+ * URL segment, so `CA` must be reported as a lowercase mistake rather than accepted and quietly turned
+ * into `ca` — the author would otherwise believe a directory named `CA` works.
+ *
+ * There is no accepted-word list to fail: `chickens`, `corporate` and `ca` are all ordinary keys. What
+ * remains is the grammar (`@/core/site-identity`) plus its lowercase requirement.
  */
 export function siteCodeIssue(value: string): string | null {
   if (isCanonicalSiteCode(value)) return null;
   const normalized = normalizeSiteCode(value);
-  if (SITE_CODE_SET.has(normalized)) {
+  if (isSiteId(normalized)) {
     return (
       `site code "${value}" must be lowercase — write it as "${normalized}" ` +
       "(the code is also the content folder and the URL segment)"
     );
   }
-  return (
-    `site code "${value}" must be a recognized two-letter country code or the reserved ` +
-    `"${WORLDWIDE_SITE_CODE}" (arbitrary names are not site codes)`
-  );
+  return siteIdIssue(value)?.replace(/^site id/i, "site code") ?? `site code "${value}" is not valid`;
 }
 
 /**
- * The default display label for a site code.
+ * The default display label for a Site code.
  *
- * `Worldwide` for the reserved `ww`, the upper-case country code for a country (`de` → `DE`), and —
- * since `GEO-03` R04 made a Spoke Site code a descriptive presentation identity — the code ITSELF for
- * any other well-formed key (`main` → `main`). Upper-casing a descriptive key would shout a word the
- * author wrote as a word.
+ * `Worldwide` for the retired worldwide token, so a converted deployment's label keeps its meaning. Every
+ * other key is labelled AS AUTHORED (`main` → `main`, `ca` → `ca`): upper-casing a key was the country
+ * presentation, and a Site is not a country, so the platform no longer shouts one.
  */
 export function defaultSiteLabel(code: string): string {
   const normalized = normalizeSiteCode(code);
   if (isWorldwideSiteCode(normalized)) return "Worldwide";
-  return COUNTRY_SITE_CODES.includes(normalized) ? normalized.toUpperCase() : normalized;
+  return normalized;
 }

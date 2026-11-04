@@ -110,17 +110,62 @@ async function noNoticePatch(harness, root, config) {
   config.contact = { ...(config.contact ?? {}), email: LONG_EMAIL };
 }
 
+/**
+ * THE DECLARED PAGES THIS SCENARIO REQUIRES, and one address the Installation must REFUSE.
+ *
+ * Every address here was read from the materialised Installation's own manifest and capsule, not assumed:
+ * the generic publication declares Site `main` with Pages `home` (two representations) and `about` (one),
+ * on binding `browser-open-main` with `prefix=[main]`, `siteMode=closed`, `locales=[en-001, de-DE]`.
+ */
+const DECLARED = [
+  ["/main/en-001", 200, "Home"],
+  ["/main/en-001/about", 200, "About"],
+  ["/main/en-001/services", 404, "undeclared sibling"],
+];
+
+/** One bounded request. A declaration probe must never cost a readiness budget. */
+async function statusOf(url, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal, redirect: "manual" });
+    return response.status;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * BOUNDED FAULT ISOLATION, BEFORE THE BROWSER RUNS (GEO-04 C09-R15).
+ *
+ * These requests use the DECLARED host. The binding authorises `localhost`; `127.0.0.1` is a different,
+ * unclaimed host and answers 404 — which an earlier run misread as "the copy declares no Page" and chased
+ * for two full readiness budgets. Home and About must be 200 and an undeclared sibling must be 404, so a
+ * declaration fault is reported in seconds and by name rather than rediscovered as a timeout.
+ */
+async function assertDeclarations(port, label) {
+  for (const [pathname, expected, what] of DECLARED) {
+    const status = await statusOf(`http://localhost:${port}${pathname}`);
+    if (status !== expected) {
+      throw new Error(`${label}: ${what} ${pathname} answered ${status}, expected ${expected}`);
+    }
+  }
+}
+
 /** ONE dev server for one disposable copy, on the first port that answers. */
-async function startServer(harness, root) {
+async function startServer(harness, root, label) {
   let last = null;
   for (const offset of PORT_OFFSETS) {
     const port = harness.port(offset);
-    const server = harness.startDevServer(port, { deploymentRoot: root });
+    const server = harness.startDevServer(port, { sourceRoot: root });
     try {
-      await harness.waitForServer(`http://127.0.0.1:${port}/ww/en`, 240000);
+      await harness.waitForServer(`http://localhost:${port}/main/en-001`, 120000);
+      await assertDeclarations(port, label);
       return { server, port };
     } catch (error) {
-      last = error;
+      last = new Error(
+        `${error instanceof Error ? error.message : String(error)}\n--- dev server output ---\n${server.log()}`,
+      );
       await harness.stopServer(server);
     }
   }
@@ -165,7 +210,7 @@ const PROBE = `(() => {
 async function measure(harness, rows, cdp, base, prefix, widths) {
   for (const width of widths) {
     await cdp.setViewport(width, 900);
-    await cdp.navigate(`${base}/ww/en`);
+    await cdp.navigate(`${base}/main/en-001`);
     await harness.waitReady(cdp);
     // A dev server's FIRST page settles its stylesheet and client runtime asynchronously (the matrix's own
     // geometry probes wait in the same way), so the measurement is taken on a settled document.
@@ -216,14 +261,14 @@ async function measure(harness, rows, cdp, base, prefix, widths) {
   // THE WRAP ITSELF: at a narrow width the bar must occupy more than one row — the case the retired rule hid
   // behind "More" — while still showing every destination and overflowing nothing.
   await cdp.setViewport(390, 900);
-  await cdp.navigate(`${base}/ww/en`);
+  await cdp.navigate(`${base}/main/en-001`);
   await harness.waitReady(cdp);
   const narrow = await cdp.evaluate(PROBE);
   harness.check(rows, `${prefix}.narrow.bar.wraps`, narrow.barRows >= 2, `rows=${narrow.barRows} items=${narrow.barItems}`);
 
   // THE NOTICE IS SHELL CHROME ON EVERY PAGE, not only the home page.
   await cdp.setViewport(1280, 900);
-  await cdp.navigate(`${base}/ww/en/about`);
+  await cdp.navigate(`${base}/main/en-001/about`);
   await harness.waitReady(cdp);
   const ordinary = await cdp.evaluate(PROBE);
   harness.check(
@@ -246,7 +291,7 @@ export async function run(chrome, harness) {
     plainCopy = await materializeFixture(harness, noNoticePatch);
 
     // ONE SERVER AT A TIME (Next refuses a second dev server for the same project directory).
-    const noticeRun = await startServer(harness, noticeCopy.root);
+    const noticeRun = await startServer(harness, noticeCopy.root, "notice");
     noticeServer = noticeRun.server;
     let cdp = await Cdp.connect(chrome);
     await measure(harness, rows, cdp, `http://localhost:${noticeRun.port}`, "notice", [390, 700, 1024, 1280]);
@@ -254,7 +299,7 @@ export async function run(chrome, harness) {
     await harness.stopServer(noticeServer);
     noticeServer = null;
 
-    const plainRun = await startServer(harness, plainCopy.root);
+    const plainRun = await startServer(harness, plainCopy.root, "plain");
     plainServer = plainRun.server;
     cdp = await Cdp.connect(chrome);
     await measure(harness, rows, cdp, `http://localhost:${plainRun.port}`, "plain", [390, 1280]);

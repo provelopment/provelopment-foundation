@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "title": "Runtime Cut Home",
+  "description": "Home representation of the explicit synthetic EFS Site.",
+  "sections": [
+    { "type": "prose", "body": "This home Page is served only from an explicit EFS declaration." }
+  ]
+}

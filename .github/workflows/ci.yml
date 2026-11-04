@@ -112,8 +112,6 @@ jobs:
 
       - run: pnpm assets:check
 
-      - run: pnpm country-codes:check
-
       - run: pnpm test:deployment
 
       - run: pnpm build
@@ -142,8 +140,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - run: pnpm assets:check
-
-      - run: pnpm country-codes:check
 
       - run: pnpm exec tsc --noEmit
 
@@ -184,8 +180,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - run: pnpm assets:check
-
-      - run: pnpm country-codes:check
 
       - run: pnpm exec tsc --noEmit
 
@@ -248,8 +242,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - run: pnpm assets:check
-
-      - run: pnpm country-codes:check
 
       - run: pnpm exec tsc --noEmit
 

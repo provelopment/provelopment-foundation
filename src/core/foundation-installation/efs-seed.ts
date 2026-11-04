@@ -16,8 +16,25 @@
  *
  * The conversion is DATA IN / DATA OUT: no filesystem, no clock, no framework. Source bytes are
  * copied unchanged; only their owner-scoped paths and the explicit declarations are new. A seed that
- * already carries `efs/manifest.json` is left exactly as authored, including every Entity identity
- * and publication.
+ * already carries `efs/manifest.json` is left exactly as authored (including every Entity identity
+ * and publication: an explicit seed is never converted or re-minted).
+ *
+ * THE LEGACY SOURCE CODE IS NOT AN EFS SITE IDENTITY (`GEO-04` C03)
+ * -----------------------------------------------------------------
+ * An ordinary seed still names its Site the way the legacy runtime names it, and the historical
+ * worldwide Site code `ww` is a GEOGRAPHIC name, not an EFS identity. Establishment therefore
+ * projects it onto the neutral descriptive EFS Site `main` at every EFS output — the Facet Site
+ * declaration, the capsule representation path, and the binding's `siteIds`/`defaultSiteId` — so a
+ * newly established EFS Site is identified by what it is, not by the country it used to cover.
+ *
+ * The projection is DELIBERATELY NARROW. Everything that the public contract and the presentation
+ * shell depend on keeps reading the ORIGINAL source code: source Page trees, the publication
+ * host/prefix (so `/ww/...` addresses, canonicals and owner assets are unchanged), and
+ * `presentationSiteCode`. Only ordinary-seed conversion is affected; an authored explicit EFS
+ * manifest keeps whatever identity it declares. Two legacy sources are never merged: a projection
+ * that would land on an EFS Site identity already taken by another source Site is refused, not
+ * renamed or resolved. Reserving `ww` and refusing it inside the EFS parser is a LATER, separate
+ * increment — this file neither reserves nor bans it.
  *
  * TWO AUTHORITIES ARE NOT INFERRED
  * -------------------------------
@@ -106,6 +123,52 @@ function safeSegment(value: string): string {
 /** Codepoint order, independent of the host locale: the allocation's deterministic order. */
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
+}
+
+/** The historical legacy Site code whose geography must not become an EFS Site identity. */
+const LEGACY_WORLDWIDE_SITE_CODE = "ww";
+
+/** The already-approved neutral descriptive EFS Site identity that replaces it. */
+const NEUTRAL_EFS_SITE_ID = "main";
+
+/**
+ * THE ONE legacy source-code -> EFS Site identity projection (`GEO-04` C03).
+ *
+ * Pure, local and deterministic: it invents no naming scheme and no fallback. A legacy source Site
+ * that is not the retired worldwide code keeps exactly the descriptive identity it had, so no other
+ * Site — country-shaped or not — is remapped by this increment.
+ */
+function efsSiteIdForLegacySource(siteCode: string): string {
+  const projected = safeSegment(siteCode);
+  return projected === LEGACY_WORLDWIDE_SITE_CODE ? NEUTRAL_EFS_SITE_ID : projected;
+}
+
+/**
+ * TWO LEGACY SOURCES MAY NEVER BECOME ONE EFS SITE.
+ *
+ * The projection can collide: a seed that declares both `ww` and a Site already named `main` would
+ * otherwise collapse two source Sites, their Pages and their publications into one EFS Site — silent
+ * content loss and cross-Site leakage. Identity allocation is not a place to be clever, so an
+ * ambiguous destination is REFUSED with the exact conflict rather than renamed, merged or re-routed.
+ */
+function assertDistinctEfsSiteIds(sites: readonly { code: string }[]): void {
+  const claimed = new Map<string, string>();
+  for (const site of sites) {
+    const id = efsSiteIdForLegacySource(site.code);
+    const previous = claimed.get(id);
+    if (previous === undefined) {
+      claimed.set(id, site.code);
+      continue;
+    }
+    throw new Error(
+      previous === site.code
+        ? `The seed declares the Site "${site.code}" more than once, so establishment cannot give it ` +
+            `one EFS Site identity "${id}". Declare each Site once.`
+        : `Legacy source Sites "${previous}" and "${site.code}" would both become the EFS Site ` +
+            `"${id}". Establishment refuses to merge them, because two source Sites must never share ` +
+            `one EFS Site identity. Rename one source Site before establishing this Installation.`,
+    );
+  }
 }
 
 /**
@@ -291,6 +354,8 @@ export function explicitSingleWebsiteEfsSeed(
     .filter((locale): locale is string => locale !== undefined);
   const globalDefault = text(config.i18n?.defaultLocale) ?? globalLocales[0];
   const sites = configuredSites(config);
+  // Refuse an ambiguous projection BEFORE any Page, manifest or capsule path is written.
+  assertDistinctEfsSiteIds(sites);
   const brandName = text(config.site?.name) ?? "Website";
   const moved: EfsSeedFile[] = files
     .filter((file) => file.path !== ".gitignore")
@@ -360,7 +425,7 @@ export function explicitSingleWebsiteEfsSeed(
 
       for (const locale of locales) {
         const source = draft.sources.get(locale);
-        const destination = `efs/capsule/${entityId}/${FACET_ID}/${safeSegment(
+        const destination = `efs/capsule/${entityId}/${FACET_ID}/${efsSiteIdForLegacySource(
           site.code,
         )}/pages/${pageId}/${localePathKey(locale)}`;
         if (draft.generated) {
@@ -399,7 +464,7 @@ export function explicitSingleWebsiteEfsSeed(
 
     return {
       site: {
-        id: safeSegment(site.code),
+        id: efsSiteIdForLegacySource(site.code),
         properties: { "site.label": { value: site.label, public: true } },
         pages,
       },
@@ -407,8 +472,15 @@ export function explicitSingleWebsiteEfsSeed(
       defaultLocale,
       pageFiles,
       publication: {
+        // The publication and binding IDENTIFIERS keep the legacy source code: they are stable
+        // authoring-time names of an existing publication, not Site identities, and renaming them
+        // would change nothing public while adding churn. The Site REFERENCES inside them are the
+        // projected EFS identity, exactly as the Facet declaration is.
         id: `${SPOKE_ID}-${safeSegment(site.code)}-publication`,
         spokeId: SPOKE_ID,
+        // The PRESENTATION code stays the legacy source code: it is a DESCRIPTIVE KEY into the owning
+        // Spoke's own configuration (which an ordinary conversion copies byte-identically), not an EFS
+        // Site identity — so the retired `ww` reservation does not apply to it (`C08` row 5 scope).
         presentationSiteCode: site.code,
         entityId,
         facetId: FACET_ID,
@@ -419,9 +491,9 @@ export function explicitSingleWebsiteEfsSeed(
             prefix: authority.prefix,
             entityId,
             facetId: FACET_ID,
-            siteIds: [safeSegment(site.code)],
+            siteIds: [efsSiteIdForLegacySource(site.code)],
             siteMode: "closed" as const,
-            defaultSiteId: safeSegment(site.code),
+            defaultSiteId: efsSiteIdForLegacySource(site.code),
             locales,
             defaultLocale,
             canonical: true,

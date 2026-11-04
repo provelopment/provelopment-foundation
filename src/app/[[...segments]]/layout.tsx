@@ -1,12 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Plus_Jakarta_Sans } from "next/font/google";
+import { notFound } from "next/navigation";
 
-import {
-  layoutForContext,
-  layoutForEfsContext,
-  layoutMetadataForContext,
-  spokeServerComposition,
-} from "./server-composition";
+import { EfsPresentationRefusal, layoutForEfsContext } from "./server-composition";
 import {
   efsDescription,
   efsLanguageAlternates,
@@ -15,8 +11,7 @@ import {
   efsTitle,
   efsViewForCurrentRequest,
 } from "./efs-request";
-import { legacyTestRuntimeEnabled, missingEfsInstallation } from "./legacy-test-runtime";
-import { requestPublicDestination } from "./request-context";
+import { missingEfsInstallation } from "./efs-refusal";
 import { assetUrl } from "@/core/efs/publication";
 import "../globals.css";
 
@@ -97,41 +92,37 @@ export async function generateMetadata({ params }: LocaleLayoutProps): Promise<M
       },
     };
   }
-  if (!legacyTestRuntimeEnabled()) missingEfsInstallation();
-  const { context, destination } = await requestPublicDestination(segments);
-  return layoutMetadataForContext(
-    spokeServerComposition(context),
-    destination.segments as string[],
-  );
+  return missingEfsInstallation();
 }
 
 export default async function LocaleLayout({ children, params }: LocaleLayoutProps) {
   const segments = (await params).segments ?? [];
   const efs = await efsViewForCurrentRequest(segments);
   if (efs) {
-    const shell = await layoutForEfsContext(
-      efs.context,
-      efs,
-      efsPublicSegments(efs),
-      children,
-      HTML_CLASS_NAME,
-    );
-    if (shell) return shell;
+    try {
+      const shell = await layoutForEfsContext(
+        efs.context,
+        efs,
+        efsPublicSegments(efs),
+        children,
+        HTML_CLASS_NAME,
+      );
+      // A composed shared shell, or the intentional EFS-only document below.
+      if (shell) return shell;
+    } catch (error) {
+      // GEO-04 R13 — an explicitly declared presentation Site the owning Spoke does not declare is a
+      // REFUSAL, not a rendering failure. The public answer is the sanctioned not-found response: no
+      // borrowed Site, no chrome-less 200 downgrade, and no internal message in the response body.
+      if (error instanceof EfsPresentationRefusal) notFound();
+      throw error;
+    }
+    // THE INTENTIONAL EFS-ONLY DOCUMENT — a publication that declares NO presentation Site. Legitimate:
+    // no chrome is borrowed, invented or implied, and no shared-shell client transition is promised.
     return (
       <html lang={efs.locale} className={HTML_CLASS_NAME}>
         <body className="min-h-full bg-white text-neutral-900 antialiased">{children}</body>
       </html>
     );
   }
-  // The context is the one the REQUEST selected (the boundary's exact hostname claim), and the shared
-  // composition derives the whole document from it. Only the isolated non-production test utility may
-  // reach this path; a real installation must have a verified EFS publication.
-  if (!legacyTestRuntimeEnabled()) missingEfsInstallation();
-  const { context, destination } = await requestPublicDestination(segments);
-  return layoutForContext(
-    spokeServerComposition(context),
-    destination.segments as string[],
-    children,
-    HTML_CLASS_NAME,
-  );
+  return missingEfsInstallation();
 }

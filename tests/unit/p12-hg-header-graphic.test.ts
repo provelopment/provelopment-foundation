@@ -259,7 +259,11 @@ describe("P12-HG — layout-independence contract", () => {
     // VIS1C — the brand link now carries the >= 44px hit-area contract; the mark
     // inside it keeps its own visual scale from the stylesheet (FOUNDATION-UI-R1E:
     // a maximum inline size and a maximum block size, never a forced one).
-    expect(siteHeader).toContain('className="ui-site-header-brand inline-flex min-h-11 min-w-11 items-center"');
+    // VIS1C — the brand link carries the >= 44px hit-area contract. R10 declares that class ONCE as
+    // a shared constant consumed by the ONE brand anchor, so a second presentation mode cannot drop
+    // the floor or duplicate the markup while the treatment stays provably identical.
+    expect(siteHeader).toContain('"ui-site-header-brand inline-flex min-h-11 min-w-11 items-center"');
+    expect(siteHeader).toContain("aria-label={label}");
     expect(siteHeader).toContain('className="ui-site-header-logo"');
     // No z-index/positioning on the band that could confine the fixed panels.
     // (`background-position` is a paint-only longhand, so match the properties,
@@ -309,7 +313,14 @@ describe("P12-HG — separation + reusability contract", () => {
     // Distinct config keys, distinct resolvers, distinct consumers.
     expect(layout).toContain("availableBannerPath(");
     expect(layout).toContain("availableBackgroundMap(siteConfig.assets?.backgrounds)");
-    expect(layout).toContain("<PageBanner banners={bannerMap} regionIds={regionIds} />");
+    // R10 — the banner is RENDERED by the shared document module, which BOTH presentation modes use;
+    // the composition still resolves the maps and hands them over. The seam stays independent of the
+    // band either way.
+    const sharedShell = readFileSync(
+      path.join(root, "src", "app", "[[...segments]]", "efs-shell.tsx"),
+      "utf8",
+    );
+    expect(sharedShell).toContain("<PageBanner banners={bannerMap} regionIds={regionIds} />");
     expect(layout).not.toContain("availableHeaderGraphicPath(");
     expect(siteHeader).not.toContain("availableBannerPath");
     expect(siteHeader).not.toContain("availableBackgroundMap");

@@ -1,10 +1,7 @@
 import type { MetadataRoute } from "next";
 
 import { efsRuntimeDeclared, efsSitemapForCurrentRequest } from "@/app/[[...segments]]/efs-request";
-import { legacyTestRuntimeEnabled, missingEfsInstallation } from "@/app/[[...segments]]/legacy-test-runtime";
-import { runtimeContextForRequest } from "@/config/spoke-request";
-
-import { sitemapForContext } from "./sitemap-context";
+import { missingEfsInstallation } from "@/app/[[...segments]]/efs-refusal";
 
 /**
  * The deployment's XML sitemap — a thin Next BOUNDARY (M14), now PER HOST (M16)
@@ -24,8 +21,5 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   if (efs) return efs;
   // When EFS is the declared authority, an unclaimed host has no legacy inventory to fall back to.
   if (efsRuntimeDeclared()) return [];
-  if (!legacyTestRuntimeEnabled()) missingEfsInstallation();
-  const context = await runtimeContextForRequest();
-  if (context === null) return [];
-  return sitemapForContext(context);
+  return missingEfsInstallation();
 }

@@ -110,6 +110,82 @@ export const MULTIHOST_SPOKES = [
   },
 ];
 
+/**
+ * THE EFS PUBLICATION OF THIS TWO-SPOKE INSTALLATION (GEO-04 C09-R19)
+ * ==================================================================
+ *
+ * `spokes.json` and each per-Spoke `site.config.json`/dictionary/content tree are what the Installation's
+ * OWNERSHIP and SHELL PRESENTATION are read from. They are NOT a publication authority: the request runtime
+ * is EFS-only, so an Installation that authors no manifest answers nothing at `/ww/en/**`. That is exactly
+ * why the legacy addresses this scenario used to probe are refused — the fix is to AUTHOR the publication,
+ * never to revive the retired grammar.
+ *
+ * Every field that could otherwise be guessed is explicit:
+ *
+ *   ONE PUBLICATION PER SPOKE, naming its OWN `spokeId` — never one generic default Spoke
+ *   ONE OPAQUE, DISTINCT ENTITY per Spoke — authored here, never derived from a hostname
+ *   SITE ID `main`; `ww` stays the Spoke's PRESENTATION key (a reserved word, so it can never be an EFS Site ID)
+ *   `prefix: []`, `siteMode: "closed"`, `siteIds: ["main"]` — every public address is `/<locale>/<route>`
+ *   the two platform INSPECTION hosts are EXPLICIT non-canonical ALIASES of alpha's canonical binding, so
+ *     they share alpha's ownership instead of becoming a second origin
+ *   ONE qualified locale (`en-001`) per Spoke, with a real representation for Home, About and its own route
+ */
+export const MULTIHOST_EFS_FACET = "site";
+/** The EFS Site ID every publication declares. */
+export const MULTIHOST_EFS_SITE = "main";
+/** The one qualified locale each Spoke publishes. */
+export const MULTIHOST_EFS_LOCALE = "en-001";
+/** One authored, opaque Entity per Spoke: identities of THIS fixture, never of a hostname. */
+const MULTIHOST_EFS_ENTITY = {
+  alpha: "e_0000000000000000000000e001",
+  beta: "e_0000000000000000000000e002",
+};
+
+/** The Home representation: a real JSON document naming the Spoke that publishes it. */
+function homeRepresentation(spoke) {
+  return `${JSON.stringify(
+    {
+      schemaVersion: 1,
+      title: spoke.siteName,
+      description: spoke.tagline,
+      sections: [{ type: "prose", heading: "Published by this Spoke", body: spoke.tagline }],
+    },
+    null,
+    2,
+  )}\n`;
+}
+
+/** One declared Page, with a representation for the locale it publishes. */
+function efsPage(id, route, label) {
+  return {
+    id,
+    route: [...route],
+    fallbackLocaleKey: MULTIHOST_EFS_LOCALE,
+    representations: [{ locale: MULTIHOST_EFS_LOCALE }],
+    properties: { "nav.label": { value: label, public: true } },
+  };
+}
+
+/** One binding: an explicit Host claim, closed Site, one qualified locale. */
+function efsBinding({ id, host, entityId, canonical, aliasOf = null }) {
+  return {
+    id,
+    host,
+    prefix: [],
+    entityId,
+    facetId: MULTIHOST_EFS_FACET,
+    siteIds: [MULTIHOST_EFS_SITE],
+    siteMode: "closed",
+    defaultSiteId: MULTIHOST_EFS_SITE,
+    locales: [MULTIHOST_EFS_LOCALE],
+    defaultLocale: MULTIHOST_EFS_LOCALE,
+    canonical,
+    // A non-canonical binding is an ALIAS and must NAME the canonical binding it mirrors — the manifest
+    // authority refuses an alias that names nothing, points at another alias, or changes ownership.
+    ...(aliasOf === null ? {} : { aliasOf }),
+  };
+}
+
 /** The runtime segment of a Spoke id: these ids are ASCII, so the authority's encoding is the id itself. */
 function segmentOf(id) {
   return id;
@@ -423,6 +499,92 @@ export function assertSpokeNamespaceAgreesWithCatalog(installationRoot, spokeId,
   return agreement;
 }
 
+/** Write `<root>/efs/manifest.json` and `<root>/efs/capsule/**` for both Spokes. */
+function writeEfsInstallation(root) {
+  const capsule = path.join(root, "efs", "capsule");
+  const manifestPath = path.join(root, "efs", "manifest.json");
+  mkdirSync(capsule, { recursive: true });
+
+  const entities = [];
+  const publications = [];
+
+  for (const spoke of MULTIHOST_SPOKES) {
+    const entityId = MULTIHOST_EFS_ENTITY[spoke.id];
+    const write = (pageId, extension, body) => {
+      const directory = path.join(capsule, entityId, MULTIHOST_EFS_FACET, MULTIHOST_EFS_SITE, "pages", pageId);
+      mkdirSync(directory, { recursive: true });
+      writeFileSync(path.join(directory, `${MULTIHOST_EFS_LOCALE}.${extension}`), body, "utf8");
+    };
+    write("home", "json", homeRepresentation(spoke));
+    write("about", "md", page(spoke.aboutTitle, spoke.aboutBody));
+    // …this Spoke's OWN route, in its own words: the two inventories genuinely differ by CONTENT.
+    write(
+      spoke.onlyRoute,
+      "md",
+      page(spoke.onlyTitle, `${spoke.siteName} authors ${spoke.onlyRoute} and no other Spoke does.`),
+    );
+
+    entities.push({
+      id: entityId,
+      properties: {
+        "brand.name": { value: spoke.siteName, public: true },
+        "contact.email": { value: `hello@${spoke.hostname}`, public: true },
+      },
+      facets: [
+        {
+          id: MULTIHOST_EFS_FACET,
+          properties: {},
+          sites: [
+            {
+              id: MULTIHOST_EFS_SITE,
+              properties: {},
+              pages: [
+                efsPage("home", ["home"], "Home"),
+                efsPage("about", ["about"], spoke.navigationLabels["/about"]),
+                efsPage(spoke.onlyRoute, [spoke.onlyRoute], spoke.onlyTitle),
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    const bindings = [
+      efsBinding({ id: `multihost-${spoke.id}`, host: spoke.hostname, entityId, canonical: true }),
+    ];
+    // THE PLATFORM'S INSPECTION HOSTS are explicit authorized ALIASES of the nominated Spoke's canonical
+    // binding — never a wildcard, never a second canonical origin, never an independent publication.
+    if (MULTIHOST_INSPECTION.spokeId === spoke.id) {
+      for (const [suffix, host] of [
+        ["inspection", MULTIHOST_INSPECTION.hostname],
+        ["branch", MULTIHOST_INSPECTION.branchHostname],
+      ]) {
+        bindings.push(
+          efsBinding({
+            id: `multihost-${spoke.id}-${suffix}`,
+            host,
+            entityId,
+            canonical: false,
+            aliasOf: `multihost-${spoke.id}`,
+          }),
+        );
+      }
+    }
+
+    publications.push({
+      id: `multihost-${spoke.id}`,
+      spokeId: spoke.id,
+      entityId,
+      facetId: MULTIHOST_EFS_FACET,
+      presentationSiteCode: "ww",
+      bindings,
+    });
+  }
+
+  writeFileSync(manifestPath, `${JSON.stringify({ entities, publications }, null, 2)}\n`, "utf8");
+  return { manifest: manifestPath, capsule };
+}
+
 /**
  * Materialises the two-Spoke Installation into a fresh temporary directory.
  *
@@ -430,6 +592,8 @@ export function assertSpokeNamespaceAgreesWithCatalog(installationRoot, spokeId,
  * @returns {{
  *   root: string,
  *   manifestFile: string,
+ *   manifest: string,
+ *   capsule: string,
  *   inspection: { spokeId: string, hostname: string, branchHostname: string },
  *   spokes: { id: string, segment: string, hostname: string, canonicalOrigin: string, directory: string,
  *             root: string, onlyRoute: string, siteName: string, mark: string }[],
@@ -438,7 +602,24 @@ export function assertSpokeNamespaceAgreesWithCatalog(installationRoot, spokeId,
  */
 export function materializeMultihostInstallation({ repositoryRoot }) {
   const root = mkdtempSync(path.join(tmpdir(), "foundation-multihost-"));
+  try {
+    return buildMultihostInstallation(root, repositoryRoot);
+  } catch (error) {
+    // FAILURE ATOMICITY: a materialisation that throws leaves NOTHING behind.
+    try {
+      rmSync(root, { recursive: true, force: true });
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        "the two-Spoke Installation failed to materialise AND could not be cleaned up",
+      );
+    }
+    throw error;
+  }
+}
 
+/** Build the tree inside an already-created root; the exported entry point owns failure atomicity. */
+function buildMultihostInstallation(root, repositoryRoot) {
   writeFileSync(
     path.join(root, "spokes.json"),
     `${JSON.stringify(
@@ -456,9 +637,18 @@ export function materializeMultihostInstallation({ repositoryRoot }) {
 
   for (const spoke of MULTIHOST_SPOKES) writeSpoke(root, repositoryRoot, spoke);
 
+  // THE EFS PUBLICATION, authored beside the ownership/presentation tree: the request runtime is EFS-only, so
+  // this is what actually serves each Spoke's Home/About/own-route Pages at `/<locale>/<route>` on its OWN host.
+  const efs = writeEfsInstallation(root);
+
+  let removed = false;
   return {
     root,
     manifestFile: path.join(root, "spokes.json"),
+    // `manifest`/`capsule` are the EFS publication the server consumes; `manifestFile` stays the Installation's
+    // own Spoke manifest (the ownership/presentation input), so neither silently replaces the other.
+    manifest: efs.manifest,
+    capsule: efs.capsule,
     inspection: { ...MULTIHOST_INSPECTION },
     spokes: MULTIHOST_SPOKES.map((spoke) => ({
       id: spoke.id,
@@ -471,7 +661,10 @@ export function materializeMultihostInstallation({ repositoryRoot }) {
       siteName: spoke.siteName,
       mark: `${spoke.id}-spoke.svg`,
     })),
+    /** Idempotent. The SCENARIO owns this Installation, so a stopped server never deletes it. */
     cleanup() {
+      if (removed) return;
+      removed = true;
       rmSync(root, { recursive: true, force: true });
     },
   };

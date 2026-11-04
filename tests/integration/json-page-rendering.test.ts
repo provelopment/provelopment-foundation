@@ -1,25 +1,47 @@
-import { mkdirSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
-import path from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-// GENERIC ISOLATION (ISO-B1C): deployment-owned state (dictionaries, authored pages, deployment
-// configuration) comes from the SYNTHETIC test deployment, never from the repository's own
-// deployment. See tests/support/synthetic-deployment.ts — the copy is disposable and the committed
-// fixture is only ever its source.
+/**
+ * THE DECLARATIVE VOCABULARY, RENDERED THROUGH THE REAL EFS ROUTE (`C07-R02`)
+ * ==========================================================================
+ *
+ * The Page document is authored the way the platform actually publishes one: a DECLARATION in a
+ * disposable manifest together with its JSON representation in the same disposable capsule. Nothing is
+ * planted under the retired `content/pages/json/<site>/<locale>` tree, and the real deployment is never
+ * written to — the fixture under OS temp is the only subject.
+ */
 
-import { deploymentPaths } from "@/config/deployment-root";
+const state = vi.hoisted(() => ({ headers: new Map<string, string>() }));
+
+vi.mock("next/headers", () => ({
+  headers: async () => ({ get: (key: string) => state.headers.get(key) ?? null }),
+}));
 
 vi.mock("next/navigation", () => ({
   notFound: () => {
     throw new Error("NEXT_NOT_FOUND");
   },
+  redirect: (pathname: string) => {
+    throw new Error(`REDIRECT:${pathname}`);
+  },
+  permanentRedirect: (pathname: string) => {
+    throw new Error(`PERMANENT_REDIRECT:${pathname}`);
+  },
 }));
 
-import PageRoute from "@/app/[[...segments]]/page";
-import { siteConfig } from "@/config";
 import { PAGE_SECTION_TYPES } from "@/core/page-document";
+
+import {
+  authorRuntimeCutRepresentation,
+  declareRuntimeCutPage,
+  materializeRuntimeCutFixture,
+  materializeRuntimeCutInstallation,
+  RUNTIME_CUT_HOST,
+  selectRuntimeCutFixture,
+} from "../support/efs-runtime-cut";
+import { selectEfsInstallation } from "../support/efs-installation";
+
 
 /**
  * THE DECLARATIVE VOCABULARY, RENDERED THROUGH THE REAL ROUTE
@@ -39,11 +61,9 @@ import { PAGE_SECTION_TYPES } from "@/core/page-document";
  * The fixture is built FROM the vocabulary list, so a new section type cannot be added
  * without this proof following it.
  */
-// S1 — the fixture lives in ONE site tree; its URL is `/<site>/<locale>/<route>`.
-const SITE = siteConfig.defaultSite.code;
-const LOCALE = "en";
+// The published coordinates: an EFS address is `<binding prefix>/<locale>/<declared route>`.
+const LOCALE = "en-001";
 const ROUTE_PATH = "zz-vocabulary-fixture";
-const FILE = path.join(deploymentPaths().jsonPagesRoot, SITE, LOCALE, `${ROUTE_PATH}.json`);
 
 const IMAGE = { src: "/assets/photo.png", alt: "A described photograph" };
 
@@ -123,13 +143,46 @@ const SECTIONS: readonly Record<string, unknown>[] = [
   { type: "contactForm", formRef: "foundation-contact" },
 ];
 
+/**
+ * Author-injected script content, as opposed to the platform's own structured data.
+ *
+ * A safe page may carry the platform's JSON-LD block; nothing the authored document wrote may appear
+ * inside executable script text.
+ */
+function authorScripts(markup: string): string[] {
+  return (markup.match(/<script\b[^>]*>[\s\S]*?<\/script>/gi) ?? []).filter(
+    (block) => !/^<script[^>]*type="application\/ld\+json"/i.test(block) || /window\./.test(block),
+  );
+}
+
+const installation = materializeRuntimeCutInstallation();
+selectEfsInstallation(installation.root);
+const fixture = materializeRuntimeCutFixture();
+const restoreDeclaration = selectRuntimeCutFixture(fixture);
+
+afterAll(() => {
+  restoreDeclaration();
+  fixture.cleanup();
+  installation.cleanup();
+});
+
 describe("the declarative page vocabulary, through the real route", () => {
   let html = "";
 
   beforeAll(async () => {
-    mkdirSync(path.dirname(FILE), { recursive: true });
-    writeFileSync(
-      FILE,
+    // BOTH halves, together, in the disposable subject: the declaration and its representation. The
+    // committed fixture and the real deployment are never written to.
+    declareRuntimeCutPage(fixture, {
+      id: ROUTE_PATH,
+      route: [ROUTE_PATH],
+      locales: [LOCALE],
+      navLabel: "Vocabulary",
+    });
+    authorRuntimeCutRepresentation(
+      fixture,
+      "main",
+      ROUTE_PATH,
+      LOCALE,
       `${JSON.stringify(
         {
           schemaVersion: 1,
@@ -140,27 +193,15 @@ describe("the declarative page vocabulary, through the real route", () => {
         null,
         2,
       )}\n`,
-      "utf8",
     );
+
+    vi.resetModules();
+    state.headers.set("host", RUNTIME_CUT_HOST);
+    const { default: PageRoute } = await import("@/app/[[...segments]]/page");
     html = renderToStaticMarkup(
-      await PageRoute({ params: Promise.resolve({ segments: [SITE, LOCALE, ROUTE_PATH] }) }),
+      await PageRoute({ params: Promise.resolve({ segments: [LOCALE, ROUTE_PATH] }) }),
     );
   });
-
-  afterAll(() => {
-  rmSync(FILE, { force: true });
-  // …and only the now-empty fixture directories, so a run leaves nothing behind.
-  for (const directory of [
-    path.join(deploymentPaths().jsonPagesRoot, SITE, LOCALE),
-    path.join(deploymentPaths().jsonPagesRoot, SITE),
-  ]) {
-    try {
-      rmdirSync(directory);
-    } catch {
-      /* not empty, or already gone */
-    }
-  }
-});
 
   it("exercises every declared section type", () => {
     expect(SECTIONS.map((section) => section.type).sort()).toEqual([...PAGE_SECTION_TYPES].sort());
@@ -200,8 +241,9 @@ describe("the declarative page vocabulary, through the real route", () => {
     expect(html).toContain("<strong>emphasis</strong>");
     expect(html).toContain('<a href="/about">link</a>');
     expect(html).toContain("<strong>safe</strong>");
-    // …and the hostile parts are TEXT, exactly as in the Markdown authoring mode.
-    expect(html).not.toContain("<script");
+    // …and the hostile parts are TEXT, exactly as in the Markdown authoring mode. The platform's OWN
+    // structured-data script is not author markup; nothing the author wrote may execute.
+    expect(authorScripts(html)).toEqual([]);
     expect(html).not.toMatch(/<[a-zA-Z][^>]*\son[a-z]+\s*=/i);
     expect(html).toContain("window.__jsonScript");
   });
@@ -227,7 +269,7 @@ describe("the declarative page vocabulary, through the real route", () => {
       expect(tag, tag).not.toMatch(/\son[a-z]+\s*=\s*["']/i);
       expect(tag, tag).not.toMatch(/\sstyle\s*=\s*["']/i);
     }
-    expect(html).not.toContain("<script");
     expect(html).not.toContain("<style");
+    expect(authorScripts(html)).toEqual([]);
   });
 });

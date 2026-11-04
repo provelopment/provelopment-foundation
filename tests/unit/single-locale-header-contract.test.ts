@@ -22,10 +22,17 @@ describe("D1 — single-locale header contract (LanguageSwitcher gate)", () => {
   });
 
   it("the LanguageSwitcher render is gated on more than one configured locale", () => {
-    // NAV1B — the header reads the gate as a NAMED boolean (its two semantic rows make the
-    // condition explicit), and the boolean's definition is the SAME locale-count rule.
+    // NAV1B — the header reads the gate as a NAMED boolean, and its legacy arm is the SAME
+    // locale-count rule that keeps a one-option switcher off an English-only site.
     expect(header).toContain("{languageSelectorPresent ? (");
-    expect(header).toContain("const languageSelectorPresent = siteConfig.locales.length > 1;");
+    expect(header).toContain("const languageSelectorPresent =");
+    expect(header).toContain("siteConfig.locales.length > 1");
+
+    // R10 — under a verified EFS presentation the gate is answered by the PUBLICATION's own
+    // declared languages, never by the installation's configured locale list. Both arms preserve
+    // the single-choice suppression.
+    expect(header).toMatch(/efs === undefined \?[\s\S]{0,200}siteConfig\.locales\.length > 1/);
+    expect(header).toContain("efs.languages !== undefined");
   });
 
   it("there is no ungated LanguageSwitcher composition in the header", () => {

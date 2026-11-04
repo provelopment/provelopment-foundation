@@ -17,6 +17,7 @@ import {
   QuoteSection,
 } from "./page-sections/text-sections";
 import { CardsSection, GallerySection, HeroSection, MediaSection } from "./page-sections/media-sections";
+import type { PageRouteResolver } from "./page-sections/section-support";
 import { FeaturesSection, ListSection, StatsSection, StepsSection } from "./page-sections/items-sections";
 import { ColumnsSection, FaqSection, TableSection } from "./page-sections/structure-sections";
 
@@ -62,6 +63,15 @@ export interface PageDocumentContentProps {
    */
   readonly resolveLink?: PageLinkResolver;
   /**
+   * THE PER-RENDER PAGE-ROUTE SEAM (GEO-04 C09-R06).
+   *
+   * `route` names another Page of this site, and only the composition knows what a Page address IS for
+   * the publication it is rendering. Supplied per render as an ARGUMENT — never module state, never a
+   * cache, never a context. Absent means the released locale-first `/<locale>/<route>` behavior, so every
+   * non-EFS caller is unchanged; supplied, it owns the answer, `null` included (label-only, no anchor).
+   */
+  readonly resolveRoute?: PageRouteResolver;
+  /**
    * Declarations to use instead of the document's own `links`.
    *
    * The document is the authority — this exists for a caller that renders a document it did not read
@@ -89,11 +99,12 @@ function renderSection(
   locale: string,
   index: number,
   resolveLink: PageLinkIdResolver | undefined,
+  resolveRoute: PageRouteResolver | undefined,
 ) {
   const id = `page-section-${index + 1}`;
   switch (section.type) {
     case "hero":
-      return <HeroSection key={id} section={section} locale={locale} id={id} resolveLink={resolveLink} />;
+      return <HeroSection key={id} section={section} locale={locale} id={id} resolveLink={resolveLink} resolveRoute={resolveRoute} />;
     case "prose":
       return <ProseSection key={id} section={section} locale={locale} id={id} resolveLink={resolveLink} />;
     case "media":
@@ -101,11 +112,11 @@ function renderSection(
     case "gallery":
       return <GallerySection key={id} section={section} locale={locale} id={id} resolveLink={resolveLink} />;
     case "actions":
-      return <ActionsSection key={id} section={section} locale={locale} id={id} resolveLink={resolveLink} />;
+      return <ActionsSection key={id} section={section} locale={locale} id={id} resolveLink={resolveLink} resolveRoute={resolveRoute} />;
     case "callout":
       return <CalloutSection key={id} section={section} locale={locale} id={id} resolveLink={resolveLink} />;
     case "cards":
-      return <CardsSection key={id} section={section} locale={locale} id={id} resolveLink={resolveLink} />;
+      return <CardsSection key={id} section={section} locale={locale} id={id} resolveLink={resolveLink} resolveRoute={resolveRoute} />;
     case "features":
       return <FeaturesSection key={id} section={section} locale={locale} id={id} resolveLink={resolveLink} />;
     case "columns":
@@ -121,7 +132,7 @@ function renderSection(
     case "faq":
       return <FaqSection key={id} section={section} locale={locale} id={id} resolveLink={resolveLink} />;
     case "list":
-      return <ListSection key={id} section={section} locale={locale} id={id} resolveLink={resolveLink} />;
+      return <ListSection key={id} section={section} locale={locale} id={id} resolveLink={resolveLink} resolveRoute={resolveRoute} />;
     case "divider":
       return <DividerSection key={id} />;
     case "contactForm":
@@ -145,6 +156,7 @@ export function PageDocumentContent({
   resolveLink,
   links,
   renderContactForm,
+  resolveRoute,
 }: PageDocumentContentProps) {
   // THE ONE COMPOSITION (A8 Phase F): a marker or a `link` action names a DECLARATION ID, and the
   // resolver answers the REFERENCE. Both halves are bound HERE, per render, so `@/core` stays a pure
@@ -166,7 +178,7 @@ export function PageDocumentContent({
       {document.sections.map((section, index) =>
         section.type === "contactForm"
           ? renderContactForm?.(section.formRef) ?? null
-          : renderSection(section, locale, index, resolveLinkId),
+          : renderSection(section, locale, index, resolveLinkId, resolveRoute),
       )}
     </>
   );

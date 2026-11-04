@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "title": "Runtime Cut Outlet Home",
+  "description": "The second declared Site of this Entity answers the same route with its own representation.",
+  "sections": [
+    { "type": "prose", "body": "A Site-open binding selector chooses this Site explicitly; nothing is inferred from the host." }
+  ]
+}

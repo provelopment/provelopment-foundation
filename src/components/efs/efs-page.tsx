@@ -1,8 +1,7 @@
 import { PageDocumentContent } from "@/components/site/page-document-content";
 import { SafeMarkdownContent } from "@/components/site/safe-markdown-content";
 import { Heading } from "@/components/ui/heading";
-import { publicContactLinkResolver } from "@/adapters/connect/public-contact";
-import { EfsContactForm } from "@/components/efs/efs-contact-form";
+import { EfsPageStructuredData, efsPageLinkContext } from "@/components/efs/efs-page-links";
 import { EfsScheduleStatus, type EfsScheduleStatusLabels } from "@/components/efs/efs-schedule-status";
 import { assetUrl } from "@/core/efs/publication";
 import { ownerAssetReference } from "@/core/efs/public-facts";
@@ -76,20 +75,26 @@ export function EfsPageView({
    * a distinguishable publisher and an author can name it. Without Hub identification there is one
    * publisher and nothing to disambiguate, so no identity is invented to fill the field.
    */
-  const resolveLink = publicContactLinkResolver({
-    authority: {
-      deploymentId: view.context.runtimeSegment,
-      ownerId: view.entity.id,
-      siteId: view.site.id,
-      authorizationRef: view.binding.aliasOf ?? view.binding.id,
-      ...(view.context.spokeHubId === undefined
-        ? {}
-        : { publisherRef: view.context.runtimeSegment }),
-    },
-    configuration: view.context.siteConfig.communication,
-  });
+  const { resolveRoute, resolveLink, renderContactForm } = efsPageLinkContext(view);
 
   const navItems = view.navigation ?? [];
+
+  /**
+   * THE PAGE-ROUTE DESTINATION FOR THIS ONE RENDER (GEO-04 C09-R06).
+   *
+   * An authored `route` names another Page of THIS site, so its address is the address this very request
+   * is served under: the effective binding's public base (prefix, Site selector when open), the qualified
+   * locale key, then the declared route — which is exactly what `contentSegments` already computes for
+   * `canonicalUrl`, the navigation and the `og:image` root. Nothing new is inferred here: no Site code, no
+   * presentation key, no language guess, no visitor Host, no second publication authority, no cache.
+   *
+   * The authored route is validated by the ONE route grammar (`pageRoutePathSegments`), which also gives
+   * D43's casing normalization for free (the builder folds the segments). A route the grammar refuses —
+   * an empty, absolute, traversal-shaped or over-deep value — answers `null`, and the caller renders the
+   * label alone rather than a broken anchor.
+   */
+  // `resolveRoute` comes from the shared per-render context above — the SAME authority the specialised
+  // Connect presentation uses, so no EFS renderer can disagree with another about a Page's address.
 
   return (
     <>
@@ -128,7 +133,8 @@ export function EfsPageView({
               document={document}
               locale={view.locale}
               resolveLink={resolveLink}
-              renderContactForm={(formRef) => <EfsContactForm view={view} formRef={formRef} />}
+              resolveRoute={resolveRoute}
+              renderContactForm={renderContactForm}
             />
           ) : (
             <>
@@ -184,18 +190,7 @@ export function EfsPageView({
               ))}
             </nav>
           )}
-          <script
-            type="application/ld+json"
-            dangerouslySetInnerHTML={{
-              __html: JSON.stringify({
-                "@context": "https://schema.org",
-                "@type": "WebSite",
-                name: typeof siteName === "string" ? siteName : view.facet.id,
-                url: view.canonical,
-                inLanguage: view.locale,
-              }).replace(/</g, "\\u003c"),
-            }}
-          />
+          <EfsPageStructuredData view={view} />
         </article>
       </main>
     </>

@@ -1,4 +1,10 @@
-import { ActionLinks, MarkdownField, SectionHeading, sectionClassName } from "./section-support";
+import {
+  ActionLinks,
+  MarkdownField,
+  SectionHeading,
+  sectionClassName,
+  type PageRouteResolver,
+} from "./section-support";
 
 import type { PageLinkIdResolver, PageSection } from "@/core/page-document";
 
@@ -15,6 +21,12 @@ export interface SectionViewProps<T extends PageSection["type"]> {
    * a React context. A section that renders no Markdown and no action simply ignores it.
    */
   readonly resolveLink?: PageLinkIdResolver;
+  /**
+   * The per-render PAGE-ROUTE resolver (GEO-04 C09-R06), threaded the same way to every consumer of an
+   * authored `route` — actions, cards, hero actions and list items. Absent means the legacy
+   * locale-first `/<locale>/<route>` behavior, unchanged for every non-EFS caller.
+   */
+  readonly resolveRoute?: PageRouteResolver;
 }
 
 /**
@@ -79,7 +91,7 @@ export function QuoteSection({ section, resolveLink }: SectionViewProps<"quote">
 }
 
 /** `actions`: a group of links, presented as the primary action(s) of a page. */
-export function ActionsSection({ section, locale, id, resolveLink }: SectionViewProps<"actions">) {
+export function ActionsSection({ section, locale, id, resolveLink, resolveRoute }: SectionViewProps<"actions">) {
   return (
     <section className={sectionClassName(section.surface, section.align)} aria-labelledby={section.heading ? id : undefined}>
       <SectionHeading heading={section.heading} lede={section.lede} id={id} resolveLink={resolveLink} />
@@ -87,6 +99,7 @@ export function ActionsSection({ section, locale, id, resolveLink }: SectionView
         actions={section.actions}
         locale={locale}
         resolveLink={resolveLink}
+        resolveRoute={resolveRoute}
         className="mt-4"
       />
     </section>

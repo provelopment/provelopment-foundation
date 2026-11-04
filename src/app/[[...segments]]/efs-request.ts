@@ -6,7 +6,7 @@ import { notFound, permanentRedirect, redirect } from "next/navigation";
 
 import { loadEfsPageSource, type EfsPageSource } from "@/adapters/content/efs-content";
 import { efsPublicationOwnerForRequest } from "@/config/efs/owner";
-import { legacyTestRuntimeEnabled, missingEfsInstallation } from "./legacy-test-runtime";
+import { missingEfsInstallation } from "./efs-refusal";
 import type { SpokeRuntimeContext } from "@/config/installation-runtime";
 import {
   canonicalUrl,
@@ -152,9 +152,8 @@ function runtime(): LoadedRuntime | null {
     if (override !== undefined || existsSync(capsulePath) || existsSync(dirname(manifestPath))) {
       throw new Error(`EFS manifest is missing at ${manifestPath}; the capsule cannot be served.`);
     }
-    // No EFS configuration at all. Only the isolated, non-production test utility may answer; a
-    // real installation receives a controlled setup diagnostic instead of an alternate runtime.
-    if (legacyTestRuntimeEnabled()) return null;
+    // No EFS configuration at all: this Installation declares no publication authority, and there is
+    // no second runtime to answer instead. The refusal is identical in development, test and production.
     missingEfsInstallation();
   }
   if (!existsSync(capsulePath)) {
@@ -632,6 +631,32 @@ export async function efsViewForCurrentRequest(
 }
 
 /** The public path a view would serve, including the binding prefix and Site selector when open. */
+/**
+ * The view's public navigation re-derived for a DIFFERENT public base.
+ *
+ * `navigation` is baked at resolution time from the binding in force then, so a view whose `binding`
+ * has been replaced without re-deriving `navigation` is an inconsistent object: it would claim one
+ * public base while advertising another's hrefs. This asks the SAME resolver rule for the new
+ * binding, so publication membership, public visibility and open-Site addressing are all re-checked
+ * against each destination's own source. It never mints an address the publication cannot serve.
+ */
+export function efsNavigationForBinding(
+  view: EfsView,
+  binding: EfsBinding,
+): readonly EfsNavigationItem[] {
+  const loaded = runtime();
+  if (!loaded) return view.navigation;
+  return navigationFor({
+    capsule: loaded.capsule,
+    entityId: view.entity.id,
+    facetId: view.facet.id,
+    site: view.site,
+    page: view.page,
+    binding,
+    localeKey: view.localeKey,
+  });
+}
+
 export function efsPublicSegments(view: EfsView): readonly string[] {
   return contentSegments(view.binding, {
     siteId: view.site.id,

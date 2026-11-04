@@ -192,20 +192,104 @@ capsuleSuite("§15 — each Spoke's own model and tree resolve from the TARGET",
     expect(foundation.url).toBe("https://foundation-template.provelopment.com");
     expect(germany.url).toBe("https://foundation-template-germany.provelopment.com");
 
-    // The Foundation Spoke serves its OWN English material — including the canonical English pages M20
-    // installed — and the Germany Spoke serves its OWN German material. GEO-03 R04-C5 — asked of the
-    // CAPSULE the establishment actually wrote, because the legacy country-directory resolver refuses
-    // the generic Site code `main` by design, and R04 must not widen that authority to make a test pass.
-    const homeOf = (id: string, locale: string) =>
-      path.join(byId.get(id) ?? "", "content", "pages", "json", "main", locale, `${HOME_CONTENT_SLUG}.json`);
-    expect(existsSync(homeOf("foundation", "en-001")), "foundation authors its own English Home").toBe(true);
-    expect(existsSync(homeOf("germany", "de-de")), "germany authors its own German Home").toBe(true);
-    // The material is genuinely each Spoke's own: the German Home is German.
-    expect(readFileSync(homeOf("germany", "de-de"), "utf8")).toMatch(/Deutschland/);
+    // `GEO-04` STAGE C-A — BOTH SPOKES MAY USE THE SAME DESCRIPTIVE SITE CODE.
+    //
+    // `main` used to be refused by the legacy country-directory authority, so this test asserted `null`
+    // for cross-locale lookups. That expectation encoded the retired authority, not isolation: each
+    // Spoke really does author `main/en-001/home.json` AND `main/de-de/home.json` inside its own root.
+    // Isolation is proved below by SOURCE PROVENANCE and by a foreign-only page, not by refusing a
+    // legitimate same-Site locale.
+    const pagesAt = (root: string, sites: ReturnType<typeof configOf>["sites"]) =>
+      createPageSources({
+        sites,
+        roots: {
+          markdownPagesRoot: path.join(root, "content", "pages", "markdown"),
+          jsonPagesRoot: path.join(root, "content", "pages", "json"),
+        },
+      });
 
-    // NEITHER CAN ANSWER FOR THE OTHER: the other Spoke's Site code is not even declared here.
-    expect(await pagesOf("foundation").resolve("main", HOME_CONTENT_SLUG, "de-de")).toBeNull();
-    expect(await pagesOf("germany").resolve("main", HOME_CONTENT_SLUG, "en-001")).toBeNull();
+    // POSITIVE — each Spoke answers from its OWN physical file, at the exact requested locale.
+    const foundationEn = await pagesOf("foundation").resolve("main", HOME_CONTENT_SLUG, "en-001");
+    const foundationDe = await pagesOf("foundation").resolve("main", HOME_CONTENT_SLUG, "de-de");
+    const germanyEn = await pagesOf("germany").resolve("main", HOME_CONTENT_SLUG, "en-001");
+    const germanyDe = await pagesOf("germany").resolve("main", HOME_CONTENT_SLUG, "de-de");
+
+    for (const [name, page, locale] of [
+      ["foundation/en-001", foundationEn, "en-001"],
+      ["foundation/de-de", foundationDe, "de-de"],
+      ["germany/en-001", germanyEn, "en-001"],
+      ["germany/de-de", germanyDe, "de-de"],
+    ] as const) {
+      expect(page, `${name} resolves its own Home`).not.toBeNull();
+      expect(page?.kind, name).toBe("json");
+      expect(page?.locale, name).toBe(locale);
+      // An exact representation is NOT a fallback, and the Site code is the authored one.
+      expect(page?.fallback, name).toBe(false);
+      expect(page?.siteId, name).toBe("main");
+    }
+
+    // The authored bytes are distinct per Spoke even though Site, slug and locale are identical.
+    const textOf = (root: string, locale: string) => {
+      const file = path.join(root, "content", "pages", "json", "main", locale, `${HOME_CONTENT_SLUG}.json`);
+      expect(existsSync(file), `authors ${file}`).toBe(true);
+      return readFileSync(file, "utf8");
+    };
+    expect(textOf(byId.get("foundation") ?? "", "en-001")).toMatch(/Build a website you own\./);
+    expect(textOf(byId.get("foundation") ?? "", "de-de")).toMatch(/Eine Website, die Ihnen gehört\./);
+    expect(textOf(byId.get("germany") ?? "", "en-001")).toMatch(/Germany: two languages, two locations\./);
+    expect(textOf(byId.get("germany") ?? "", "de-de")).toMatch(/Deutschland: zwei Sprachen, zwei Standorte\./);
+    // The exact authored title proves WHICH file answered — the strongest provenance marker available.
+    expect(JSON.stringify(foundationDe)).toContain('"title":"Eine Website, die Ihnen gehört."');
+    expect(JSON.stringify(germanyDe)).toContain('"title":"Deutschland: zwei Sprachen, zwei Standorte."');
+    expect(JSON.stringify(foundationEn)).toContain('"title":"Build a website you own."');
+    expect(JSON.stringify(germanyEn)).toContain('"title":"Germany: two languages, two locations."');
+
+    // NEGATIVE (both directions) — a page that exists ONLY in one Spoke's tree is never read by the
+    // other Spoke's reader. Each copy is a disposable test-owned duplicate; the capsule is untouched.
+    const foreignOnly = (spoke: string, unique: string) => {
+      const copy = path.join(byId.get(spoke) ?? "", "..", `.r02-owner-only-${spoke}`);
+      cpSync(byId.get(spoke) ?? "", copy, { recursive: true });
+      const dir = path.join(copy, "content", "pages", "json", "main", "en-001");
+      writeFileSync(
+        path.join(dir, `${unique}.json`),
+        JSON.stringify({
+          schemaVersion: 1,
+          title: `Authored only by ${spoke}`,
+          description: "Owner-isolation proof page.",
+          sections: [{ type: "prose", heading: "Owner", body: `This page exists only in ${spoke}.` }],
+        }),
+      );
+      return { copy, unique };
+    };
+
+    const germanyOnly = foreignOnly("germany", "r02-owner-only-germany");
+    const foundationOnly = foreignOnly("foundation", "r02-owner-only-foundation");
+    try {
+      expect(await pagesOf("foundation").resolve("main", germanyOnly.unique, "en-001")).toBeNull();
+      const germanyOwn = await pagesAt(germanyOnly.copy, germany.sites).resolve("main", germanyOnly.unique, "en-001");
+      expect(germanyOwn).not.toBeNull();
+      expect(JSON.stringify(germanyOwn)).toContain("Authored only by germany");
+
+      expect(await pagesOf("germany").resolve("main", foundationOnly.unique, "en-001")).toBeNull();
+      const foundationOwn = await pagesAt(foundationOnly.copy, foundation.sites).resolve(
+        "main",
+        foundationOnly.unique,
+        "en-001",
+      );
+      expect(foundationOwn).not.toBeNull();
+      expect(JSON.stringify(foundationOwn)).toContain("Authored only by foundation");
+    } finally {
+      rmSync(germanyOnly.copy, { recursive: true, force: true });
+      rmSync(foundationOnly.copy, { recursive: true, force: true });
+    }
+
+    // DENIAL — an ill-formed Site, an undeclared Site, an unsupported locale and a missing page all
+    // refuse, and none of them reads a foreign root to answer.
+    expect(await pagesOf("foundation").resolve("..", HOME_CONTENT_SLUG, "en-001")).toBeNull();
+    expect(await pagesOf("foundation").resolve("workshop", HOME_CONTENT_SLUG, "en-001")).toBeNull();
+    expect(await pagesOf("foundation").resolve("main", HOME_CONTENT_SLUG, "zz")).toBeNull();
+    expect(await pagesOf("germany").resolve("main", "no-such-page", "de-de")).toBeNull();
+
   });
 });
 

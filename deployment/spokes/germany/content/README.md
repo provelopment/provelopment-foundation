@@ -68,8 +68,9 @@ content/pages/markdown/de/en/berlin.md   →   /de/en/berlin
   `json/` (advanced). You choose one per page.
 - **site** — which Site the page belongs to: the country/global context inside this Spoke,
   written as a recognized two-letter country code (`ca`, `fr`, `ch`…) or `ww` for the
-  worldwide/global Site. See
-  [`COUNTRY-CODES.md`](COUNTRY-CODES.md) for the complete list.
+  worldwide/global Site. Which Sites a published reference serves is selected explicitly in
+  its EFS manifest — the configured reference Site is `main` — and never derived from a
+  country-code catalogue.
 - **language** — the language, written as a lowercase path key (`en`, `fr`, `fr-ca`).
 - **page** — the page's own path: one name (`about`) or a folder plus a name
   (`services/web-design`).

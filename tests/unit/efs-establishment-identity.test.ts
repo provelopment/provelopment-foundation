@@ -175,7 +175,7 @@ describe("permanent Entity identity and explicit publication authority (R06)", (
     expect(team?.route).toEqual(["company", "team"]);
     expect(
       prepared.files.some(
-        (file) => file.path === `efs/capsule/${manifest.entities[0].id}/main/ww/pages/home/en-001.json`,
+        (file) => file.path === `efs/capsule/${manifest.entities[0].id}/main/main/pages/home/en-001.json`,
       ),
     ).toBe(true);
     expect(

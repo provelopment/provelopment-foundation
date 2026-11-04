@@ -190,8 +190,17 @@ function normalizeOrigin(url) {
   return typeof url === "string" ? url.replace(/\/+$/, "") : url;
 }
 
+/**
+ * THE DECLARED EFS ROUTES OF THIS HUB (GEO-04 C09-R16), read from the authored publication: every binding has
+ * `prefix: []`, `siteMode: "closed"` and `defaultLocale: "en-001"`, so the locale is the FIRST address segment.
+ * `/ww/en` was the retired legacy Site code and no binding publishes it.
+ */
+const HOME_PATH = "/en-001";
+const ABOUT_PATH = "/en-001/about";
+const UNPUBLISHED_PATH = "/en-001/unpublished-sibling";
+
 /** The browser's own URL for one hostname (HTTP: the dev server this proof runs against). */
-function urlFor(hostname, port, pathname = "/ww/en") {
+function urlFor(hostname, port, pathname = HOME_PATH) {
   return `http://${hostname}:${port}${pathname}`;
 }
 
@@ -250,41 +259,101 @@ function requestWithHost(port, host, pathname) {
 }
 
 /**
- * WAIT UNTIL A MEMBER ANSWERS — with the member's OWN hostname in the `Host` header.
+ * WAIT UNTIL A MEMBER ANSWERS — with the member's OWN declared hostname in the `Host` header, at its
+ * DECLARED qualified Home route.
  *
- * This is deliberately NOT `harness.waitForServer(url)`: that helper probes a bare `127.0.0.1` URL, which a
- * MULTI-Spoke Installation correctly REFUSES (no member claims the loopback literal, so the answer is 404 —
- * the fail-closed behaviour). Readiness here must therefore speak to a hostname a member actually claims.
+ * Deliberately NOT `harness.waitForServer(url)`: that helper probes a bare `127.0.0.1` URL, which a
+ * multi-Spoke EFS Installation correctly REFUSES (no binding claims the loopback literal → 404). The budget
+ * here is short on purpose: a real EFS refusal is a DECLARATION fault, not slowness, so the error names the
+ * host, the path, the status and the dev server's own log instead of burning four minutes per wrong URL.
  */
-async function waitForMember(port, timeoutMs = 240000) {
+async function waitForMember(port, timeoutMs = 90000) {
   const deadline = Date.now() + timeoutMs;
+  const host = HUB_SPOKES[0].hostname;
   let last = "no attempt";
   while (Date.now() < deadline) {
     try {
-      const response = await requestWithHost(port, HUB_SPOKES[0].hostname, "/ww/en");
+      const response = await requestWithHost(port, host, HOME_PATH);
       if (response.status === 200) return;
       last = `status=${response.status}`;
     } catch (error) {
       last = error instanceof Error ? error.message : String(error);
     }
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error(
-    `the four-Spoke Installation never answered on ${HUB_SPOKES[0].hostname}: ${last}`,
-  );
+  throw new Error(`the four-Spoke Installation never answered ${HOME_PATH} on ${host}: ${last}`);
+}
+
+/**
+ * PREFLIGHT THE REAL CLAIMS BEFORE ANY BROWSER STARTS (GEO-04 C09-R16).
+ *
+ * Every address below is read from the authored publication, never from a guess: EFS public Home is
+ * `/en-001`, About is `/en-001/about`, and each Spoke's own route is `/en-001/<onlyRoute>`. A Spoke answers
+ * on its own host and NOT on a host no binding claims; an undeclared sibling is refused. The catalog staging
+ * host and the support inspection host are exercised explicitly, because they are the two destinations whose
+ * routing the switcher proves.
+ */
+function preflightCases() {
+  const cases = [];
+  for (const spoke of HUB_SPOKES) {
+    const hosts = [
+      [spoke.hostname, `${spoke.id}-canonical`],
+      ...(spoke.hostAliases ?? []).map((alias) => [alias, `${spoke.id}-additional`]),
+      ...(HUB_INSPECTION.spokeId === spoke.id ? [[HUB_INSPECTION.hostname, "support-inspection"]] : []),
+    ];
+    for (const [hostname, label] of hosts) {
+      cases.push({ hostname, label: `${label}-home`, pathname: HOME_PATH, status: 200 });
+      cases.push({ hostname, label: `${label}-about`, pathname: ABOUT_PATH, status: 200 });
+      cases.push({ hostname, label: `${label}-own-page`, pathname: `${HOME_PATH}/${spoke.onlyRoute}`, status: 200 });
+      cases.push({ hostname, label: `${label}-undeclared`, pathname: UNPUBLISHED_PATH, status: 404 });
+    }
+  }
+  // The ONE Spoke that publishes two locales must answer in its second declared locale too.
+  const docs = HUB_SPOKES.find((spoke) => spoke.locales.length > 1);
+  if (docs) cases.push({ hostname: docs.hostname, label: "docs-second-locale", pathname: "/de-de/about", status: 200 });
+  // A host no binding claims is refused: the fail-closed boundary, not a default-Spoke fallback.
+  cases.push({ hostname: "unclaimed.localhost", label: "unclaimed-host", pathname: HOME_PATH, status: 404 });
+  return cases;
+}
+
+/** Prove the authored claims on the wire, before Chrome is launched. */
+async function preflight(harness, rows, port, server) {
+  for (const probe of preflightCases()) {
+    let status = 0;
+    try {
+      status = (await requestWithHost(port, probe.hostname, probe.pathname)).status;
+    } catch (error) {
+      status = error instanceof Error ? -1 : -1;
+    }
+    harness.check(
+      rows,
+      `preflight.${probe.label}`,
+      status === probe.status,
+      `host=${probe.hostname} path=${probe.pathname} status=${status} expected=${probe.status}`,
+    );
+    if (status !== probe.status) {
+      throw new Error(
+        `EFS claim refused before the browser ran: host=${probe.hostname} path=${probe.pathname} ` +
+          `status=${status} expected=${probe.status}\n--- dev server output ---\n${server.log()}`,
+      );
+    }
+  }
 }
 
 /** ONE dev server for the Installation, on the first port whose OWN member answers. */
-async function startServer(harness, root) {
+async function startServer(harness, rows, installation) {
   let last = null;
   for (const offset of PORT_OFFSETS) {
     const port = harness.port(offset);
-    const server = harness.startDevServer(port, { deploymentRoot: root });
+    const server = harness.startDevServer(port, { efsInstallation: installation });
     try {
       await waitForMember(port);
+      await preflight(harness, rows, port, server);
       return { server, port };
     } catch (error) {
-      last = error;
+      last = new Error(
+        `${error instanceof Error ? error.message : String(error)}\n--- dev server output ---\n${server.log()}`,
+      );
       await harness.stopServer(server);
     }
   }
@@ -479,7 +548,7 @@ export async function run(chrome, harness) {
 
   try {
     installation = materializeFourSpokeInstallation(harness.repositoryRoot);
-    const started = await startServer(harness, installation.root);
+    const started = await startServer(harness, rows, installation);
     server = started.server;
     const port = started.port;
 
@@ -525,7 +594,7 @@ export async function run(chrome, harness) {
         /* the server is already gone */
       }
     }
-    if (installation !== null) harness.rmSync(installation.root, { recursive: true, force: true });
+    if (installation !== null) installation.cleanup();
   }
 
   return rows;

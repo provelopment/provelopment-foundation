@@ -211,8 +211,19 @@ describe("R1F CASE 2 - the header native art direction", () => {
   });
 
   it("keeps one home link, the accessible name and the text fallback untouched", () => {
-    expect(HEADER).toContain("aria-label={siteConfig.name}");
-    expect(HEADER).toContain("href={`/${locale}`}");
+    // R10 — the ONE home link still carries the site's name as its accessible name. It is passed
+    // once as `label` and consumed by the brand anchor, so a second presentation mode cannot drift
+    // the name or duplicate the link.
+    expect(HEADER).toContain("label={siteConfig.name}");
+    expect(HEADER).toContain("aria-label={label}");
+    expect(occurrences(HEADER, "aria-label={label}")).toBeGreaterThanOrEqual(1);
+    // …and the name is never re-declared per branch: the literal site name is not an aria-label.
+    expect(occurrences(HEADER, "aria-label={siteConfig.name}")).toBe(0);
+    // R10 — the ONE home link keeps its legacy address on the legacy presentation, and takes the
+    // publication's VERIFIED Home on the EFS presentation (never an invented one).
+    expect(HEADER).toContain("`/${locale}`");
+    expect(HEADER).toContain("efs.homeHref");
+    expect(HEADER).toContain("href={brandHref}");
     expect(HEADER).toContain("\"ui-site-header-identity ui-site-header-identity--graphic\"");
     // No logo at all -> the text brand, which a compact leaf alone can never become.
     expect(HEADER).toContain("ui-site-header-identity break-words");

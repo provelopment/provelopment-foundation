@@ -33,13 +33,18 @@ describe("EFS semantic boundary (R03)", () => {
   it("builds the shell with explicit locales and no geography-bearing legacy state", () => {
     const composition = source("app/[[...segments]]/server-composition.tsx");
     const build = functionBody(composition, "efsShellPresentationConfig");
+    // GEO-04 R13 — the publication's presentation code is now classified by its own total function, which
+    // `efsShellPresentationConfig` delegates to. The same fact is asserted over the pair, plus the new
+    // delegation itself, so the relocation cannot become a place for the read to disappear from.
+    const declaration = functionBody(composition, "efsPresentationDeclaration");
+    expect(build).toContain("efsPresentationDeclaration(source, view)");
+    expect(`${declaration}\n${build}`).toContain("view.publication.presentationSiteCode");
     expect(build).toContain("canonicalLocaleTag(locale)");
     expect(build).toContain("locationSelection: null");
     expect(build).toContain("regions: {}");
     expect(build).toContain("pageBindings: []");
     expect(build).toContain("timezone: undefined");
     expect(build).toContain("locations: []");
-    expect(build).toContain("view.publication.presentationSiteCode");
     expect(build).toContain("publicPathBase(view.binding, view.site.id)");
     expect(build).not.toContain("view.binding.prefix");
     expect(build).not.toContain("prefix[0]");
@@ -82,13 +87,26 @@ describe("EFS semantic boundary (R03)", () => {
     expect(owner).not.toContain("hostClaimantsInInstallation(index, host)");
   });
 
-  it("allows the retired resolver only through the non-production test utility", () => {
-    const utility = source("app/[[...segments]]/legacy-test-runtime.ts");
-    expect(utility).toContain('process.env.NODE_ENV !== "production"');
-    expect(utility).toContain("FOUNDATION_ENABLE_LEGACY_TEST_RUNTIME");
+  it("cannot reach the retired resolver through any switch or fallback branch", () => {
+    // C07 — the non-production request utility is GONE. Its module, its environment variable and the
+    // request branch that could select it must never come back; the only answer is EFS or refusal.
     const request = source("app/[[...segments]]/efs-request.ts");
-    expect(request).toContain("if (legacyTestRuntimeEnabled()) return null;");
+    expect(request).not.toContain("legacyTestRuntimeEnabled");
+    expect(request).not.toContain("FOUNDATION_ENABLE_LEGACY_TEST_RUNTIME");
+    expect(request).not.toContain("legacy-test-runtime");
     expect(request).toContain("missingEfsInstallation();");
+
+    for (const file of [
+      "app/[[...segments]]/page.tsx",
+      "app/[[...segments]]/layout.tsx",
+      "app/robots.ts",
+      "app/sitemap.ts",
+    ]) {
+      const text = source(file);
+      expect(text, file).not.toContain("legacyTestRuntimeEnabled");
+      expect(text, file).not.toContain("ENABLE_LEGACY_TEST_RUNTIME");
+      expect(text, file).toContain("missingEfsInstallation");
+    }
   });
 
   it("keeps the EFS resolver and locale authority free of Site/country inference", () => {

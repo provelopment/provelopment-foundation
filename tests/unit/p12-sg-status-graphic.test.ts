@@ -271,8 +271,24 @@ describe("P12-SG — status-surface contract (error AND not-found share ONE role
   it("10. actions / links remain fully interactive (nothing is swallowed by the graphic)", () => {
     // The retry control is still the shared Button wired to `reset()`.
     expect(errorPage).toContain("<Button type=\"button\" onClick={() => reset()}>");
+    // R10 — the Home link stays REAL and interactive on both surfaces, but its authority is now
+    // mode-dependent: the LEGACY body keeps site-scoped resolution, while the EFS body consumes the
+    // server-stated recovery href and never re-derives an address of its own.
     expect(errorPage).toMatch(/<Link\s[\s\S]*href=\{sitePath\(request\.site, request\.localePath\)/);
-    expect(notFoundPage).toMatch(/<Link\s[\s\S]*href=\{sitePath\(request\.site, request\.localePath\)/);
+    // …and that EFS href is ONLY ever the server-stated recovery value, with `null` rendering NO
+    // link at all — so an EFS error surface can never invent a geographic or default-Site Home.
+    expect(errorPage).toContain("homeHref={recovery.homeHref}");
+    expect(errorPage).toMatch(/href=\{homeHref\}/);
+    expect(errorPage).toContain("homeHref === null ? null : (");
+    // …and the 404 Home link comes ONLY from the RESOLVED context. It must not fall back to the
+    // throwing legacy accessor, so an unresolved EFS request can never acquire a geographic or
+    // default-Site Home.
+    expect(notFoundPage).toContain("resolvePathContext");
+    // The legacy accessor is gone from the CODE; it is named only in the comment recording why.
+    expect(
+      notFoundPage.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, ""),
+    ).not.toContain("pathContextOr");
+    expect(notFoundPage).toContain("homeHref");
     // The decorative box can never intercept a pointer event (see box CSS).
     expect(boxBlock).toContain("pointer-events: none");
     // …and nothing wraps the actions in the decorative layer.
@@ -335,8 +351,11 @@ describe("P12-SG — separation, reusability and role independence", () => {
   it("15/16. the PAGE BANNER and PAGE BACKGROUND seams remain completely independent", () => {
     expect(layout).toContain("availableBannerPath(");
     expect(layout).toContain("availableBackgroundMap(siteConfig.assets?.backgrounds)");
-    expect(layout).toContain("<PageBanner banners={bannerMap} regionIds={regionIds} />");
-    expect(layout).toContain("<PageBackground backgrounds={backgroundMap} regionIds={regionIds} />");
+    // R10 — both seams are RENDERED by the shared document module, which BOTH presentation modes
+    // use; the composition still resolves the maps. They remain distinct seams and distinct roles.
+    const sharedShell = read("src", "app", "[[...segments]]", "efs-shell.tsx");
+    expect(sharedShell).toContain("<PageBanner banners={bannerMap} regionIds={regionIds} />");
+    expect(sharedShell).toContain("<PageBackground backgrounds={backgroundMap} regionIds={regionIds} />");
     expect(componentCode).not.toMatch(
       /banners|backgrounds|ui-page-banner|ui-page-background|PageBanner|PageBackground/,
     );

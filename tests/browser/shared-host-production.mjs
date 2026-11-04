@@ -109,7 +109,12 @@ function bindingFor(root, spokeId) {
     (candidate) => candidate.host === SHARED_HOST && candidate.canonical !== false,
   );
   if (!binding) throw new Error("no canonical EFS binding for " + spokeId + " on " + SHARED_HOST);
-  return { prefix: binding.prefix.join("/"), locale: binding.defaultLocale };
+  return {
+    prefix: binding.prefix.join("/"),
+    locale: binding.defaultLocale,
+    // The binding's OWN declared representations — the only set `hreflang` may ever describe.
+    locales: binding.locales ?? [binding.defaultLocale],
+  };
 }
 
 /**
@@ -148,6 +153,38 @@ function request({ pathname }) {
     req.on("error", reject);
     req.end();
   });
+}
+
+/**
+ * THE SAME REAL REQUEST, WITH BYTES AND HEADERS (STAGE A R02).
+ *
+ * `request()` decodes the body as UTF-8, which is right for HTML and wrong for an image: a PNG is not text and
+ * its intrinsic size lives in a binary header. This variant keeps the raw buffer and the response headers, and
+ * it accepts a Host override so a refusal can be proved against a host NO publication claims.
+ */
+function requestRaw({ pathname, host = SHARED_HOST }) {
+  return new Promise((resolve, reject) => {
+    const req = httpRequest(
+      { host: "127.0.0.1", port: PORT, path: pathname, method: "GET", headers: { host } },
+      (res) => {
+        const chunks = [];
+        res.on("data", (chunk) => chunks.push(chunk));
+        res.on("end", () =>
+          resolve({ status: res.statusCode, headers: res.headers, bytes: Buffer.concat(chunks) }),
+        );
+      },
+    );
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+/** A PNG's intrinsic size, read from its own IHDR chunk rather than trusted from the content type. */
+function pngSize(bytes) {
+  if (bytes.length < 24) return null;
+  if (bytes.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a") return null;
+  if (bytes.subarray(12, 16).toString("ascii") !== "IHDR") return null;
+  return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
 }
 
 /** The canonical generated-asset synchronisation for a given deployment root. */
@@ -541,6 +578,110 @@ export async function run() {
       "an unauthored / is refused rather than answered by some Spoke",
       root.status !== 200,
       "status=" + root.status + (root.location ? " location=" + root.location : ""),
+    );
+
+    // 9 - STAGE A R02: the bounded SERVED evidence the R01 report could not supply. Real requests against the
+    // running production server for the address, discovery and image surfaces the retired entrypoint used to
+    // own. Every row records the ACTUAL status/headers/bytes, so the evidence is this run rather than an intent.
+    const alphaOgPath = alphaHomePath + "/opengraph-image";
+    const alphaOg = await requestRaw({ pathname: alphaOgPath });
+    const alphaOgSize = pngSize(alphaOg.bytes);
+    check(
+      "the public EFS image endpoint serves a real 1200x630 PNG at the binding's own address",
+      alphaOg.status === 200 &&
+        String(alphaOg.headers["content-type"] ?? "").startsWith("image/png") &&
+        alphaOg.bytes.length > 1000 &&
+        alphaOgSize !== null &&
+        alphaOgSize.width === 1200 &&
+        alphaOgSize.height === 630,
+      "status=" + alphaOg.status +
+        " type=" + String(alphaOg.headers["content-type"] ?? "(none)") +
+        " bytes=" + alphaOg.bytes.length +
+        " size=" + (alphaOgSize ? alphaOgSize.width + "x" + alphaOgSize.height : "(not a PNG)") +
+        " path=" + alphaOgPath,
+    );
+    const deltaOgPath = deltaHomePath + "/opengraph-image";
+    const deltaOg = await requestRaw({ pathname: deltaOgPath });
+    const deltaOgSize = pngSize(deltaOg.bytes);
+    check(
+      "the second owner's image endpoint serves its own binding without borrowing the first",
+      deltaOg.status === 200 &&
+        String(deltaOg.headers["content-type"] ?? "").startsWith("image/png") &&
+        deltaOgSize !== null &&
+        deltaOgSize.width === 1200,
+      "status=" + deltaOg.status +
+        " bytes=" + deltaOg.bytes.length +
+        " size=" + (deltaOgSize ? deltaOgSize.width + "x" + deltaOgSize.height : "(not a PNG)") +
+        " path=" + deltaOgPath,
+    );
+    // The internal route is dispatched by the boundary on a PRIVATE header carrying the original public path. A
+    // direct request carries none, so it must NOT be a public back door to any owner's card.
+    const backDoor = await requestRaw({ pathname: "/efs-opengraph-image" });
+    check(
+      "a direct request to the internal image route is refused, so the endpoint is not a back door",
+      backDoor.status !== 200,
+      "status=" + backDoor.status,
+    );
+    const badLocaleOg = await requestRaw({
+      pathname: "/" + alphaBinding.prefix + "/not-a-locale/opengraph-image",
+    });
+    check(
+      "an unsupported locale on the image endpoint is refused rather than borrowing a representation",
+      badLocaleOg.status !== 200,
+      "status=" + badLocaleOg.status,
+    );
+    const retiredOg = await requestRaw({ pathname: "/ww/en/opengraph-image" });
+    check(
+      "the retired /ww/en image grammar is refused, not reinterpreted as a card",
+      retiredOg.status !== 200,
+      "status=" + retiredOg.status,
+    );
+    const foreignHost = await requestRaw({ pathname: alphaAboutPath, host: "unclaimed.invalid" });
+    check(
+      "a host NO publication claims is refused rather than answered from this Installation's Spokes",
+      foreignHost.status !== 200,
+      "status=" + foreignHost.status + " host=unclaimed.invalid",
+    );
+
+    // Metadata and discovery on the same served tree: the canonical the page advertises, the alternates it
+    // publishes, and this host's owner-scoped inventories.
+    const canonicalTag = /<link[^>]+rel="canonical"[^>]*>/i.exec(alphaHome.body)?.[0] ?? "";
+    const canonicalHref = /href="([^"]+)"/i.exec(canonicalTag)?.[1] ?? "";
+    check(
+      "the served Home advertises a canonical address on its own binding path",
+      alphaHome.status === 200 &&
+        canonicalHref.includes("/" + alphaBinding.prefix + "/" + alphaBinding.locale),
+      "canonical=" + (canonicalHref || "(none)"),
+    );
+    const alternateCount = (alphaHome.body.match(/hreflang="/g) ?? []).length;
+    const otherLocales = alphaBinding.locales.filter((entry) => entry !== alphaBinding.locale);
+    check(
+      "the served Home publishes hreflang alternates exactly for its OTHER declared representations",
+      alphaHome.status === 200 &&
+        (otherLocales.length === 0 ? alternateCount === 0 : alternateCount > 0),
+      "declared-locales=" + alphaBinding.locales.join(",") +
+        " others=" + otherLocales.length +
+        " hreflang-count=" + alternateCount,
+    );
+    const sitemap = await request({ pathname: "/sitemap.xml" });
+    const locs = sitemap.body.match(/<loc>[^<]+<\/loc>/g) ?? [];
+    const foreignLocs = locs.filter((loc) => !loc.includes(SHARED_HOST));
+    check(
+      "sitemap.xml is served for this host and advertises only that host's owner-scoped addresses",
+      sitemap.status === 200 &&
+        locs.length > 0 &&
+        foreignLocs.length === 0 &&
+        !sitemap.body.includes("/ww/"),
+      "status=" + sitemap.status +
+        " locs=" + locs.length +
+        " foreign=" + foreignLocs.length +
+        " sample=" + (locs[0] ?? "(none)"),
+    );
+    const robots = await request({ pathname: "/robots.txt" });
+    check(
+      "robots.txt is served for this host and points at this host's own sitemap",
+      robots.status === 200 && robots.body.includes("/sitemap.xml"),
+      "status=" + robots.status,
     );
   } finally {
     try {

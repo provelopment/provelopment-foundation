@@ -140,9 +140,9 @@ describe("every repository surface has ONE owner", () => {
     // …an author-facing README inside ANY authored tree stays documentation, in every layout:
     ["deployment/spokes/foundation/content/pages/markdown/README.md", "documentation"],
     ["deployment/spokes/germany/content/assets/README.md", "documentation"],
-    // …and a generated lifecycle document is NOT authored content:
-    ["deployment/content/COUNTRY-CODES.md", "deployment"],
-    ["deployment/spokes/foundation/content/COUNTRY-CODES.md", "deployment"],
+    // …and a deployment-owned document is NOT authored content merely because it is Markdown:
+    ["deployment/efs/capsule/e_00000000000000000000000001/foundation/main/pages/about/de-de.md", "deployment"],
+    ["deployment/efs/capsule/e_00000000000000000000000002/germany/main/pages/about/de-de.md", "deployment"],
     // The capsule's production state and its own acceptance contract:
     ["deployment/site.config.json", "deployment"],
     ["deployment/spokes.json", "deployment"],
@@ -208,7 +208,9 @@ describe("every repository surface has ONE owner", () => {
   it("never classifies a path merely because it ends in .md", () => {
     // The rule that keeps authored content and generated documents out of the documentation route.
     expect(ownerOf("content/pages/markdown/ww/en/about.md")).not.toBe("documentation");
-    expect(ownerOf("deployment/content/COUNTRY-CODES.md")).toBe("deployment");
+    expect(ownerOf("deployment/efs/capsule/e_00000000000000000000000001/foundation/main/pages/about/de-de.md")).toBe(
+      "deployment",
+    );
     expect(
       ownerOf("tests/fixtures/synthetic-deployment/content/pages/markdown/ww/en/about.md"),
     ).not.toBe("documentation");

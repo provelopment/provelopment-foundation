@@ -78,11 +78,11 @@ function json(title: string, visibility?: "public" | "unlisted"): string {
   )}\n`;
 }
 
-/** One Site as `site.config.json` declares it. */
+/** One Site as `site.config.json` declares it. A locale may be a bare key or a declared mapping. */
 interface SiteFixture {
   readonly code: string;
   readonly label: string;
-  readonly locales?: readonly string[];
+  readonly locales?: readonly (string | { path: string; canonical?: string })[];
   readonly defaultLocale?: string;
 }
 
@@ -184,7 +184,7 @@ async function robotsOf(
  */
 const ALPHA_SITES: readonly SiteFixture[] = [
   { code: "ww", label: "Global" },
-  { code: "ca", label: "Canada", locales: ["en", "de"], defaultLocale: "en" },
+  { code: "ca", label: "Canada", locales: [{ path: "en", canonical: "en-CA" }, { path: "de", canonical: "de-CA" }], defaultLocale: "en" },
 ];
 const ALPHA_BINDINGS: readonly BindingFixture[] = [
   { site: "ca", locale: "en", region: "north" },

@@ -300,3 +300,41 @@ describe("Page-route case is not identity (D43)", () => {
     );
   });
 });
+
+describe("the retired worldwide Site identity cannot be re-adopted (`C08` row 5)", () => {
+  /** The fixture manifest with exactly one Site, named as supplied. */
+  const withSiteId = (siteId: string) => {
+    const document = manifest({}) as Record<string, unknown>;
+    const entities = document.entities as { facets: { sites: { id: string }[] }[] }[];
+    entities[0].facets[0].sites[0].id = siteId;
+    return validateEfsManifest(document);
+  };
+
+  it("refuses `ww` as a declared Site ID, naming the reason", () => {
+    const result = withSiteId("ww");
+    expect(result.ok).toBe(false);
+    expect(result.issues.join(" ")).toMatch(/retired/i);
+  });
+
+  it("refuses it case-insensitively — the reservation is a word, not a spelling", () => {
+    expect(withSiteId("WW").issues.join(" ")).toMatch(/retired/i);
+    expect(withSiteId("Ww").issues.join(" ")).toMatch(/retired/i);
+  });
+
+  it("still accepts the nongeographic Sites the fixture declares", () => {
+    // The reservation adds one word; it must not narrow what a descriptive Site may be. `main` is the
+    // neutral default and the untouched fixture keeps validating exactly as it did.
+    expect(validateEfsManifest(manifest({})).ok).toBe(true);
+  });
+
+  it("does NOT apply the reservation to a presentation key — that is a Spoke-config key, not a SiteID", () => {
+    // The distinction row 5 requires: a Site ID is refused, a descriptive presentation key is not. An
+    // ordinary conversion copies the Spoke's own configuration byte-identically, so a legacy `ww`
+    // presentation key keeps resolving the same authored shell facts.
+    const document = manifest({}) as Record<string, unknown>;
+    const publications = document.publications as Record<string, unknown>[];
+    publications[0].presentationSiteCode = "ww";
+    const result = validateEfsManifest(document);
+    expect(result.issues.join(" ")).not.toMatch(/presentationSiteCode: .*retired/i);
+  });
+});

@@ -87,9 +87,14 @@ describe("an established one-website Installation serves through the one EFS run
     const view = await efs.efsViewForCurrentRequest(["ww", "en-001", "about"]);
     expect(view?.publication.spokeId).toBe("main");
     expect(view?.context.id).toBe("main");
-    expect(view?.site.id).toBe("ww");
+    // `GEO-04` C03: the EFS Site identity is the neutral `main`; `ww` is the legacy SOURCE code, so it
+    // addresses the publication but never names the Site.
+    expect(view?.site.id).toBe("main");
+    expect(view?.site.id).not.toBe("ww");
     expect(view?.page.id).toBe("about");
+    // The public address, canonical and prefix do not move: the projection is not a URL migration.
     expect(view?.canonical).toBe("https://synthetic.example.test/ww/en-001/about");
+    expect(view?.binding.prefix).toEqual(["ww"]);
 
     const manifest = JSON.parse(readFileSync(path.join(capsule, "efs", "manifest.json"), "utf8")) as {
       entities: { id: string }[];

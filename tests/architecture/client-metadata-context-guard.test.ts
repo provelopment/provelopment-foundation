@@ -96,11 +96,15 @@ describe("M14 — client routing projection guard", () => {
       code(file).includes("ClientRoutingProvider"),
     );
     expect(providerFiles.map(relative).sort()).toEqual([
+      "src/app/[[...segments]]/efs-shell.tsx",
       "src/app/[[...segments]]/server-composition.tsx",
       "src/components/site/client-routing-context.tsx",
       "src/components/site/site-footer.tsx",
       "src/components/site/site-header.tsx",
     ]);
+    // R10 — `efs-shell.tsx` is the SHARED document: it composes the client transport for the LEGACY
+    // presentation only, and the EFS presentation is composed without it. The transport therefore
+    // stays singular and server-supplied; it is never created by a client or by a second authority.
   });
 
   it("keeps the routing projection narrow, serializable and Spoke-local", () => {
@@ -134,16 +138,18 @@ describe("M14 — metadata surfaces guard", () => {
     expect(model).toContain("dictionaryAccessForRuntimeContext(context)");
   });
 
-  it("keeps sitemap and robots context-bound", () => {
-    for (const [route, contextFile, delegate] of [
-      [SITEMAP, SITEMAP_CONTEXT, "sitemapForContext"],
-      [ROBOTS, ROBOTS_CONTEXT, "robotsForContext"],
+  it("keeps sitemap and robots EFS-declaration-bound", () => {
+    for (const [route, contextFile, efsToken] of [
+      [SITEMAP, SITEMAP_CONTEXT, "efsSitemapForCurrentRequest"],
+      [ROBOTS, ROBOTS_CONTEXT, "efsSitemapUrlForCurrentRequest"],
     ] as const) {
       const source = code(route);
       expect(source, relative(route)).not.toContain('from "@/config"');
       expect(source, relative(route)).not.toContain("siteConfig");
-      expect(source, relative(route)).toContain("runtimeContextForRequest()");
-      expect(source, relative(route)).toContain(delegate);
+      // C07-R02 — discovery answers the request's own EFS binding. The compatibility context seam is no
+      // longer reachable from an App Router route in any environment.
+      expect(source, relative(route)).toContain(efsToken);
+      expect(source, relative(route)).not.toContain("runtimeContextForRequest()");
 
       const composition = code(contextFile);
       expect(composition, relative(contextFile)).not.toContain('from "@/config"');

@@ -152,3 +152,79 @@ export function LanguageSwitcher({ locale, label }: LanguageSwitcherProps) {
     </select>
   );
 }
+
+/**
+ * GEO-04 R10 — ONE OFFERED LANGUAGE OF AN EFS PUBLICATION.
+ *
+ * Every field is a PUBLIC FACT the EFS compositor already proved: `value` is the representation's standards
+ * tag (`hreflang`, e.g. `de-DE`) and `href` is that representation's OWN canonical address, taken verbatim
+ * from `view.alternates`. Nothing here can re-resolve a destination.
+ */
+export interface EfsLanguageOption {
+  /** The standards tag (`hreflang`) — the `<option>` value and the "is this the current language" test. */
+  readonly value: string;
+  /** Visitor-facing label, resolved once by the compositor. */
+  readonly label: string;
+  /** The published alternate's canonical address, rendered VERBATIM. */
+  readonly href: string;
+}
+
+/**
+ * GEO-04 R10 — THE EFS LANGUAGE CONTROL.
+ *
+ * WHY IT IS A SEPARATE COMPONENT. The legacy control above derives its whole answer CLIENT-side: it reads
+ * `usePathname()`, `pathContextOr`, `bindingsForSite`, `siteSupportsLocalePath` and `resolveLocaleDestination`
+ * to rebuild a destination from the current URL. The EFS shell deliberately composes NO
+ * `ClientRoutingProvider`, so `useClientRouting()` would throw there — and the hooks cannot be made
+ * conditional. Splitting the component is the only hook-safe shape: `useRouter` is the single hook this one
+ * uses, and it needs no provider.
+ *
+ * WHAT IT DELIBERATELY DOES NOT DO — and why each omission is a capability PRESERVED, not dropped:
+ *
+ *   - it does not filter or complete the option set. `view.alternates` is already EXACTLY the published
+ *     representations of THIS Page, so a locale merely declared in the binding can never appear here. That is
+ *     strictly stronger than the legacy `site.locales` filter, which had to prove availability itself;
+ *   - it does not write the `NEXT_LOCALE` cookie. Under EFS the URL is the SOLE locale authority, and a cookie
+ *     would introduce a second one that could disagree with the address the visitor is actually on.
+ *
+ * The presentation is byte-identical to the legacy control (`<select data-selector="language">`, the same
+ * classes), so the header's contextual row is unchanged for a visitor.
+ */
+export function EfsLanguageSwitcher({
+  current,
+  label,
+  options,
+}: {
+  /** The CURRENT representation's standards tag (`hreflang`). */
+  readonly current: string;
+  /** Accessible label, localized by the compositor from THIS Spoke's dictionary. */
+  readonly label: string;
+  readonly options: readonly EfsLanguageOption[];
+}) {
+  const router = useRouter();
+
+  function handleChange(next: string) {
+    // Choosing the language already being read is a no-op, exactly like the legacy control.
+    if (next === current) return;
+    const option = options.find((candidate) => candidate.value === next);
+    if (option === undefined) return;
+    // The destination is a PUBLISHED alternate address — never rebuilt, never prefixed, never folded.
+    router.push(option.href);
+  }
+
+  return (
+    <select
+      aria-label={label}
+      data-selector="language"
+      value={current}
+      onChange={(event) => handleChange(event.target.value)}
+      className="rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground"
+    >
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  );
+}

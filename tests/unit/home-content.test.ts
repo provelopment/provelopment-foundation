@@ -1,4 +1,23 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
+
+const state = vi.hoisted(() => ({ headers: new Map<string, string>() }));
+
+vi.mock("next/headers", () => ({
+  headers: async () => ({ get: (key: string) => state.headers.get(key) ?? null }),
+}));
+
+vi.mock("next/navigation", () => ({
+  notFound: () => {
+    throw new Error("NOT_FOUND");
+  },
+  redirect: (pathname: string) => {
+    throw new Error(`REDIRECT:${pathname}`);
+  },
+  permanentRedirect: (pathname: string) => {
+    throw new Error(`PERMANENT_REDIRECT:${pathname}`);
+  },
+}));
+
 
 // GENERIC ISOLATION (ISO-B1C): deployment-owned state (dictionaries, authored pages, deployment
 // configuration) comes from the SYNTHETIC test deployment, never from the repository's own
@@ -9,7 +28,6 @@ import path from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import PageRoute from "@/app/[[...segments]]/page";
 import { StarterHome } from "@/app/[[...segments]]/dedicated-pages";
 import { createPageSources } from "@/adapters/content/page-sources";
 import { createBookingActionResolver } from "@/adapters/booking";
@@ -18,6 +36,13 @@ import { siteConfig } from "@/config";
 import { HOME_CONTENT_SLUG } from "@/core/page-content";
 
 import { compatibilityChrome } from "../support/compatibility-chrome";
+import {
+  materializeRuntimeCutFixture,
+  materializeRuntimeCutInstallation,
+  RUNTIME_CUT_HOST,
+  selectRuntimeCutFixture,
+} from "../support/efs-runtime-cut";
+import { selectEfsInstallation } from "../support/efs-installation";
 
 /**
  * The OPTIONAL content-authored home page.
@@ -39,13 +64,35 @@ import { compatibilityChrome } from "../support/compatibility-chrome";
 
 const root = process.cwd();
 const read = (...segments: string[]) => readFileSync(path.join(root, ...segments), "utf8");
-
 const homeRouteSource = read("src", "app", "[[...segments]]", "server-composition.tsx");
 const pageRouteSource = homeRouteSource;
 const sitemapSource = read("src", "app", "sitemap.ts");
 
-/** The segments of a home request: the SITE code first, then the locale path key. */
-const homeSegments = (locale: string) => [siteConfig.defaultSite.code, locale];
+const installation = materializeRuntimeCutInstallation();
+selectEfsInstallation(installation.root);
+const fixture = materializeRuntimeCutFixture();
+const restoreDeclaration = selectRuntimeCutFixture(fixture);
+
+afterAll(() => {
+  restoreDeclaration();
+  fixture.cleanup();
+  installation.cleanup();
+});
+
+/**
+ * Render the fixture's DECLARED Home Page through the real EFS route.
+ *
+ * The module graph is reset first so the request boundary describes this explicit Installation rather
+ * than the generic synthetic deployment the rest of this file reads as an AUTHORING subject.
+ */
+async function renderEfsHome(segments: readonly string[]): Promise<string> {
+  vi.resetModules();
+  state.headers.set("host", RUNTIME_CUT_HOST);
+  const { default: PageRoute } = await import("@/app/[[...segments]]/page");
+  return renderToStaticMarkup(
+    await PageRoute({ params: Promise.resolve({ segments: [...segments] }) }),
+  );
+}
 
 describe("the reserved home slug has ONE authority", () => {
   it("is declared once, in the content model", () => {
@@ -130,15 +177,12 @@ describe("an authored home page wins; a site without one keeps the starter homep
     ).toBeNull();
   });
 
-  it("renders the authored home page at the locale root, not the generic starter", async () => {
-    const html = renderToStaticMarkup(
-      await PageRoute({
-        params: Promise.resolve({
-          segments: homeSegments(siteConfig.defaultSite.defaultLocale),
-        }),
-      }),
-    );
-
+  it("renders the authored Home Page at the locale root, not the generic starter", async () => {
+    // C07-R02 — the Home Page is a DECLARED EFS Page reached through its binding's locale root. The
+    // retired `[site.code, locale]` segments described a Site-code spelling that no longer addresses a
+    // Page; the surviving contract is that the authored representation wins over any starter render.
+    const html = await renderEfsHome(["en-001"]);
+    expect(html).toContain("explicit EFS declaration");
     expect(html.match(/<h1\b/g) ?? []).toHaveLength(1);
     expect(html).not.toContain("home-hero");
   });
@@ -161,13 +205,17 @@ describe("an authored home page wins; a site without one keeps the starter homep
     expect(html).toContain(siteConfig.name);
   });
 
-  it("renders a homepage for every configured locale", async () => {
-    for (const locale of siteConfig.locales) {
-      const html = renderToStaticMarkup(
-        await PageRoute({ params: Promise.resolve({ segments: homeSegments(locale.code) }) }),
-      );
-      expect(html.length, locale.code).toBeGreaterThan(0);
-      expect(html.match(/<h1\b/g) ?? [], locale.code).toHaveLength(1);
+  it("renders the declared Home Page for every locale the binding declares", async () => {
+    const english = await renderEfsHome(["en-001"]);
+    expect(english).toContain("This home Page is served only from an explicit EFS declaration.");
+
+    const german = await renderEfsHome(["de-de"]);
+    expect(german).toContain(
+      "Diese Startseite wird ausschließlich aus einer expliziten EFS-Deklaration ausgeliefert.",
+    );
+
+    for (const html of [english, german]) {
+      expect(html.match(/<h1\b/g) ?? []).toHaveLength(1);
     }
   });
 

@@ -12,7 +12,7 @@ import { BusinessInfo } from "./business-info";
 import { connectMethodLabel } from "./connect-method-label";
 import { socialConnectivityLinks } from "./connectivity-links";
 import { ContextConnectHeading } from "./context-connect-heading";
-import { ContextNavLinks, type ContextNavLink } from "./context-nav-links";
+import { ContextNavLinks, type ContextNavLink, type EfsResolvedNavItem } from "./context-nav-links";
 import { ClientRoutingProvider } from "./client-routing-context";
 import { buildClientRoutingContext } from "./client-routing";
 import { FooterGraphic } from "./footer-graphic";
@@ -39,6 +39,29 @@ interface SiteFooterProps {
     readonly dictionaryAccess: RuntimeDictionaryAccess;
     readonly assets: RuntimeAssetOwnershipResolver;
     readonly routes: PageSources;
+    /**
+     * GEO-04 R10 — THE EFS PRESENTATION OF THIS FOOTER.
+     *
+     * Present → every internal destination is one the EFS compositor has ALREADY proved against the
+     * publication, and this component resolves nothing: no `buildClientRoutingContext`, no `siteSetOf`, no
+     * `routes.resolve` (legal existence comes from `view.navigation`), no `siteHref`, no
+     * `ClientRoutingProvider`. `routes` stays a REQUIRED prop so a legacy caller's contract is unchanged, but
+     * it is not read on this path.
+     *
+     * Absent → every legacy code path below is untouched, byte for byte.
+     */
+    readonly efs?: {
+        /** Published primary navigation — the footer's "Navigate" column. */
+        readonly navItems: readonly EfsResolvedNavItem[];
+        /** Published secondary/footer navigation group; absent when none is configured or published. */
+        readonly footerNavItems?: readonly EfsResolvedNavItem[];
+        /** Connect methods: internal destinations already proved, external ones verbatim. */
+        readonly methodItems: readonly EfsResolvedNavItem[];
+        /** Legal documents that are BOTH configured AND published in this Site's representation. */
+        readonly legalLinks: readonly { readonly slug: string; readonly label: string; readonly href: string }[];
+        /** The published Connect Page address; absent when this Site publishes no Connect Page. */
+        readonly connectHref?: string;
+    };
 }
 
 export async function SiteFooter({
@@ -49,6 +72,7 @@ export async function SiteFooter({
     dictionaryAccess,
     assets,
     routes,
+    efs,
 }: SiteFooterProps) {
     // S1E2 — the footer speaks for ONE site: its EFFECTIVE page-facing configuration (the legal
     // documents, primary list, footer group and connection inventory that this site serves) and
@@ -59,10 +83,17 @@ export async function SiteFooter({
     // M14 — this chrome composes ROUTING CONTROLS (the footer lists and the Connect heading), so it
     // provides the CURRENT context's routing projection to them: the ONE client transport, built from the
     // same configuration the footer renders with.
-    const clientRouting = buildClientRoutingContext(
-        siteConfig,
-        siteSetOf(siteConfig.sites, siteConfig.defaultSite),
-    );
+    // GEO-04 R10 — built ONLY for the legacy branch (see the header's identical rule).
+    const clientRouting =
+        efs === undefined
+            ? buildClientRoutingContext(
+                  siteConfig,
+                  siteSetOf(siteConfig.sites, siteConfig.defaultSite),
+              )
+            : null;
+    // GEO-04 — the footer's OWN resolved Site inventory. Legal links are resolved against it, so a
+    // leading segment is only a Site when this Spoke declares it; no country list decides.
+    const siteSet = siteSetOf(siteConfig.sites, siteConfig.defaultSite);
     // Phase K: the legacy global footer NAP is suppressed when operating
     // regions are configured — regional pages expose their own region's
     // identity, and the global block must never leak into them.
@@ -73,19 +104,64 @@ export async function SiteFooter({
     // (`content/pages/<siteId>/<locale>/legal/<slug>.md` or its JSON counterpart).
     // Existence is decided by the SAME page-source composition every page route resolves
     // through — never a second content store, and never another site's tree.
-    const pages = routes;
-    const legalLinks: { slug: string; label: string }[] = [];
-    for (const doc of configuredLegalDocs(pageConfig.legal)) {
-        // Canonical existence (THIS site's default locale) — the same rule as before, so a
-        // document that only exists in a translation is not advertised everywhere. The site comes
-        // from the effective configuration, so another site's tree is never consulted.
-        const page = await pages.resolve(
-            pageConfig.site.code,
-            legalPageRoutePath(doc.slug),
-            pageConfig.site.defaultLocale,
-        );
-        if (page) legalLinks.push(doc);
+    // GEO-04 R10 — ONE list shape for both branches, now carrying the RESOLVED href, so the render below has a
+    // single code path and cannot emit a legacy address on the EFS surface (or vice versa).
+    const legalLinks: { slug: string; label: string; href: string }[] = [];
+    if (efs === undefined) {
+        const pages = routes;
+        for (const doc of configuredLegalDocs(pageConfig.legal)) {
+            // Canonical existence (THIS site's default locale) — the same rule as before, so a
+            // document that only exists in a translation is not advertised everywhere. The site comes
+            // from the effective configuration, so another site's tree is never consulted.
+            const page = await pages.resolve(
+                pageConfig.site.code,
+                legalPageRoutePath(doc.slug),
+                pageConfig.site.defaultLocale,
+            );
+            if (page) {
+                legalLinks.push({
+                    ...doc,
+                    href: siteHref(
+                        siteSet,
+                        pageConfig.site,
+                        locale,
+                        `/${legalPageRoutePath(doc.slug)}`,
+                    ),
+                });
+            }
+        }
+    } else {
+        // EFS: a legal document is listed only when it is BOTH configured AND published. The compositor proved
+        // membership in `view.navigation` before supplying this list, so no page-tree read happens here.
+        legalLinks.push(...efs.legalLinks);
     }
+
+    // GEO-04 R10 — ONE renderer for every internal footer list. The two branches differ only in WHICH
+    // contract they hand `ContextNavLinks` (self-resolving legacy vs already-verified EFS), so the markup,
+    // ordering, icons and active treatment stay shared and the EFS footer cannot drift.
+    const renderList = (
+        links: readonly ContextNavLink[],
+        items: readonly EfsResolvedNavItem[],
+        className: string,
+        demoBadgeLabel?: string,
+    ) =>
+        efs === undefined ? (
+            <ContextNavLinks
+                locale={locale}
+                links={links}
+                className={className}
+                linkClassName={FOOTER_LINK_CLASS}
+                demoBadgeLabel={demoBadgeLabel}
+            />
+        ) : (
+            <ContextNavLinks
+                mode="efs-resolved"
+                items={items}
+                className={className}
+                linkClassName={FOOTER_LINK_CLASS}
+                demoBadgeLabel={demoBadgeLabel}
+            />
+        );
 
     // P5-6 — the footer nav list uses the same position-derived identity as the
     // header/aside/disclosure so duplicate destinations keep distinct React
@@ -159,7 +235,8 @@ export async function SiteFooter({
     // methods exist — the heading IS a link to the Connect page, so rendering it
     // with nothing beneath it (or on a site that serves no Connect page) would
     // advertise an empty group and, for such a site, a dead destination.
-    const hasConnectionMethods = methodLinks.length > 0;
+    const hasConnectionMethods =
+        efs === undefined ? methodLinks.length > 0 : efs.methodItems.length > 0;
     const hasConnectivity = hasConnectionMethods || socialLinks.length > 0;
 
     // P12-FG — the optional DECORATIVE footer graphic (`site.assets.footerGraphic`,
@@ -168,8 +245,7 @@ export async function SiteFooter({
     // yields `undefined` → no layer is rendered at all.
     const footerGraphic = assets.availableFooterGraphicPath(siteConfig.assets?.footerGraphic);
 
-    return (
-        <ClientRoutingProvider routing={clientRouting}>
+    const footer = (
         <footer className="relative isolate mt-16 border-t border-border">
             {/* P12-FG — the optional decorative footer graphic / watermark. See
                 `footer-graphic.tsx` for the full decorative-only contract. Nothing
@@ -214,17 +290,18 @@ export async function SiteFooter({
                             <ContextConnectHeading
                                 locale={locale}
                                 label={dictionary.sections.connect}
+                                // GEO-04 R10 — the EFS heading links only to a PROVED Connect Page.
+                                {...(efs === undefined ? {} : { efs: { href: efs.connectHref } })}
                             />
                         ) : null}
 
                         {hasConnectionMethods ? (
-                            <ContextNavLinks
-                                locale={locale}
-                                links={methodLinks}
-                                className="mt-3 space-y-2"
-                                linkClassName={FOOTER_LINK_CLASS}
-                                demoBadgeLabel={dictionary.connect.demoBadge}
-                            />
+                            renderList(
+                                methodLinks,
+                                efs?.methodItems ?? [],
+                                "mt-3 space-y-2",
+                                dictionary.connect.demoBadge,
+                            )
                         ) : null}
 
                         {/* CONNECTIVITY ICON SEAM — social/profile destinations, in the
@@ -235,12 +312,19 @@ export async function SiteFooter({
                             1em, `aria-hidden`). An empty `socialLinks` list renders
                             nothing at all — the canonical Foundation's state. */}
                         {socialLinks.length > 0 ? (
-                            <ContextNavLinks
-                                locale={locale}
-                                links={socialLinks}
-                                className={hasConnectionMethods ? "mt-3 space-y-2" : "space-y-2"}
-                                linkClassName={FOOTER_LINK_CLASS}
-                            />
+                            renderList(
+                                socialLinks,
+                                // Social destinations are EXTERNAL by construction, so the EFS projection is the
+                                // same list under the verified contract: the href is forwarded verbatim and
+                                // `NavItem` applies the external new-tab + `rel` semantics.
+                                socialLinks.map((link, index) => ({
+                                    href: link.href,
+                                    label: link.label,
+                                    key: link.key ?? `social:${index}`,
+                                    icon: link.icon,
+                                })),
+                                hasConnectionMethods ? "mt-3 space-y-2" : "space-y-2",
+                            )
                         ) : null}
                     </div>
                 ) : null}
@@ -260,12 +344,11 @@ export async function SiteFooter({
                             </h2>
                         ) : null}
 
-                        <ContextNavLinks
-                            locale={locale}
-                            links={footerNavLinks}
-                            className={footerNavGroup?.heading ? "mt-3 space-y-2" : "space-y-2"}
-                            linkClassName={FOOTER_LINK_CLASS}
-                        />
+                        {renderList(
+                            footerNavLinks,
+                            efs?.footerNavItems ?? [],
+                            footerNavGroup?.heading ? "mt-3 space-y-2" : "space-y-2",
+                        )}
                     </nav>
                 ) : null}
 
@@ -274,12 +357,7 @@ export async function SiteFooter({
                         <span className={FOOTER_HEADING_BOX_CLASS}>{dictionary.sections.navigate}</span>
                     </h2>
 
-                    <ContextNavLinks
-                        locale={locale}
-                        links={navLinks}
-                        className="mt-3 space-y-2"
-                        linkClassName={FOOTER_LINK_CLASS}
-                    />
+                    {renderList(navLinks, efs?.navItems ?? [], "mt-3 space-y-2")}
                 </nav>
 
                 {legalLinks.length > 0 ? (
@@ -291,14 +369,7 @@ export async function SiteFooter({
                         <ul className="mt-3 space-y-2">
                             {legalLinks.map((doc) => (
                                 <li key={doc.slug}>
-                                    <Link
-                                        href={siteHref(
-                                            pageConfig.site,
-                                            locale,
-                                            `/${legalPageRoutePath(doc.slug)}`,
-                                        )}
-                                        className={FOOTER_LINK_CLASS}
-                                    >
+                                    <Link href={doc.href} className={FOOTER_LINK_CLASS}>
                                         {legalLabel(dictionary.legal.labels, doc)}
                                     </Link>
                                 </li>
@@ -336,6 +407,13 @@ export async function SiteFooter({
                 </p>
             </div>
         </footer>
-        </ClientRoutingProvider>
+    );
+    // GEO-04 R10 — the EFS footer composes NO `ClientRoutingProvider`: every list it renders is already
+    // verified, and the legacy provider would hand those controls a page-binding projection the EFS
+    // publication does not have.
+    return clientRouting === null ? (
+        footer
+    ) : (
+        <ClientRoutingProvider routing={clientRouting}>{footer}</ClientRoutingProvider>
     );
 }

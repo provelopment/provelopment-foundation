@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+import type { PageLinkResolver } from "@/core/page-document";
 import type { BookingActionResolver } from "@/application/booking-action";
 import type { ResolvedPage } from "@/adapters/content/page-sources";
 import { BookingAction } from "@/components/site/booking-action";
@@ -56,6 +58,27 @@ interface DedicatedPageChrome {
 }
 
 /**
+ * THE AUTHORED SOURCE A DEDICATED PAGE RENDERS — ONE SHAPE, TWO PROVENANCES (GEO-04 C09-R08).
+ *
+ * The Connect and Contact chrome never needed a whole `ResolvedPage`: they read the page's authored
+ * KIND and then either its Markdown body or its already-validated JSON document. Naming exactly those
+ * two facts lets the SAME specialised composition serve
+ *
+ *   - the legacy route, whose source is a `ResolvedPage` (which structurally satisfies this), and
+ *   - an EFS request, whose source is an `EfsPageSource` for a DECLARED EFS Page,
+ *
+ * without casting one object type into the other, without a second card renderer and without a fake
+ * `ResolvedPage`. Nothing about the page's identity is inferred here: the caller has already resolved
+ * and authorized the Page, its representation and its owning Spoke.
+ */
+export type ConnectAuthoredPage =
+  | Pick<Extract<ResolvedPage, { kind: "markdown" }>, "kind" | "body">
+  | Pick<Extract<ResolvedPage, { kind: "json" }>, "kind" | "document">;
+
+/** The one URL leaf whose chrome is the connectivity inventory (`./server-composition` dispatches on it). */
+export const CONNECT_PAGE_ROUTE_PATH = "connect";
+
+/**
  * R2 — DOES THIS SPOKE'S PRESENTED NOTICE STAND IN FOR THE PAGE-LEVEL INTRODUCTORY NOTICES?
  *
  * ONE question, answered ONCE, by the SAME pure resolver the shell uses to compose the banner
@@ -75,7 +98,24 @@ export function ConnectPageContent({
   siteConfig,
   dictionaryAccess,
   assets,
-}: DedicatedPageChrome & { readonly page: ResolvedPage }) {
+  resolveRoute,
+  resolveLink,
+  renderContactForm,
+}: DedicatedPageChrome & {
+  readonly page: ConnectAuthoredPage;
+  /**
+   * THE PER-RENDER EFS AUTHORITIES, WHEN THIS PAGE IS AN EFS PAGE (GEO-04 C09-R09).
+   *
+   * Optional on purpose: the released legacy `/connect` caller passes none of them, so its JSON pages
+   * keep the pre-EFS locale-first behavior EXACTLY as before. An EFS Connect caller supplies the
+   * shared `efsPageLinkContext` answers — the same ones the generic EFS view uses — so an authored
+   * `route` reaches the binding-owned address and an authored application `link` is resolved by the
+   * verified EFS owner, instead of falling back to `/<locale>/<route>` and 404ing.
+   */
+  readonly resolveRoute?: (routePath: string) => string | null;
+  readonly resolveLink?: PageLinkResolver;
+  readonly renderContactForm?: (formRef: string) => ReactNode;
+}) {
   const dictionary = dictionaryAccess.get(locale, siteId ?? siteConfig.defaultSite.code);
   const replacesNotice = replacesIntroductoryNotices(siteConfig);
 
@@ -91,7 +131,14 @@ export function ConnectPageContent({
           // A JSON page authored for `/connect` supplies its sections; this page keeps its own
           // heading (the interface dictionary owns the h1), so the document's title is metadata
           // rather than a second page-level heading.
-          <PageDocumentContent document={page.document} locale={locale} withTitle={false} />
+          <PageDocumentContent
+            document={page.document}
+            locale={locale}
+            withTitle={false}
+            {...(resolveRoute === undefined ? {} : { resolveRoute })}
+            {...(resolveLink === undefined ? {} : { resolveLink })}
+            {...(renderContactForm === undefined ? {} : { renderContactForm })}
+          />
         )}
       </div>
 

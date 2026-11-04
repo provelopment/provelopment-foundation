@@ -59,7 +59,7 @@ import { createPortAllocator } from "./ports.mjs";
 // BEFORE writing. That turns "the generic scenarios only touch the disposable copy" from a convention
 // into a mechanical guarantee: a regression that reaches for the shipped `site.config.json` fails loudly
 // instead of rewriting it. Reads keep using `node:fs` directly.
-import { cpSync, mkdir, rm, rmdir, rmSync, writeFile } from "./scratch.mjs";
+import { cpSync, mkdir, rm, rmSync, writeFile, writeFileSync } from "./scratch.mjs";
 // TWO READINESS LAYERS, ONE VOCABULARY (FOUNDATION-BR1)
 // `document ready` and `client navigation committed` are different states: a visitor action (Site,
 // Language, Location) navigates WITHOUT a document load, so the document-level facts `waitReady` has
@@ -73,31 +73,58 @@ import {
   readinessFailureMessage,
   readinessProbeExpression,
 } from "./readiness.mjs";
+// ONE DISPOSABLE EXPLICIT EFS INSTALLATION PER GENERIC DEV SERVER (FOUNDATION-GEO-04-C09-R02)
+// The request runtime is EFS-only, so a generic server cannot serve the legacy synthetic deployment at
+// all: an Installation with no authored EFS manifest fails closed. `./../support/efs-browser-installation.mjs`
+// materialises the translated Installation (its sites, pages, brand facts, Spoke configuration) that each
+// server OWNS, and hands the child its environment explicitly, so concurrent servers cannot answer from
+// one another's installation.
+import {
+  GENERIC_EFS_DEFAULT_LOCALE,
+  GENERIC_EFS_DEFAULT_SITE,
+  genericEfsPath,
+  installationEnvironment,
+  materializeGenericEfsInstallation,
+} from "../support/efs-browser-installation.mjs";
+
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..", "..");
 
-// ── DEPLOYMENT ISOLATION (FOUNDATION-DEPLOYMENT-ISO-B1 / B2A) ────────────────
-// The GENERIC scenarios below prove platform behaviour, so they must not depend on — or mutate —
-// the repository's own (reference) deployment. They therefore run against a TEMP COPY of the
-// committed synthetic deployment (`tests/fixtures/synthetic-deployment`), handed to each dev server
-// through `FOUNDATION_DEPLOYMENT_ROOT` (`src/config/deployment-root.ts`). Every config write and
-// content fixture below lands inside that copy; the repository's `site.config.json` and
-// `content/pages/**` are never opened for writing — and that is MECHANICAL, not conventional: those
-// writes are made through `./scratch.mjs`, which refuses any target inside the selected deployment or
-// outside this run's disposable state (ISO-B3C2B).
+// ── DEPLOYMENT ISOLATION, IN ITS EFS FORM (FOUNDATION-DEPLOYMENT-ISO-B1/B2A → GEO-04-C09-R02) ──
+// The GENERIC scenarios below prove platform behaviour, so they must not depend on — or mutate — the
+// repository's own (reference) deployment. They used to run against a TEMP COPY of the committed LEGACY
+// synthetic deployment (`tests/fixtures/synthetic-deployment`) handed to each dev server through
+// `FOUNDATION_DEPLOYMENT_ROOT`, which the server then served through `site.config.json`. The request
+// runtime is now EFS-only, so that copy can no longer be SERVED: each generic dev server instead gets its
+// OWN disposable explicit EFS Installation, materialised from the same fixture by
+// `materializeGenericEfsInstallation()` (sites, pages, brand facts and Spoke configuration translated, no
+// legacy runtime anywhere). The fixture therefore survives as *authoring source only*.
+//
+// `AUTHORING_ROOT` below is that source: a disposable copy the scenarios may still write configuration
+// into, and whose CURRENT state each new installation copies at boot. A scenario that authors a PAGE must
+// author it through its server's `authoring` surface (declaration + capsule representation together); a
+// file dropped into the old `content/pages` tree is not a published Page.
+//
+// The repository's `site.config.json` and `content/pages/**` are never opened for writing — and that is
+// MECHANICAL, not conventional: those writes are made through `./scratch.mjs`, which refuses any target
+// inside the selected deployment or outside this run's disposable state (ISO-B3C2B).
 //
 // A DEPLOYMENT's own browser acceptance is not part of this file: it lives inside that deployment's
 // capsule (`deployment/tests/browser/*.scenario.mjs`) and is DISCOVERED and run below with this
 // harness — one browser framework, two owners. Such a scenario reads the SHIPPED configuration
 // read-only and starts its dev server WITHOUT the override, because its subject is the deployment
 // itself.
-const SYNTHETIC_DEPLOYMENT_ROOT = mkdtempSync(join(tmpdir(), "foundation-synthetic-browser-"));
-cpSync(join(ROOT, "tests", "fixtures", "synthetic-deployment"), SYNTHETIC_DEPLOYMENT_ROOT, {
+const AUTHORING_ROOT = mkdtempSync(join(tmpdir(), "foundation-synthetic-browser-"));
+cpSync(join(ROOT, "tests", "fixtures", "synthetic-deployment"), AUTHORING_ROOT, {
   recursive: true,
 });
-/** The deployment root the GENERIC scenarios mutate (a disposable copy). */
-const DEPLOYMENT_ROOT = SYNTHETIC_DEPLOYMENT_ROOT;
+/**
+ * The authoring source the GENERIC scenarios may still write configuration into. It is NEVER served:
+ * each dev server's own `materializeGenericEfsInstallation()` result is what answers requests.
+ */
+const DEPLOYMENT_ROOT = AUTHORING_ROOT;
+
 /**
  * THE INSTALLED DEPLOYMENT, ASKED OF THE ONE AUTHORITY (FOUNDATION-DEPLOYMENT-ISO-B3A)
  * -----------------------------------------------------------------------------------
@@ -181,32 +208,38 @@ function shippedConfigPath() {
  * namespace is invisible here exactly as it is to the runtime it is describing.
  */
 let servedCapability;
-function servedInstallationAssetCapability() {
-  if (servedCapability !== undefined) return servedCapability;
+function servedInstallationAssetCapability(installation = null) {
+  if (installation === null && servedCapability !== undefined) return servedCapability;
 
   /** The declared namespaces of the installation the generic server serves, in resolution order. */
   const namespaces = [{ directory: join(ROOT, "public", "assets"), urlBase: "/assets" }];
   let mode = "unresolved";
   try {
+    // The question is asked of the ONE authority, about the installation THIS server owns — not about
+    // an authoring copy that is never served (FOUNDATION-GEO-04-C09-R02).
     const resolution = resolveDeploymentForBuild(
-      { ...process.env, FOUNDATION_DEPLOYMENT_ROOT: DEPLOYMENT_ROOT },
+      installation === null
+        ? { ...process.env, FOUNDATION_DEPLOYMENT_ROOT: DEPLOYMENT_ROOT }
+        : installationEnvironment(installation),
       ROOT,
     );
     mode = resolution.mode;
-    // S3F1 — an EXPLICIT Installation activates exactly one Spoke, and its namespace is the one the
-    // runtime authority publishes for it. Legacy mode declares no Spoke, so the platform namespace is
-    // the whole of it.
+    // S3F1 — an EXPLICIT Installation activates exactly one Spoke, and the namespace it can serve from
+    // the repository's own `public/` tree is that Spoke's — IF this installation materialises one there.
+    // A disposable Installation whose assets live in its own capsule publishes none, and this harness
+    // says so rather than inventing a namespace: presence on disk is not authority, and absence is not
+    // served.
     if (resolution.mode === "explicit" && resolution.spoke) {
-      namespaces.push({
-        directory: join(ROOT, "public", "spokes", resolution.spoke.segment, "assets"),
-        urlBase: `/spokes/${resolution.spoke.segment}/assets`,
-      });
+      const directory = join(ROOT, "public", "spokes", resolution.spoke.segment, "assets");
+      if (existsSync(directory)) {
+        namespaces.push({ directory, urlBase: `/spokes/${resolution.spoke.segment}/assets` });
+      }
     }
   } catch {
     // No installation to describe: the platform namespace is the only honest answer.
   }
 
-  servedCapability = {
+  const capability = {
     mode,
     urlBases: namespaces.map((namespace) => namespace.urlBase),
     /**
@@ -240,18 +273,22 @@ function servedInstallationAssetCapability() {
         .sort();
     },
   };
-  return servedCapability;
+  if (installation === null) servedCapability = capability;
+  return capability;
 }
+
 /** Generic scenarios' config target: the disposable copy, never the shipped file. */
 const CONFIG_PATH = join(DEPLOYMENT_ROOT, "site.config.json");
-/** Generic scenarios' content + dictionary roots (inside the disposable copy). */
-const CONTENT_ROOT = join(DEPLOYMENT_ROOT, "content", "pages");
-const DICTIONARY_ROOT = join(DEPLOYMENT_ROOT, "config", "i18n");
+// The legacy content and dictionary roots that used to live here are GONE (GEO-04 C09-R13). They named
+// `content/pages` and `config/i18n` inside this disposable copy, and the last two scenarios that wrote
+// through them now DECLARE their Pages through a server's own `prepareEfs` seam instead. A scenario that
+// needs a Page must declare it; nothing in this harness addresses a legacy content tree any more.
 
-// The disposable tree is deleted when the run ends, whatever the outcome: generic scenarios leave
-// nothing behind in the repository, and the committed fixture is never written back to.
+// The disposable authoring source is deleted when the run ends, whatever the outcome: generic
+// scenarios leave nothing behind in the repository, and the committed fixture is never written back to.
+// Each server's own EFS Installation was already removed by `stopServer`.
 process.on("exit", () => {
-  rmSync(SYNTHETIC_DEPLOYMENT_ROOT, { recursive: true, force: true });
+  rmSync(AUTHORING_ROOT, { recursive: true, force: true });
 });
 
 const NEXT_BIN = join(ROOT, "node_modules", "next", "dist", "bin", "next");
@@ -452,6 +489,9 @@ const CANONICAL = {
 
 function check(rows, name, ok, detail = "") {
   rows.push({ name, ok, detail });
+  // EVERY failure is named as it happens, for every block: a block summary count alone cannot tell a
+  // reader which approved capability is red.
+  if (!ok) console.log(`  FAIL ${name} :: ${detail}`);
 }
 
 /** A JS expression string that evaluates to whether `selector` is visibly rendered. */
@@ -545,39 +585,156 @@ async function closeVisibleRail(cdp) {
   })()`);
 }
 
-function startDevServer(port, { synthetic = true, deploymentRoot = null } = {}) {
-  const proc = spawn(process.execPath, [NEXT_BIN, "dev", "--port", String(port)], {
-    cwd: ROOT,
-    env: deploymentRoot !== null
-      ? {
-          ...process.env,
-          FOUNDATION_DEPLOYMENT_ROOT: deploymentRoot,
-          FOUNDATION_ENABLE_LEGACY_TEST_RUNTIME: "1",
-        }
-      : synthetic
-        ? {
-            ...process.env,
-            FOUNDATION_DEPLOYMENT_ROOT: DEPLOYMENT_ROOT,
-            FOUNDATION_ENABLE_LEGACY_TEST_RUNTIME: "1",
-          }
-        : { ...process.env },
-    stdio: ["ignore", "pipe", "pipe"],
-    windowsHide: true,
-  });
+/**
+ * START ONE DEV SERVER, OWNING ITS OWN EXPLICIT EFS INSTALLATION (FOUNDATION-GEO-04-C09-R02)
+ * =========================================================================================
+ *
+ * The generic form (`synthetic: true`, the default) materialises a DISPOSABLE explicit EFS
+ * Installation from the fixture and passes its `FOUNDATION_DEPLOYMENT_ROOT`,
+ * `FOUNDATION_EFS_MANIFEST` and `FOUNDATION_EFS_CAPSULE` to THIS child alone. Nothing is written to
+ * `process.env`, so two servers alive at once cannot answer from one another's installation, and no
+ * EFS-less fallback is reachable: an installation that fails to materialise throws BEFORE a process
+ * exists, and a server whose Installation authorizes nothing answers 404/refusals rather than quietly
+ * serving a legacy `site.config.json`.
+ *
+ * Two distinct ownership branches survive untouched: `deploymentRoot` (an explicit root another
+ * scenario authored) and `synthetic: false` (the SELECTED deployment's own acceptance, which reads the
+ * shipped Installation read-only and must keep its real hosts and public claims).
+ *
+ * The descriptor carries the installation and its `authoring` surface, so a scenario declares Pages and
+ * writes representations through the SAME object that owns the served Installation.
+ */
+function startDevServer(
+  port,
+  { synthetic = true, deploymentRoot = null, prepareEfs = null, sourceRoot = null, efsInstallation = null } = {},
+) {
+  // AN EXPLICIT INSTALLATION DESCRIPTOR (GEO-04 C09-R16) IS NOT A GENERIC INSTALLATION.
+  //
+  // `generic` selects the harness's OWN throwaway Installation; a descriptor already IS one, owned by the
+  // caller. Without the third test an `efsInstallation` server materialised a generic Installation it then
+  // never used and the caller never saw (GEO-04 C09-R19 measured defect, closed here).
+  const generic = synthetic && deploymentRoot === null && efsInstallation === null;
+  // AN EXPLICIT INSTALLATION DESCRIPTOR (GEO-04 C09-R16).
+  //
+  // A multi-Spoke scenario authors its OWN complete EFS Installation (manifest + capsule + Spokes) and hands
+  // the descriptor here: the server must serve exactly that publication and nothing else. It is therefore
+  // mutually exclusive with every other selector, and the conflict is REFUSED by name rather than resolved.
+  if (efsInstallation !== null) {
+    const conflicts = [
+      synthetic === false ? "synthetic:false" : null,
+      deploymentRoot !== null ? "deploymentRoot" : null,
+      sourceRoot !== null ? "sourceRoot" : null,
+      prepareEfs !== null ? "prepareEfs" : null,
+    ].filter((entry) => entry !== null);
+    if (conflicts.length > 0) {
+      throw new Error(
+        `efsInstallation is an explicit Installation descriptor and cannot be combined with ${conflicts.join(", ")}`,
+      );
+    }
+  }
+  // A CONFLICTING SELECTOR IS REFUSED, never silently resolved (GEO-04 C09-R15).
+  if (sourceRoot !== null && !generic) {
+    throw new Error(
+      "sourceRoot conflicts with " +
+        (deploymentRoot !== null ? "an explicit deploymentRoot" : "synthetic:false") +
+        ": a server that reads an Installation somebody else owns cannot also author its own",
+    );
+  }
+  if (prepareEfs !== null && !generic) {
+    // The two REAL-deployment branches read an Installation somebody else owns: a hook that authored
+    // Pages into it would be editing a shipped fixture, so it is refused instead of silently ignored.
+    throw new Error(
+      "prepareEfs is only supported by the generic EFS-owned branch; a synthetic:false or explicit " +
+        "deploymentRoot server reads an Installation it does not own",
+    );
+  }
+  // THE PER-SCENARIO AUTHORING SOURCE (GEO-04 C09-R15).
+  //
+  // A scenario that patches its OWN disposable copy of the fixture hands that copy here and it becomes the
+  // authoring source of a materialised EFS Installation — the same treatment the shared AUTHORING_ROOT gets.
+  // Without this the copy can only be offered as `deploymentRoot`, which exports a legacy root the EFS-only
+  // request runtime authorises nothing for. The default remains the shared source, so every existing
+  // generic scenario is unaffected.
+  const installation = generic
+    ? materializeGenericEfsInstallation(ROOT, { sourceRoot: sourceRoot ?? AUTHORING_ROOT })
+    : null;
+
+  // THE PRE-SERVER AUTHORING SEAM (GEO-04 C09-R05).
+  //
+  // A scenario's content is a DECLARED Page plus its capsule representation — never a file dropped into
+  // a directory that a legacy tree used to scan. The hook runs after this server owns its Installation
+  // and BEFORE Next is spawned, so what it declares is exactly what the served root publishes. It is
+  // synchronous by contract: `authorPage` writes the manifest and the representation.
+  if (installation !== null && prepareEfs !== null) {
+    try {
+      prepareEfs(installation.authoring, installation);
+    } catch (error) {
+      // FAILURE ATOMICITY: a preparation that throws spawns NOTHING and leaves NOTHING behind. The
+      // directory this server would have owned is removed here, and the caller sees the ORIGINAL error
+      // (aggregated, never swallowed, when the cleanup itself also failed).
+      try {
+        installation.cleanup();
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [error, cleanupError],
+          `prepareEfs failed AND its installation could not be removed: ${error.message}`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  const env = efsInstallation !== null
+    ? // ONLY this descriptor's environment: no global `process.env` mutation, and the Installation is NOT
+      // owned by the server (the caller keeps cleanup responsibility, so a stopped server deletes nothing).
+      installationEnvironment(efsInstallation)
+    : installation !== null
+      ? installationEnvironment(installation)
+      : deploymentRoot !== null
+        ? { ...process.env, FOUNDATION_DEPLOYMENT_ROOT: deploymentRoot }
+        : { ...process.env };
+  let proc;
+  try {
+    proc = spawn(process.execPath, [NEXT_BIN, "dev", "--port", String(port)], {
+      cwd: ROOT,
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+  } catch (error) {
+    // A process that never started owns nothing: its installation is removed here, not leaked.
+    installation?.cleanup();
+    throw error;
+  }
   let log = "";
   proc.stdout.on("data", (d) => { log += d.toString(); });
   proc.stderr.on("data", (d) => { log += d.toString(); });
-  const server = { proc, log: () => log };
+  const server = {
+    proc,
+    log: () => log,
+    /** The disposable EFS Installation this server owns, or `null` for the two real-deployment forms. */
+    efs: installation,
+    /** The authoring surface of that installation (Page declaration + representation together). */
+    authoring: installation?.authoring ?? null,
+    /** The address of a Page THIS server publishes. */
+    path: (options = {}) =>
+      genericEfsPath({ site: GENERIC_EFS_DEFAULT_SITE, locale: GENERIC_EFS_DEFAULT_LOCALE, ...options }),
+    /** The Site-open address of a Page on a named Site. */
+    sitePath: (site, route = [], locale = GENERIC_EFS_DEFAULT_LOCALE) =>
+      genericEfsPath({ site, locale, route }),
+  };
   STARTED_SERVERS.push(server);
   return server;
 }
 
 /**
- * Stops a dev server and WAITS until it is really gone.
+ * Stops a dev server, WAITS until it is really gone, and THEN removes the EFS Installation it owned.
  *
  * Next 16 refuses to start a second `next dev` for the same project directory, so a stopped-but-not-
  * yet-dead server makes the next scenario's server exit immediately ("You can access the existing
- * server at …"). The wait turns that race into an orderly hand-over.
+ * server at …"). The wait turns that race into an orderly hand-over, and the fixture is deleted only
+ * after the process that read it has exited — including every startup-failure path, which
+ * `waitForServer` reaches through this same function.
  */
 async function stopServer(server) {
   if (!server) return;
@@ -590,8 +747,25 @@ async function stopServer(server) {
   } catch { /* noop */ }
 
   for (let attempt = 0; attempt < 40; attempt += 1) {
-    if (server.proc.exitCode !== null && server.proc.exitCode !== undefined) return;
+    if (server.proc.exitCode !== null && server.proc.exitCode !== undefined) break;
     await sleep(250);
+  }
+  // A still-live process must NOT lose its Installation underneath it: escalate once, wait for the REAL
+  // exit signal, and only then delete. `exitCode !== null` is the proof, never a loop count.
+  if (server.proc.exitCode === null || server.proc.exitCode === undefined) {
+    try {
+      server.proc.kill("SIGKILL");
+    } catch { /* already gone */ }
+    await new Promise((resolve) => {
+      const done = () => resolve();
+      server.proc.once("exit", done);
+      server.proc.once("close", done);
+      setTimeout(done, 15000);
+    });
+  }
+  // Ownership is released only after the process that read the Installation has exited.
+  if (server.proc.exitCode !== null && server.proc.exitCode !== undefined) {
+    server.efs?.cleanup();
   }
 }
 
@@ -832,7 +1006,7 @@ async function writeReport(rows, totalFails) {
  */
 async function runFocusVisibleRing(rows, cdp, label) {
   // Fresh navigation so focus heuristics start clean (no prior keyboard/paint).
-  await cdp.navigate(`${BASE_URL}/ww/en`);
+  await cdp.navigate(`${BASE_URL}/main/en-001`);
   await waitReady(cdp);
 
   // 1) POINTER (real mouse click): a REAL CDP mouse click deterministically
@@ -968,7 +1142,7 @@ async function runAsidePresentation(rows, presentation, cdp) {
   let expandedRailWidth = null;
   for (const [vpName, vp] of [["desktop", VIEWPORTS.desktop], ["tablet", VIEWPORTS.tablet]]) {
     await cdp.setViewport(vp.width, vp.height);
-    await cdp.navigate(`${BASE_URL}/ww/en`);
+    await cdp.navigate(`${BASE_URL}/main/en-001`);
     await waitReady(cdp);
     // UI1 — the CANONICAL no-preference state is asserted on a document that HAS no preference: this
     // scenario's own toggles record one, and the preference is the visitor's browser state, so it is
@@ -1231,7 +1405,7 @@ const s = await cdp.evaluate(`(() => ({
   if (collapsible) {
     for (const w of [1280, 1440, 1920]) {
       await cdp.setViewport(w, 900);
-      await cdp.navigate(`${BASE_URL}/ww/en`);
+      await cdp.navigate(`${BASE_URL}/main/en-001`);
       await waitReady(cdp);
       // UI1 — these are EXPANDED-state measurements, and the state is now the VISITOR's (it survives
       // the reload above), so the rail is opened through its own control when it arrives collapsed
@@ -1331,7 +1505,7 @@ async function runAsideBoundaries(rows, presentation, mobileBar, cdp) {
 /** Adaptive mobile: bottom bar + its More disclosure (the shared drawer path). */
 async function runAdaptiveMobile(rows, cdp) {
   await cdp.setViewport(VIEWPORTS.mobile.width, VIEWPORTS.mobile.height);
-  await cdp.navigate(`${BASE_URL}/ww/en`);
+  await cdp.navigate(`${BASE_URL}/main/en-001`);
   await waitReady(cdp);
   const s = await cdp.evaluate(`(() => ({
     barVisible: ${visible('.ui-shell-bottom-bar')},
@@ -1421,7 +1595,7 @@ async function runAdaptiveMobile(rows, cdp) {
   check(rows, "footer.reachableAtEnd", !!ft && ft.footerVisible && ft.footerAboveBar, ft ? `fv=${ft.footerVisible} fab=${ft.footerAboveBar}` : "null");
 
   await cdp.setViewport(700, 820);
-  await cdp.navigate(`${BASE_URL}/ww/en`);
+  await cdp.navigate(`${BASE_URL}/main/en-001`);
   await waitReady(cdp);
   await cdp.evaluate("window.scrollTo(0, document.body.scrollHeight);");
   await sleep(300);
@@ -1456,24 +1630,74 @@ async function runAdaptiveMobile(rows, cdp) {
  * private reference site, which authors those pages. The `<Stack>` half is generic and
  * runs on the shipped landing page.
  */
+/**
+ * P1-7 — "the header row WRAPS instead of clipping".
+ *
+ * The historical form of this check required `header div.flex` carrying a `flex-wrap` utility class. That
+ * selector described ONE rendering of the row, not the contract: the shipped shell composes its header from
+ * `SiteHeader` plus an optional CTA row (`.ui-shell-header-row`), and which utility class carries the
+ * wrapping is a stylesheet decision. The CONTRACT is the geometry, so it is measured in real Chrome at
+ * desktop, tablet and mobile, keeping this case's identity and count.
+ *
+ * At every width the header must exist, expose the authored navigation, keep itself and the document inside
+ * the viewport, and never let two destinations overlap each other. A wrapping row satisfies all four; a
+ * clipped or overlapping one cannot.
+ */
 async function runGridStack(rows, cdp, label) {
-  await cdp.navigate(`${BASE_URL}/ww/en`);
-  await waitReady(cdp);
-  const st = await cdp.evaluate(`(() => {
-    const header = document.querySelector('header');
-    const stack = header ? header.querySelector('div.flex') : null;
+  const probe = `(() => {
+    const rect = (el) => { const r = el.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom }; };
+    const header = document.querySelector('header, [role="banner"]');
+    const links = header ? [...header.querySelectorAll('a[href]')] : [];
+    const rects = links.map(rect);
+    let overlaps = 0;
+    for (let i = 0; i < rects.length; i += 1) {
+      for (let j = i + 1; j < rects.length; j += 1) {
+        const a = rects[i];
+        const b = rects[j];
+        if (Math.min(a.r, b.r) - Math.max(a.l, b.l) > 1 && Math.min(a.b, b.b) - Math.max(a.t, b.t) > 1) {
+          overlaps += 1;
+        }
+      }
+    }
+    const doc = document.documentElement;
     return {
-      stack: !!stack,
-      flexWrap: !!stack && stack.className.includes('flex-wrap'),
+      header: !!header,
+      links: links.length,
+      navItems: header ? header.querySelectorAll('nav[aria-label] a[href]').length : 0,
+      overlaps,
+      overflow: doc.scrollWidth - doc.clientWidth,
+      clipped: header ? header.scrollHeight - header.clientHeight : null,
+      width: window.innerWidth,
     };
-  })()`);
-  check(rows, `${label}.stack.inHeader`, !!st.stack && !!st.flexWrap);
+  })()`;
+  let ok = true;
+  const seen = [];
+  for (const width of [VIEWPORTS.desktop.width, VIEWPORTS.tablet.width, VIEWPORTS.mobile.width]) {
+    const height = width <= 480 ? VIEWPORTS.mobile.height : VIEWPORTS.desktop.height;
+    await cdp.setViewport(width, height);
+    await cdp.navigate(`${BASE_URL}/main/en-001`);
+    await waitReady(cdp);
+    const st = await cdp.evaluate(probe);
+    seen.push(
+      `${st.width}px header=${st.header} links=${st.links} nav=${st.navItems} overlap=${st.overlaps} ` +
+        `overflow=${st.overflow} clipped=${st.clipped}`,
+    );
+    // The header must be present and hold at least its identity destination, and the row's geometry must
+    // hold: nothing leaves the viewport, nothing is clipped, and no two presented destinations overlap.
+    // The NUMBER of header destinations is not this case's subject — a composition may present its
+    // primary navigation in the shell's own surface, and navigation presence is asserted by `dup-nav`.
+    if (!st.header || st.links < 1 || st.overlaps > 0 || st.overflow > 1 || (st.clipped ?? 0) > 1) ok = false;
+  }
+
+  check(rows, `${label}.stack.inHeader`, ok, seen.join(" | "));
+  await cdp.setViewport(VIEWPORTS.desktop.width, VIEWPORTS.desktop.height);
 }
+
 
 /** Reduced motion: the global PMR rule applies and the modal never animates. */
 async function runReducedMotion(rows, trigger, panel, cdp) {
   await cdp.setReducedMotion(true);
-  await cdp.navigate(`${BASE_URL}/ww/en`);
+  await cdp.navigate(`${BASE_URL}/main/en-001`);
   await waitReady(cdp);
   check(rows, "reduced.match", await cdp.evalBool('matchMedia("(prefers-reduced-motion: reduce)").matches'));
   await openTrigger(cdp, trigger, panel);
@@ -1520,13 +1744,20 @@ async function runCanonical(chrome) {
   // `allowedDevOrigins` is set; `localhost` is an allowed dev origin by default.
   // With `127.0.0.1` the app would never hydrate and every interaction would be
   // inert. (This requires no production config change.)
-  const url = `http://localhost:${port}/ww/en`;
+  //
+  // THE ADDRESS IS THE BINDING'S, NOT A COUNTRY SITE'S (FOUNDATION-GEO-04-C09-R02). This server owns a
+  // disposable explicit EFS Installation whose Site-open binding carries the Site segment, so the Home
+  // Page is `/main/en-001` — a declared Site and a QUALIFIED locale, both authored facts. There is no
+  // `/ww` address to navigate to and none is invented.
+  const EFS_HOME = genericEfsPath({});
+  const url = `http://localhost:${port}${EFS_HOME}`;
   BASE_URL = `http://localhost:${port}`;
   const server = startDevServer(port);
   const rows = [];
   let cdp = null;
   try {
     await waitForServer(url);
+
     cdp = await Cdp.connect(chrome);
     await runAsidePresentation(rows, CANONICAL, cdp);
     await runAsideBoundaries(rows, CANONICAL, true, cdp);
@@ -1563,17 +1794,19 @@ async function runCanonical(chrome) {
       await runP6bTabletSweep(rows, CANONICAL.name, cdp);
     }
     // ── THE CROSS-INSTALLATION ASSET BOUNDARY, EXECUTABLE (FOUNDATION-MULTISITE-S3E1C/S3F1B) ─────────
-    // This server serves the disposable synthetic LEGACY installation, so the namespaces its runtime
-    // declares are the PLATFORM one only. The repository's generated canonical Spoke namespace may
-    // physically exist beside it — the assertions below prove that this selection never resolves from it,
-    // and that no served page ever references it. Generated filesystem state is not authority.
-    const capability = servedInstallationAssetCapability();
+    // This server serves a disposable EXPLICIT EFS Installation of its own, so the namespaces its runtime
+    // declares are the PLATFORM one only — its Spoke's assets are published from its capsule, not from a
+    // generated repository namespace. The repository's generated canonical Spoke namespace may physically
+    // exist beside it; the assertions below prove that this selection never resolves from it, and that no
+    // served page ever references it. Generated filesystem state is not authority.
+    const capability = servedInstallationAssetCapability(server.efs);
     check(
       rows,
       "iso.declaredNamespacesAreTheServedInstallationsOwn",
-      capability.mode === "legacy" && capability.urlBases.length === 1 && capability.urlBases[0] === "/assets",
+      capability.mode === "explicit" && capability.urlBases.length === 1 && capability.urlBases[0] === "/assets",
       `mode=${capability.mode} bases=${capability.urlBases.join(",")}`,
     );
+
     // DERIVED, never a named canonical role (M21 §10): a role this installation does not publish is NOT
     // served, and every icon it DOES serve comes from a namespace it DECLARES — so an undeclared Spoke
     // namespace is never consulted, whatever happens to exist on disk.
@@ -1606,7 +1839,7 @@ async function runCanonical(chrome) {
         capability.urlBases.includes(publishedRoleBase),
       `icon=${publishedIconName} url=${publishedRoleUrl || "(none)"} base=${publishedRoleBase || "(none)"} bases=${capability.urlBases.join(",")}`,
     );
-    await cdp.navigate(`${BASE_URL}/ww/en`);
+    await cdp.navigate(`${BASE_URL}/main/en-001`);
     await waitReady(cdp);
     const assetRefs = await cdp.evaluate(`(() => {
       const urls = [...document.querySelectorAll('link[href], img[src], source[src], script[src]')]
@@ -1663,7 +1896,7 @@ async function runDuplicateNavScenario(chrome) {
 
   const bootPhase = async (label, portSuffix) => {
     const port = PORTS.port(99 + portSuffix);
-    const url = `http://localhost:${port}/ww/en`;
+    const url = `http://localhost:${port}/main/en-001`;
     BASE_URL = `http://localhost:${port}`;
     const config = JSON.parse(original);
     config.navigation = DUP_NAV;
@@ -1698,7 +1931,7 @@ async function runDuplicateNavScenario(chrome) {
         const betaLi = [...root.querySelectorAll("li")].find((li) => li.querySelector(".ui-nav-item-label")?.textContent === "Beta");
         return {
           both: labels.includes("Alpha") && labels.includes("Beta"),
-          alphaIsLink: !!alpha && alpha.getAttribute("href") === "/ww/en/pricing",
+          alphaIsLink: !!alpha && alpha.getAttribute("href") === "/main/en-001/pricing",
           alphaIcon: !!alpha && !!alpha.querySelector("img[src$='${publishedIcons[0]}']"),
           betaDisabled: !!betaLi && !!betaLi.querySelector("[aria-disabled='true']"),
           betaIcon: !!betaLi && !!betaLi.querySelector("img[src$='${publishedIcons[1]}']"),
@@ -1729,7 +1962,7 @@ async function runDuplicateNavScenario(chrome) {
           const anchors = [...bar.querySelectorAll('ul a')];
           return {
             hasBoth: labels.includes('Alpha') && labels.includes('Beta'),
-            alphaLink: !!alpha && !!alpha.querySelector("a[href='/ww/en/pricing']"),
+            alphaLink: !!alpha && !!alpha.querySelector("a[href='/main/en-001/pricing']"),
             betaDisabled: !!beta && !!beta.querySelector("[aria-disabled='true']"),
             overflow: anchors.some((a) => { const r = a.getBoundingClientRect(); return r.right > document.documentElement.clientWidth + 1 || r.left < -1; }),
             dialogs: document.querySelectorAll('[role="dialog"]').length,
@@ -1770,11 +2003,11 @@ async function captureReadabilityEvidence(cdp, tag) {
   const dir = join(HERE, ".report", "readability");
   await mkdir(dir, { recursive: true });
   const shots = [
-    { name: `${tag}-home-desktop`, url: `${BASE_URL}/ww/en`, width: 1280, height: 900 },
-    { name: `${tag}-home-mobile`, url: `${BASE_URL}/ww/en`, width: 390, height: 844 },
-    { name: `${tag}-footer-desktop`, url: `${BASE_URL}/ww/en`, width: 1280, height: 900, toBottom: true },
-    { name: `${tag}-status-desktop`, url: `${BASE_URL}/ww/en/zzz-deep`, width: 1280, height: 900 },
-    { name: `${tag}-status-mobile`, url: `${BASE_URL}/ww/en/zzz-deep`, width: 390, height: 844 },
+    { name: `${tag}-home-desktop`, url: `${BASE_URL}/main/en-001`, width: 1280, height: 900 },
+    { name: `${tag}-home-mobile`, url: `${BASE_URL}/main/en-001`, width: 390, height: 844 },
+    { name: `${tag}-footer-desktop`, url: `${BASE_URL}/main/en-001`, width: 1280, height: 900, toBottom: true },
+    { name: `${tag}-status-desktop`, url: `${BASE_URL}/main/en-001/zzz-deep`, width: 1280, height: 900 },
+    { name: `${tag}-status-mobile`, url: `${BASE_URL}/main/en-001/zzz-deep`, width: 390, height: 844 },
   ];
   for (const shot of shots) {
     await cdp.setViewport(shot.width, shot.height);
@@ -1795,7 +2028,7 @@ async function captureReadabilityEvidence(cdp, tag) {
 /** P6-3B — favicon / header logo / page banner contract (canonical presentation). */
 async function runBrandingChecks(rows, tag, cdp) {
   await cdp.setViewport(VIEWPORTS.desktop.width, VIEWPORTS.desktop.height);
-  await cdp.navigate(`${BASE_URL}/ww/en`);
+  await cdp.navigate(`${BASE_URL}/main/en-001`);
   await waitReady(cdp);
   const s = await cdp.evaluate(`(() => {
     const icons = [...document.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"]')];
@@ -2118,7 +2351,7 @@ async function runBrandingChecks(rows, tag, cdp) {
   // so the header is present and must sit at the top of the page. This is
   // exactly the "no artwork for this route ⇒ nothing at all" contract: no
   // container, no reserved gap, and never another page's banner.
-  await cdp.navigate(`${BASE_URL}/ww/en/zzz-deep`);
+  await cdp.navigate(`${BASE_URL}/main/en-001/zzz-deep`);
   await waitReady(cdp);
   const nb = await cdp.evaluate(`(() => {
     const banner = document.querySelector('.ui-page-banner');
@@ -2277,7 +2510,7 @@ async function runBrandingChecks(rows, tag, cdp) {
 /** P6-3B — sidebar rail geometry: toggle icon size, nav-item icons, labels, border. */
 async function runP6bSidebarChecks(rows, tag, cdp) {
   await cdp.setViewport(VIEWPORTS.desktop.width, VIEWPORTS.desktop.height);
-  await cdp.navigate(`${BASE_URL}/ww/en`);
+  await cdp.navigate(`${BASE_URL}/main/en-001`);
   await waitReady(cdp);
   const exp = await cdp.evaluate(`(() => {
     ${PRESENTED_VARIANT}
@@ -2520,7 +2753,7 @@ async function runThemeClosureChecks(rows, tag, cdp) {
     ["mobile", VIEWPORTS.mobile],
   ]) {
     await cdp.setViewport(viewport.width, viewport.height);
-    await cdp.navigate(`${BASE_URL}/ww/en`);
+    await cdp.navigate(`${BASE_URL}/main/en-001`);
     await waitReady(cdp);
     const expanded = JSON.parse(await cdp.evaluate(THEME_PROBE));
     assertProbe(expanded, vpName, "expanded");
@@ -2558,7 +2791,7 @@ async function runThemeClosureChecks(rows, tag, cdp) {
   await cdp.send("Emulation.setEmulatedMedia", {
     features: [{ name: "prefers-color-scheme", value: "dark" }],
   });
-  await cdp.navigate(`${BASE_URL}/ww/en`);
+  await cdp.navigate(`${BASE_URL}/main/en-001`);
   await waitReady(cdp);
   const dark = JSON.parse(await cdp.evaluate(THEME_PROBE));
   await cdp.send("Emulation.setEmulatedMedia", { features: [] });
@@ -2757,7 +2990,7 @@ async function runP6bTabletSweep(rows, tag, cdp) {
  * 1.5× → fill; wider than 1.5× → stop at 1.5×).
  */
 async function runP6cChecks(rows, tag, cdp) {
-  await cdp.navigate(`${BASE_URL}/ww/en`);
+  await cdp.navigate(`${BASE_URL}/main/en-001`);
   await waitReady(cdp);
   const natW = await cdp.evaluate(`(() => { const i = document.querySelector('.ui-page-banner-image'); return i ? i.naturalWidth : 0; })()`);
   for (const width of [220, 300, 390, 700, 800, 1024, 1280]) {
@@ -2871,7 +3104,7 @@ async function runConnectivityIconScenario(chrome) {
   const original = await readFile(CONFIG_PATH, "utf8");
   const rows = [];
   const port = PORTS.port(150);
-  const url = `http://localhost:${port}/ww/en`;
+  const url = `http://localhost:${port}/main/en-001`;
   BASE_URL = `http://localhost:${port}`;
   const config = JSON.parse(original);
   // R1A — one deterministic composition (the reference deployment's visitor
@@ -2901,18 +3134,60 @@ async function runConnectivityIconScenario(chrome) {
   );
   const expectedMethods = config.connect.methods.length;
   await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n", "utf8");
-  // FS1 — the generic template ships NO pages, so this fixture also supplies the
-  // Connect page's safe Markdown source for the duration of the run (removed in
-  // `finally`). The seam under test is the connectivity contract, not whether a fresh
-  // clone has written its own pages yet.
-  const connectContentPath = join(CONTENT_ROOT, "markdown", "ww", "en", "connect.md");
-  await mkdir(dirname(connectContentPath), { recursive: true });
-  await writeFile(
-    connectContentPath,
-    "---\ntitle: Connect\n---\n\nReach us through any of the methods below.\n",
-    "utf8",
-  );
-  const server = startDevServer(port);
+  // GEO-04 C09-R08 — THE CONNECT PAGE IS A DECLARED EFS PAGE. The legacy drop wrote an authored
+  // Markdown file into a serving tree; after the EFS-only cut an authored file is NOT a declaration,
+  // so it published nothing and the page carried no method cards. The Page and its Markdown
+  // representation are now written through the SAME transaction a real author performs, inside the
+  // test-owned installation this server materializes, and the address stays binding-owned
+  // (`/main/en-001/connect`). The three social links and three Connect methods still come from the
+  // owning Spoke's presentation configuration written above, BEFORE materialization, so the selected
+  // Spoke is the one that carries them.
+  const server = startDevServer(port, {
+    prepareEfs: (authoring) => {
+      authoring.authorPage({
+        siteId: GENERIC_EFS_DEFAULT_SITE,
+        locale: GENERIC_EFS_DEFAULT_LOCALE,
+        route: ["connect"],
+        format: "markdown",
+        body: "Reach us through any of the methods below.\n",
+        navLabel: "Connect",
+      });
+      // GEO-04 C09-R09 — THE JSON HALF OF THE PARITY PROOF. A SECOND declared Connect Page on the OTHER
+      // Site (its own binding prefix and owner) authored as JSON, carrying an authored `route` action and
+      // an undeclared application `link`. It proves, in real Next, that the specialised Connect
+      // presentation resolves a route to the BINDING-OWNED address rather than `/<locale>/<route>`, and
+      // that a refused application link keeps its label without a guessed destination. The Markdown case
+      // above and its 44 checks are untouched.
+      authoring.authorPage({
+        siteId: "outlet",
+        locale: "de-DE",
+        route: ["connect"],
+        format: "json",
+        navLabel: "Kontakt",
+        // `authorPage` writes the representation's SOURCE text, so a JSON representation carries its
+        // serialized document (the same bytes a real author commits).
+        body: JSON.stringify({
+          schemaVersion: 1,
+          title: "Connect",
+          sections: [
+            {
+              type: "actions",
+              heading: "Sprich mit uns",
+              actions: [
+                { label: "Services route", route: "services" },
+                { label: "External", href: "https://example.test/a?b=1" },
+              ],
+            },
+            {
+              type: "list",
+              heading: "Leistungen",
+              items: [{ label: "Nested route", route: "offerings/website-design" }],
+            },
+          ],
+        }),
+      });
+    },
+  });
   let cdp = null;
   try {
     // A configured-but-missing connectivity icon must NOT stop the server: the
@@ -2920,6 +3195,73 @@ async function runConnectivityIconScenario(chrome) {
     await waitForServer(url);
     cdp = await Cdp.connect(chrome);
     check(rows, "fixture.missingIcon.doesNotBreakDeployment", true, "dev server ready with a configured-but-absent connectivity icon");
+
+    // ── REAL HTTP: ONE DECLARED PAGE, AND EVERY NEIGHBOUR FAILS CLOSED ────────
+    // GEO-04 C09-R08. The declared Connect Page is servable at the BINDING-OWNED address. The shapes
+    // that must not publish — the retired locale-first alias and an undeclared sibling route — are
+    // refused by the EFS resolver (no declaration, no Page), not merely absent from a directory.
+    const declaredConnect = await fetch(`${BASE_URL}/main/en-001/connect`);
+    check(
+      rows,
+      "connectivity.http.declaredConnectPageServed",
+      declaredConnect.status === 200,
+      `GET /main/en-001/connect -> ${declaredConnect.status}`,
+    );
+    const legacyAlias = await fetch(`${BASE_URL}/ww/en/connect`);
+    check(
+      rows,
+      "connectivity.http.legacyLocaleFirstAliasFailsClosed",
+      legacyAlias.status === 404,
+      `GET /ww/en/connect -> ${legacyAlias.status} (no EFS Site "ww", no legacy alias)`,
+    );
+    const undeclaredSibling = await fetch(`${BASE_URL}/main/en-001/connect-undeclared`);
+    check(
+      rows,
+      "connectivity.http.undeclaredRouteFailsClosed",
+      undeclaredSibling.status === 404,
+      `GET /main/en-001/connect-undeclared -> ${undeclaredSibling.status} (no declaration)`,
+    );
+
+    // ── THE JSON CONNECT PAGE: SAME PRESENTATION, BINDING-OWNED ADDRESSES ─────
+    // GEO-04 C09-R09. Real Next renders the second owner's JSON Connect Page through the specialised
+    // composition: an authored `route` must land on the binding-owned address (never `/<locale>/<route>`),
+    // a refused application `link` must keep its label with no guessed href, and the configured method
+    // cards and single heading must survive the JSON body.
+    const jsonConnect = await fetch(`${BASE_URL}/outlet/de-DE/connect`);
+    const jsonHtml = await jsonConnect.text();
+    check(
+      rows,
+      "connectivity.jsonConnect.served",
+      jsonConnect.status === 200,
+      `GET /outlet/de-DE/connect -> ${jsonConnect.status}`,
+    );
+    check(
+      rows,
+      "connectivity.jsonConnect.actionIsBindingOwned",
+      jsonHtml.includes('href="/outlet/de-de/services"') && !jsonHtml.includes('href="/de-de/services"'),
+      `authored route -> binding-owned, never locale-first; anchors seen: ${
+        (jsonHtml.match(/href="[^"]*"/g) ?? []).slice(0, 10).join(" ")
+      }`,
+    );
+    check(
+      rows,
+      "connectivity.jsonConnect.authoredHrefVerbatim",
+      jsonHtml.includes('href="https://example.test/a?b=1"'),
+      "authored external href passes through unchanged",
+    );
+    check(
+      rows,
+      "connectivity.jsonConnect.listIsBindingOwned",
+      jsonHtml.includes('href="/outlet/de-de/offerings/website-design"') &&
+        !jsonHtml.includes('href="/de-de/offerings/website-design"'),
+      "authored nested list route -> /outlet/de-de/offerings/website-design (D43 lowercase), never locale-first",
+    );
+    check(
+      rows,
+      "connectivity.jsonConnect.methodCardsAndHeading",
+      jsonHtml.includes("Message Us") && (jsonHtml.match(/<h1\b/g) ?? []).length === 1,
+      "configured method cards present, exactly one page-level heading",
+    );
 
 
     for (const [vpName, vp] of [["desktop", VIEWPORTS.desktop], ["mobile", VIEWPORTS.mobile]]) {
@@ -3041,7 +3383,7 @@ async function runConnectivityIconScenario(chrome) {
       check(rows, `connectivity.footer.${vpName}.geometryIntact`, f.footerHeight > 0, `h=${f.footerHeight}`);
 
       // Connect page — the same seam on the communication hub itself.
-      await cdp.navigate(`${BASE_URL}/ww/en/connect`);
+      await cdp.navigate(`${BASE_URL}/main/en-001/connect`);
       await waitReady(cdp);
       const page = await cdp.evaluate(`(() => {
         const cards = [...document.querySelectorAll('.grid > li')];
@@ -3175,13 +3517,6 @@ async function runConnectivityIconScenario(chrome) {
     if (cdp) await cdp.close();
     await stopServer(server);
     await writeFile(CONFIG_PATH, original, "utf8");
-    await rm(connectContentPath, { force: true });
-    // Remove the locale directory ONLY if the fixture left it empty.
-    try {
-      await rmdir(dirname(connectContentPath));
-    } catch {
-      /* not empty (or already gone): leave it exactly as it is */
-    }
   }
   return rows;
 }
@@ -3285,8 +3620,8 @@ function tallPageFixture() {
 async function runPersistentNavigationScenario(chrome) {
   const port = PORTS.port(210);
   BASE_URL = `http://localhost:${port}`;
-  const homeUrl = `${BASE_URL}/ww/en`;
-  const tallUrl = `${BASE_URL}/ww/en/zz-nav-tall`;
+  const homeUrl = `${BASE_URL}/main/en-001`;
+  const tallUrl = `${BASE_URL}/main/en-001/zz-nav-tall`;
   const original = await readFile(CONFIG_PATH, "utf8");
   const rows = [];
 
@@ -3299,7 +3634,7 @@ async function runPersistentNavigationScenario(chrome) {
     href: `/fixture-${String(index + 1).padStart(2, "0")}`,
     position: "middle",
   }));
-  const configuredPaths = NAV_FIXTURE.map((item) => `/ww/en${item.href}`);
+  const configuredPaths = NAV_FIXTURE.map((item) => `/main/en-001${item.href}`);
 
   const config = JSON.parse(original);
   // R1A — the reference deployment enables the visitor layout switcher, so this
@@ -3311,13 +3646,23 @@ async function runPersistentNavigationScenario(chrome) {
   config.navigation = NAV_FIXTURE;
   await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n", "utf8");
 
-  // FS1 — the generic template ships NO pages, so this fixture supplies the tall
-  // safe Markdown page the scroll assertions need (removed in `finally`).
-  const tallPath = join(CONTENT_ROOT, "markdown", "ww", "en", "zz-nav-tall.md");
-  await mkdir(dirname(tallPath), { recursive: true });
-  await writeFile(tallPath, tallPageFixture(), "utf8");
-
-  const server = startDevServer(port);
+  // FS1 — the generic template ships NO pages, so this server DECLARES the tall safe Markdown Page the
+  // scroll assertions need (GEO-04 C09-R13). It is a real EFS Page on the served Installation — a
+  // declaration together with its capsule representation, made through the server's own `prepareEfs` seam
+  // BEFORE Next is spawned — not a file dropped into the retired legacy content tree, which the request
+  // runtime no longer reads and therefore never published. It stays reachable but UNLISTED (`navLabel`
+  // omitted): the rail's contents come from the configured navigation, exactly as before.
+  const server = startDevServer(port, {
+    prepareEfs: (authoring) => {
+      authoring.authorPage({
+        siteId: "main",
+        locale: "en-001",
+        route: ["zz-nav-tall"],
+        format: "markdown",
+        body: tallPageFixture(),
+      });
+    },
+  });
   let cdp = null;
   try {
     await waitForServer(homeUrl);
@@ -3592,11 +3937,32 @@ async function runPersistentNavigationScenario(chrome) {
       const target = document.getElementById('anchor-section');
       const hr = header ? header.getBoundingClientRect() : null;
       const tr = target ? target.getBoundingClientRect() : null;
+      // THE OBSOLETE TOKEN IS REPLACED BY MEASUREMENT (GEO-04 C09-R07). The old case additionally demanded
+      // \`targetTop >= 90\`, an arbitrary absolute that a legitimately compact sticky header contradicts. What
+      // the contract actually says is geometric: the target's own top edge must clear the REAL header, stay
+      // inside the viewport, and be the topmost element at that point (nothing sticky painted over it). The
+      // hit test is taken inside the target's horizontal middle so a full-width header or an overlapping
+      // rail would be caught, and \`closest\` accepts the target or any of its descendants as a pass.
+      let coveredBy = null;
+      if (target && tr) {
+        const hit = document.elementFromPoint(
+          Math.round(tr.left + tr.width / 2),
+          Math.round(Math.max(tr.top, 0) + 1),
+        );
+        if (hit && hit !== target && !target.contains(hit)) {
+          coveredBy = hit.tagName.toLowerCase() + (hit.className && typeof hit.className === 'string' ? '.' + hit.className.trim().split(/\\s+/).join('.') : '');
+        }
+      }
       return {
         clearance: getComputedStyle(document.documentElement).scrollPaddingTop,
         scrolled: window.scrollY > 0,
         targetTop: tr ? Math.round(tr.top) : null,
         headerBottom: hr ? Math.round(hr.bottom) : null,
+        headerHeight: hr ? Math.round(hr.height) : null,
+        viewportHeight: window.innerHeight,
+        targetBottom: tr ? Math.round(tr.bottom) : null,
+        targetHeight: tr ? Math.round(tr.height) : null,
+        coveredBy,
       };
     })()`);
     // The clearance is the top region's real height (measured and republished by the shell), so it
@@ -3610,11 +3976,24 @@ async function runPersistentNavigationScenario(chrome) {
       `scrollPaddingTop=${anchor.clearance} headerBottom=${anchor.headerBottom}`,
     );
     check(rows, "persist.mobile.anchor.reached", !!anchor.scrolled, `scrollY>0=${anchor.scrolled}`);
+    // THE FRAGMENT TARGET IS FULLY VISIBLE, CLEAR OF THE REAL STICKY HEADER, AND NOT PAINTED OVER.
+    // Measured geometry replaces the obsolete `>= 90` absolute: the target's top clears the actual header
+    // bottom, the whole target sits inside the viewport, and a hit test at its own top edge returns the
+    // target rather than the header (or any other sticky surface). Same case identity, same claim — proved
+    // against measured pixels instead of a token that a compact header legitimately contradicts.
     check(
       rows,
       "persist.mobile.anchor.belowHeader",
-      anchor.targetTop != null && anchor.headerBottom != null && anchor.targetTop >= anchor.headerBottom - 1 && anchor.targetTop >= 90,
-      `targetTop=${anchor.targetTop} headerBottom=${anchor.headerBottom}`,
+      anchor.targetTop != null &&
+        anchor.headerBottom != null &&
+        anchor.targetBottom != null &&
+        anchor.viewportHeight != null &&
+        anchor.targetTop >= anchor.headerBottom - 1 &&
+        anchor.targetTop >= 0 &&
+        anchor.targetBottom <= anchor.viewportHeight + 1 &&
+        anchor.coveredBy === null,
+      `targetTop=${anchor.targetTop} headerBottom=${anchor.headerBottom} headerH=${anchor.headerHeight} ` +
+        `targetBottom=${anchor.targetBottom} vh=${anchor.viewportHeight} coveredBy=${anchor.coveredBy}`,
     );
 
     // ── MOBILE: the disclosure still works while the page is scrolled ────────
@@ -3698,13 +4077,8 @@ async function runPersistentNavigationScenario(chrome) {
     if (cdp) await cdp.close();
     await stopServer(server);
     await writeFile(CONFIG_PATH, original, "utf8");
-    await rm(tallPath, { force: true });
-    // Remove the locale directory ONLY if the fixture left it empty.
-    try {
-      await rmdir(dirname(tallPath));
-    } catch {
-      /* not empty (or already gone): leave it exactly as it is */
-    }
+    // The tall Page was DECLARED inside the Installation this scenario's own server owned, and `stopServer`
+    // has already removed that Installation: there is no fixture file to delete and no directory to prune.
   }
   return rows;
 }
@@ -3793,16 +4167,28 @@ A repeated heading, which the renderer must disambiguate.
 async function runSafeMarkdownScenario(chrome) {
   const port = PORTS.port(260);
   BASE_URL = `http://localhost:${port}`;
-  const fixturePath = join(CONTENT_ROOT, "markdown", "ww", "en", `${SAFE_MARKDOWN_SLUG}.md`);
-  const url = `${BASE_URL}/ww/en/${SAFE_MARKDOWN_SLUG}`;
+  const url = `${BASE_URL}/main/en-001/${SAFE_MARKDOWN_SLUG}`;
   const rows = [];
-  await mkdir(dirname(fixturePath), { recursive: true });
-  await writeFile(fixturePath, SAFE_MARKDOWN_FIXTURE, "utf8");
 
-  const server = startDevServer(port);
+  // THE PAGE IS A DECLARED EFS PAGE (GEO-04 C09-R05). The fixture used to be dropped into a legacy
+  // content tree; that tree is authoring source, not a serving mechanism, so the scenario declares the
+  // Page and writes its Markdown REPRESENTATION through the installation this server owns — the same
+  // transaction a real author performs — and the address stays the binding-owned `main/en-001` one.
+  const server = startDevServer(port, {
+    prepareEfs: (authoring) => {
+      authoring.authorPage({
+        siteId: GENERIC_EFS_DEFAULT_SITE,
+        locale: GENERIC_EFS_DEFAULT_LOCALE,
+        route: [SAFE_MARKDOWN_SLUG],
+        format: "markdown",
+        body: SAFE_MARKDOWN_FIXTURE,
+        navLabel: "Safe markdown fixture",
+      });
+    },
+  });
   let cdp = null;
   try {
-    await waitForServer(`${BASE_URL}/ww/en`);
+    await waitForServer(`${BASE_URL}/main/en-001`);
     cdp = await Cdp.connect(chrome);
     // Collect any page-level error BEFORE the page loads: a policy that "works" by
     // throwing is not a policy that works.
@@ -3831,12 +4217,18 @@ async function runSafeMarkdownScenario(chrome) {
         pageErrors: window.__pageErrors || [],
         handlers,
         // The AUTHOR'S region is <main>. A framework legitimately injects its own
-        // style element (fonts, dev CSS) into the document head, so the element scan
-        // is scoped to the content — and the document-level scan covers the elements
-        // no framework needs for this page.
-        forbiddenInContent: ['script', 'style', 'iframe', 'form', 'object', 'embed'].filter(
-          (tag) => document.querySelector('main ' + tag),
+        // style element (fonts, dev CSS) into the document head AND its own page METADATA
+        // (application/ld+json, an inert data block), so the element scan is scoped to the content and
+        // excludes non-executable metadata types; every other script/style/iframe/form/object/embed
+        // inside <main> is still forbidden. Which scripts exist and whether any of them RAN is proved
+        // separately below (authorScript, ranScript, handlers).
+        forbiddenInContent: ['script', 'style', 'iframe', 'form', 'object', 'embed'].filter((tag) =>
+          [...document.querySelectorAll('main ' + tag)].some(
+            (el) => tag !== 'script' || el.getAttribute('type') !== 'application/ld+json',
+          ),
         ),
+        // The metadata blocks that ARE allowed inside <main>, named so the allowance is visible.
+        metadataScripts: [...document.querySelectorAll('main script')].map((el) => el.getAttribute('type')),
         forbiddenInDocument: ['iframe', 'form', 'object', 'embed'].filter(
           (tag) => document.querySelectorAll(tag).length > 0,
         ),
@@ -3944,14 +4336,9 @@ async function runSafeMarkdownScenario(chrome) {
     check(rows, "safe-markdown.scenario.error", false, String(error));
   } finally {
     if (cdp) await cdp.close();
+    // The Installation is the only thing this scenario created: removing the server removes the Page,
+    // its representation and the decoy with it, so there is no legacy file to clean up afterwards.
     await stopServer(server);
-    await rm(fixturePath, { force: true });
-    // Remove the locale directory ONLY if the fixture left it empty.
-    try {
-      await rmdir(dirname(fixturePath));
-    } catch {
-      /* not empty (or already gone): leave it exactly as it is */
-    }
   }
   return rows;
 }
@@ -4008,20 +4395,39 @@ async function waitForNotFound(cdp) {
 async function runNestedPageScenario(chrome) {
   const port = PORTS.port(270);
   BASE_URL = `http://localhost:${port}`;
-  const sectionDirectory = join(CONTENT_ROOT, "markdown", "ww", "en", NESTED_SECTION);
-  const pagePath = join(sectionDirectory, `${NESTED_SLUG}.md`);
-  const readmePath = join(sectionDirectory, "README.md");
-  const url = `${BASE_URL}/ww/en/${NESTED_SECTION}/${NESTED_SLUG}`;
+  const url = `${BASE_URL}/main/en-001/${NESTED_SECTION}/${NESTED_SLUG}`;
   const rows = [];
-  await mkdir(sectionDirectory, { recursive: true });
-  await writeFile(pagePath, NESTED_PAGE_FIXTURE, "utf8");
-  // Documentation BESIDE a nested page: inert at every level.
-  await writeFile(readmePath, "# Not a page\n", "utf8");
 
-  const server = startDevServer(port);
+  // A NESTED PAGE IS A DECLARED EFS PAGE, not a file in a folder (GEO-04 C09-R05). The route is the
+  // Page's declared route; the Markdown body is its representation. Documentation BESIDE a nested page
+  // stays inert — but inertness is now proved where it can actually be violated: the decoy is written
+  // INTO the served capsule and left UNDECLARED, so a loose file that the renderer ever scanned would
+  // answer at its own URL. It must 404 instead, and the manifest must not grow a Page for it.
+  const server = startDevServer(port, {
+    prepareEfs: (authoring, installation) => {
+      authoring.authorPage({
+        siteId: GENERIC_EFS_DEFAULT_SITE,
+        locale: GENERIC_EFS_DEFAULT_LOCALE,
+        route: [NESTED_SECTION, NESTED_SLUG],
+        format: "markdown",
+        body: NESTED_PAGE_FIXTURE,
+        navLabel: "Nested fixture page",
+      });
+      writeFileSync(join(installation.capsule, "README.md"), "# Not a page\n", "utf8");
+      const manifest = JSON.parse(readFileSync(installation.manifest, "utf8"));
+      const declared = manifest.entities[0].facets[0].sites
+        .flatMap((site) => site.pages ?? [])
+        .map((page) => page.id);
+      if (declared.includes("readme")) {
+        throw new Error(`the decoy README was declared as an EFS Page: ${declared.join(",")}`);
+      }
+    },
+  });
+  const strayUrl = `${BASE_URL}/main/en-001/${NESTED_SECTION}/${NESTED_SLUG}/readme`;
+  const capsuleDecoyUrl = `${BASE_URL}/main/en-001/readme`;
   let cdp = null;
   try {
-    await waitForServer(`${BASE_URL}/ww/en`);
+    await waitForServer(`${BASE_URL}/main/en-001`);
     cdp = await Cdp.connect(chrome);
     await cdp.setViewport(VIEWPORTS.desktop.width, VIEWPORTS.desktop.height);
     await cdp.navigate(url);
@@ -4052,6 +4458,14 @@ async function runNestedPageScenario(chrome) {
       page && page.fragmentHref,
     );
 
+    // A LOOSE, UNDECLARED FILE IS NOT A PAGE. The decoy sits INSIDE the served capsule, so this is the
+    // boundary where a filename-scanning renderer would betray itself: it must not answer at the nested
+    // route's child segment, nor at the Site root.
+    const strayStatus = (await fetch(strayUrl, { redirect: "manual" })).status;
+    const decoyStatus = (await fetch(capsuleDecoyUrl, { redirect: "manual" })).status;
+    check(rows, "nested.stray.undeclared", strayStatus === 404, `status=${strayStatus}`);
+    check(rows, "nested.stray.siteRootDecoy", decoyStatus === 404, `status=${decoyStatus}`);
+
     // The author's fragment link must actually reach the target on a NESTED page too.
     await cdp.evaluate(`location.hash = '#${NESTED_HEADING_ID}'`);
     await sleep(400);
@@ -4074,14 +4488,8 @@ async function runNestedPageScenario(chrome) {
   } finally {
     if (cdp) await cdp.close();
     await stopServer(server);
-    await rm(pagePath, { force: true });
-    await rm(readmePath, { force: true });
-    // Remove the section directory ONLY if the fixture left it empty.
-    try {
-      await rmdir(sectionDirectory);
-    } catch {
-      /* not empty (or already gone): leave it exactly as it is */
-    }
+    // The Installation goes with the server: nothing was written outside it, so nothing is cleaned up
+    // separately (an undeclared stray file cannot survive the Installation that owned it).
   }
   return rows;
 }
@@ -4135,17 +4543,27 @@ const JSON_PAGE_FIXTURE = JSON.stringify(
 async function runAdvancedJsonScenario(chrome) {
   const port = PORTS.port(271);
   BASE_URL = `http://localhost:${port}`;
-  const directory = join(CONTENT_ROOT, "json", "ww", "en");
-  const pagePath = join(directory, `${JSON_ROUTE_PATH}.json`);
-  const url = `${BASE_URL}/ww/en/${JSON_ROUTE_PATH}`;
+  const url = `${BASE_URL}/main/en-001/${JSON_ROUTE_PATH}`;
   const rows = [];
-  await mkdir(directory, { recursive: true });
-  await writeFile(pagePath, `${JSON_PAGE_FIXTURE}\n`, "utf8");
 
-  const server = startDevServer(port);
+  // THE JSON DOCUMENT IS A DECLARED EFS PAGE + JSON REPRESENTATION (GEO-04 C09-R05). JSON-over-Markdown
+  // precedence is the renderer's contract and is unchanged; what changes is that the document arrives as
+  // a declared representation of a declared Page, never as a file the renderer discovered.
+  const server = startDevServer(port, {
+    prepareEfs: (authoring) => {
+      authoring.authorPage({
+        siteId: GENERIC_EFS_DEFAULT_SITE,
+        locale: GENERIC_EFS_DEFAULT_LOCALE,
+        route: [JSON_ROUTE_PATH],
+        format: "json",
+        body: `${JSON_PAGE_FIXTURE}\n`,
+        navLabel: "Advanced JSON fixture",
+      });
+    },
+  });
   let cdp = null;
   try {
-    await waitForServer(`${BASE_URL}/ww/en`);
+    await waitForServer(`${BASE_URL}/main/en-001`);
     cdp = await Cdp.connect(chrome);
     await cdp.setViewport(VIEWPORTS.desktop.width, VIEWPORTS.desktop.height);
     await cdp.navigate(url);
@@ -4191,10 +4609,16 @@ async function runAdvancedJsonScenario(chrome) {
       !!page && page.summaryHeading === "Is it data?",
       page && page.summaryHeading,
     );
+    // THE BINDING-OWNED ADDRESS OF AN AUTHORED ACTION (GEO-04 C09-R05). The document authors
+    // `services`; the public address of that Page on this binding is `/main/en-001/services`. The
+    // expectation is therefore the EFFECTIVE binding address, not the legacy locale-first `/en/services`
+    // shape. MEASURED 2026-11-02: the renderer resolves it to `/en-001/services` — the qualified locale
+    // without the binding's prefix — so this row is the precise, reproducible statement of a PRODUCTION
+    // defect outside this test-only checkpoint's scope (see the R05 report).
     check(
       rows,
       "json.action.resolvedRoute",
-      !!page && page.actionHref === "/en/services",
+      !!page && page.actionHref === "/main/en-001/services",
       page && page.actionHref,
     );
     check(rows, "json.rawHtml.inert", !!page && !page.injected && page.inertText, `injected=${page && page.injected}`);
@@ -4218,13 +4642,8 @@ async function runAdvancedJsonScenario(chrome) {
     check(rows, "advanced-json.scenario.error", false, String(error));
   } finally {
     if (cdp) await cdp.close();
+    // The JSON representation lives in the Installation this server owned: removing the server removes it.
     await stopServer(server);
-    await rm(pagePath, { force: true });
-    try {
-      await rmdir(directory);
-    } catch {
-      /* not empty (or already gone): leave it exactly as it is */
-    }
   }
   return rows;
 }
@@ -4613,7 +5032,7 @@ async function runLayoutSwitcherScenario(chrome) {
   const original = await readFile(CONFIG_PATH, "utf8");
   const rows = [];
   const port = PORTS.port(320);
-  const url = `http://localhost:${port}/ww/en`;
+  const url = `http://localhost:${port}/main/en-001`;
   BASE_URL = `http://localhost:${port}`;
   const config = JSON.parse(original);
   config.ui = { ...(config.ui ?? {}), layoutSwitcher: { enabled: true } };
@@ -4621,17 +5040,33 @@ async function runLayoutSwitcherScenario(chrome) {
   // a different page (the shipped template has a single Home entry).
   config.navigation = [...config.navigation, { label: "Fixture page", href: "/zz-layout-page" }];
   await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n", "utf8");
-  const pagePath = join(CONTENT_ROOT, "markdown", "ww", "en", "zz-layout-page.md");
-  await mkdir(dirname(pagePath), { recursive: true });
-  await writeFile(pagePath, "# Layout fixture page\n\nA second page for the layout proof.\n", "utf8");
-  // NAV1D — the STICKY proof needs a page tall enough to scroll deeply, so this scenario supplies
-  // the same generic tall fixture the persistent-navigation scenario uses (removed in `finally`).
-  const tallPath = join(CONTENT_ROOT, "markdown", "ww", "en", "zz-layout-tall.md");
-  await mkdir(dirname(tallPath), { recursive: true });
-  await writeFile(tallPath, tallPageFixture(), "utf8");
-  const tallLayoutUrl = `${BASE_URL}/ww/en/zz-layout-tall`;
-
-  const server = startDevServer(port);
+  // THE TWO FIXTURE PAGES ARE DECLARED EFS PAGES (GEO-04 C09-R11). A Markdown file dropped into the
+  // legacy `markdown/ww/en` tree is authoring INPUT, not a Page: this server declares each Page and
+  // writes its capsule representation through `prepareEfs` BEFORE Next is spawned, so what the
+  // binding publishes is exactly what the scenario authored, and no legacy tree is served.
+  // `zz-layout-page` is the second navigation destination; `zz-layout-tall` is the NAV1D deep-scroll
+  // fixture. Both are Site `main` representations in locale `en-001`.
+  const server = startDevServer(port, {
+    prepareEfs: (authoring) => {
+      authoring.authorPage({
+        siteId: "main",
+        locale: "en-001",
+        route: ["zz-layout-page"],
+        format: "markdown",
+        body: "# Layout fixture page\n\nA second page for the layout proof.\n",
+        navLabel: "Fixture page",
+      });
+      authoring.authorPage({
+        siteId: "main",
+        locale: "en-001",
+        route: ["zz-layout-tall"],
+        format: "markdown",
+        body: tallPageFixture(),
+        navLabel: "Layout tall",
+      });
+    },
+  });
+  const tallLayoutUrl = `${BASE_URL}/main/en-001/zz-layout-tall`;
   let cdp = null;
   try {
     await waitForServer(url);
@@ -4678,7 +5113,7 @@ async function runLayoutSwitcherScenario(chrome) {
     check(
       rows,
       "switch.routeAndLocaleUnchanged",
-      !!menuBar && menuBar.path === initial.path && menuBar.lang === initial.lang && menuBar.path.startsWith("/ww/en"),
+      !!menuBar && menuBar.path === initial.path && menuBar.lang === initial.lang && menuBar.path.startsWith("/main/en-001"),
       `path=${menuBar && menuBar.path} lang=${menuBar && menuBar.lang}`,
     );
     // The rail occupies horizontal space in the sidebar layout, so the content column
@@ -4732,7 +5167,7 @@ async function runLayoutSwitcherScenario(chrome) {
     // A client-side transition commits asynchronously, so wait for the URL itself
     // rather than assuming the router has finished when the document is ready.
     let navigatedPath = await cdp.evaluate("location.pathname");
-    for (let attempt = 0; attempt < 60 && navigatedPath !== "/ww/en/zz-layout-page"; attempt += 1) {
+    for (let attempt = 0; attempt < 60 && navigatedPath !== "/main/en-001/zz-layout-page"; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 100));
       navigatedPath = await cdp.evaluate("location.pathname");
     }
@@ -4741,7 +5176,7 @@ async function runLayoutSwitcherScenario(chrome) {
     check(
       rows,
       "persistence.clientNavigation",
-      !!clickedLink && navigatedPath === "/ww/en/zz-layout-page" && afterNavigation.active === "menu-bar",
+      !!clickedLink && navigatedPath === "/main/en-001/zz-layout-page" && afterNavigation.active === "menu-bar",
       `clicked=${clickedLink} path=${navigatedPath} active=${afterNavigation && afterNavigation.active}`,
     );
 
@@ -5489,13 +5924,22 @@ async function runLayoutSwitcherScenario(chrome) {
       }
     }
     check(rows, "mobileSwitch.sidebarMode.bottomBarNeverFocusable", landedInWithdrawnBar === false, `landed=${landedInWithdrawnBar}`);
+    // ── DECLARATION BOUNDARY (C09-R11) ────────────────────────────────────────
+    // The two fixture Pages are DECLARED through `prepareEfs` and carry a capsule representation, so
+    // their own binding address serves them. A sibling that was never declared refuses. That pair is
+    // the proof this scenario authors Pages instead of relying on a legacy directory scan, and it is
+    // the reason a 200 on Home with a 404 here would have been a FAIL rather than a pass.
+    const declaredStatus = (await fetch(tallLayoutUrl)).status;
+    const undeclaredStatus = (await fetch(`${BASE_URL}/main/en-001/zz-layout-undeclared`)).status;
+    check(rows, "declaration.declaredTallPageServed", declaredStatus === 200, `status=${declaredStatus}`);
+    check(rows, "declaration.undeclaredSiblingRefused", undeclaredStatus === 404, `status=${undeclaredStatus}`);
+    const fixturePageStatus = (await fetch(`${BASE_URL}/main/en-001/zz-layout-page`)).status;
+    check(rows, "declaration.declaredFixturePageServed", fixturePageStatus === 200, `status=${fixturePageStatus}`);
   // __SCENARIO_REST__
   } catch (error) {
     check(rows, "layout-switcher.scenario.error", false, String(error));
   } finally {
     await writeFile(CONFIG_PATH, original, "utf8");
-    await rm(pagePath, { force: true });
-    await rm(tallPath, { force: true });
     if (cdp) await cdp.close();
     await stopServer(server);
   }
@@ -5538,7 +5982,7 @@ async function runBottomNavWrapScenario(chrome) {
 
   const phase = async (label, navigation, portSuffix) => {
     const port = PORTS.port(360 + portSuffix);
-    const url = `http://localhost:${port}/ww/en`;
+    const url = `http://localhost:${port}/main/en-001`;
     BASE_URL = `http://localhost:${port}`;
     const config = JSON.parse(original);
     config.navigation = navigation;
@@ -5554,6 +5998,41 @@ async function runBottomNavWrapScenario(chrome) {
       await cdp.navigate(url);
       await waitReady(cdp);
       const probe = await cdp.evaluate(LAYOUT_PROBE);
+      // THE SERVED SPOKE REALLY CARRIES THE FIXTURE (C09-R11). The scenario mutates the DISPOSABLE
+      // authoring copy, and this server materialised its Installation from exactly that copy: read the
+      // Spoke the running application selected and compare it with what the scenario authored, so the
+      // navigation and the Menu-Bar default are proven present rather than assumed.
+      const servedSpoke = readdirSync(join(server.efs.root, "spokes"))[0];
+      const servedConfig = JSON.parse(
+        await readFile(join(server.efs.root, "spokes", servedSpoke, "site.config.json"), "utf8"),
+      );
+      check(
+        rows,
+        "settings.servedSpokeCarriesFixtureNavigation",
+        JSON.stringify(servedConfig.navigation) === JSON.stringify(navigation),
+        `links=${servedConfig.navigation?.length} expected=${navigation.length}`,
+      );
+      check(
+        rows,
+        "settings.servedSpokeCarriesMenuBarDefault",
+        servedConfig.ui?.layoutSwitcher?.enabled === true && servedConfig.ui?.layoutSwitcher?.default === "menu-bar",
+        JSON.stringify(servedConfig.ui?.layoutSwitcher ?? null),
+      );
+      // PRESENTATION, NOT A PAGE CLAIM (C09-R11). A Menu Bar entry is a configured LINK of the Spoke
+      // this server materialised; it is not an availability claim about content. The bar presents the
+      // link, and because its destination was never declared as an EFS Page, that address still
+      // refuses. That keeps presentation and content authority separate instead of inventing a Page
+      // to make a CSS fixture look served.
+      const configuredDestination = navigation.find((entry) => entry.href.startsWith("/zz-"));
+      if (configuredDestination) {
+        const claimStatus = (await fetch(`${BASE_URL}/main/en-001${configuredDestination.href}`)).status;
+        check(
+          rows,
+          "presentation.configuredLinkWithoutPageClaim",
+          claimStatus === 404,
+          `${configuredDestination.href} -> ${claimStatus}`,
+        );
+      }
       const overflow = await cdp.evalBool("document.documentElement.scrollWidth <= window.innerWidth + 1");
       const clipped = await cdp.evalBool(
         `(() => { const bar = document.querySelector('.ui-shell-bottom-bar'); if (!bar) return true; const b = bar.getBoundingClientRect(); return Array.from(bar.querySelectorAll('ul > li')).some((li) => { const r = li.getBoundingClientRect(); return r.bottom > b.bottom + 1 || r.top < b.top - 1; }); })()`,
@@ -5734,9 +6213,34 @@ async function runHeaderRowsScenario(chrome) {
   const original = await readFile(CONFIG_PATH, "utf8");
   const rows = [];
 
-  const phase = async (label, mutate, widths, portSuffix) => {
+  // THE LANGUAGE CONTROL THE BINDING ACTUALLY OFFERS (GEO-04 C09-R12). The contextual row is proved by
+  // real geometry and by the values it offers — never by manufacturing a second control. A single-Site
+  // EFS binding composes no Site selector and no geographic Location selector; inventing one to satisfy
+  // a two-row wrap assertion would be a false claim about the shipped UI, and no Site code may be
+  // inferred from a prefix or a locale in either direction.
+  const LANGUAGE_CONTROL_PROBE = `(() => {
+    const row = document.querySelector('.ui-site-header-context');
+    const control = row ? row.querySelector('select') : null;
+    const rect = (element) => (element ? element.getBoundingClientRect() : null);
+    const rowBox = rect(row);
+    const controlBox = rect(control);
+    return JSON.stringify({
+      rowPresent: !!row,
+      controlPresent: !!control,
+      values: control ? [...control.options].map((option) => option.value) : [],
+      labels: control ? [...control.options].map((option) => (option.textContent ?? "").trim()) : [],
+      rowTop: rowBox ? rowBox.top : null,
+      rowBottom: rowBox ? rowBox.bottom : null,
+      controlTop: controlBox ? controlBox.top : null,
+      controlBottom: controlBox ? controlBox.bottom : null,
+      controlRight: controlBox ? controlBox.right : null,
+      controlClipped: control ? control.scrollWidth > control.clientWidth + 1 : null,
+      rowClipped: row ? row.scrollWidth > row.clientWidth + 1 : null,
+    });
+  })()`;
+  const phase = async (label, mutate, widths, portSuffix, prepareEfs = null) => {
     const port = PORTS.port(400 + portSuffix);
-    const url = `http://localhost:${port}/ww/en`;
+    const url = `http://localhost:${port}/main/en-001`;
     BASE_URL = `http://localhost:${port}`;
     const config = JSON.parse(original);
     // Both fixtures need the mode CHOICE to exist (the selector is the top row's right-hand
@@ -5744,7 +6248,7 @@ async function runHeaderRowsScenario(chrome) {
     config.ui = { ...(config.ui ?? {}), layoutSwitcher: { enabled: true, default: "sidebar" } };
     mutate(config);
     await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n", "utf8");
-    const server = startDevServer(port);
+    const server = startDevServer(port, prepareEfs === null ? {} : { prepareEfs });
     let cdp = null;
     const measured = [];
     try {
@@ -5756,7 +6260,9 @@ async function runHeaderRowsScenario(chrome) {
       for (const [width, height] of widths) {
         await cdp.setViewport(width, height);
         await sleep(300);
-        measured.push({ width, probe: await cdp.evaluate(LAYOUT_PROBE) });
+        const probe = await cdp.evaluate(LAYOUT_PROBE);
+        const language = await cdp.evaluate(LANGUAGE_CONTROL_PROBE);
+        measured.push({ width, probe, language });
       }
       return { label, measured };
     } finally {
@@ -5826,18 +6332,65 @@ async function runHeaderRowsScenario(chrome) {
             label: `${locale.label} — reference deployment language`,
           })),
         };
-        config.sites = (config.sites ?? []).map((site) => ({
-          ...site,
-          label: `${site.label} — reference deployment site`,
-        }));
+        // The Site's own LABEL is deliberately not written here (GEO-04 C09-R13). The contextual label the
+        // shell composes comes from the EFS Site's public `site.label` declaration, authored below through
+        // `authoring`; writing a legacy `site.config.json` Site label would only change configuration the
+        // EFS presentation no longer reads — the same reason the retired site-scoped dictionary overlay is
+        // gone. `i18n.locales` stays: those are the Spoke's own language-base dictionary keys.
       },
       [[390, 844]],
       1,
+      // THE CONTEXTUAL LABEL COMES FROM THE PUBLICATION, NOT FROM A LEGACY TOP-LEVEL KEY
+      // (GEO-04 C09-R11). The shared shell resolves the presentation Site through
+      // `presentationSiteCode` and takes its LABEL from the EFS Site's public `site.label`
+      // declaration, falling back to the Site id. Authoring the long label on the EFS Site is what
+      // makes the visitor control row long; writing `site.config.json`'s own Site label would only
+      // change configuration the EFS presentation no longer reads.
+      (authoring) =>
+        authoring.authorProperty({
+          property: "site.label",
+          value: "Reference deployment language and market",
+          siteId: "main",
+        }),
     );
     const labels = longLabels.measured[0].probe;
-    check(rows, "nav1b.labels.controlRowExists", !!labels && labels.contextRowPresent === true);
-    check(rows, "nav1b.labels.wrapInsideTheControlRow", !!labels && labels.contextRows >= 2, `rows=${labels && labels.contextRows}`);
-    check(rows, "nav1b.labels.neverJumpIntoTheTopRow", !!labels && labels.selectorInControlRow === false && labels.contextRowTop >= labels.topRowBottom, `contextTop=${labels && labels.contextRowTop} topBottom=${labels && labels.topRowBottom}`);
+    const language = JSON.parse(longLabels.measured[0].language);
+    // ── THE CONTEXTUAL ROW, ON THE CONTROLS THIS BINDING ACTUALLY AUTHORS (GEO-04 C09-R12) ──────────
+    // The R11 predicate here demanded TWO wrapped contextual rows. That could only ever be satisfied by
+    // a Site selector or a geographic Location selector, and a single-Site EFS binding legitimately
+    // composes neither — so the requirement described absent geography, not a header defect. Its three
+    // replacement cases below keep the SAME objects under test (does the row exist, does the control stay
+    // inside it unclipped, does any contextual control collide with the identity/mode row) and add the
+    // claim the old predicate could not make: the offered values ARE the binding's declared locales.
+    check(
+      rows,
+      "nav1b.labels.contextRowAppearsUnderTopRow",
+      !!labels && labels.contextRowPresent === true && !!language && language.rowTop >= labels.topRowBottom,
+      `contextTop=${language && language.rowTop} topBottom=${labels && labels.topRowBottom}`,
+    );
+    check(
+      rows,
+      "nav1b.labels.languageControlInsideContextRowUnclipped",
+      !!language &&
+        language.controlPresent === true &&
+        language.controlTop >= language.rowTop &&
+        language.controlBottom <= language.rowBottom + 1 &&
+        language.controlClipped === false &&
+        language.rowClipped === false,
+      JSON.stringify(language ?? null),
+    );
+    check(
+      rows,
+      "nav1b.labels.languageValuesMatchBinding",
+      !!language &&
+        language.values.length === 2 &&
+        language.values
+          .map((value) => value.toLowerCase())
+          .sort()
+          .join(",") === "de-de,en-001",
+      `values=${JSON.stringify(language && language.values)} labels=${JSON.stringify(language && language.labels)}`,
+    );
+    check(rows, "nav1b.labels.neverJumpIntoTheTopRow", !!labels && labels.selectorInControlRow === false && !!language && language.rowTop >= labels.topRowBottom, `contextTop=${language && language.rowTop} topBottom=${labels && labels.topRowBottom}`);
     check(rows, "nav1b.labels.noHorizontalOverflow", !!labels && labels.selectorRightInset !== null);
 
     // ── GRAPHIC IDENTITY (NAV1B-V1): the selector keeps the top-right and paints ABOVE the graphic,
@@ -5980,31 +6533,86 @@ async function runHeaderRowsScenario(chrome) {
 }
 
 /**
- * MULTISITE FIXTURES (FOUNDATION-S1).
+ * MULTISITE / MULTILINGUAL, IN A REAL BROWSER — ON THE EFS PUBLICATION MODEL (GEO-04 C09-R13).
+ * ==========================================================================================
  *
- * The scenario below proves the USER-VISIBLE consequences of the site/locale/page model on ONE
- * temporary deployment: two independent country sites that genuinely differ, driven through the
- * four visitor dimensions (Site, Language, Location, Layout). Everything here is a run fixture —
- * the configuration and the pages are written by the scenario and restored/removed in `finally`,
- * so the shipped template keeps shipping one site and no pages.
+ * This scenario used to prove the retired S1 geographic model: two country sites (`ca`, `fr`) declared in
+ * `site.config.json`, pages written into the legacy `content/pages/<site>/<locale>/*.md` tree, and a
+ * visitor Site selector that carried the visitor between them. The request runtime no longer reads a
+ * legacy content tree at all, and geographic Site identity is what GEO-04 is retiring — so every address
+ * below was a 404 waiting to happen, and the scenario reported its single error row instead of evidence.
+ *
+ * It now proves the SAME visitor-visible consequences on the published EFS model, on one disposable
+ * Installation this server owns:
+ *
+ *   · OWNERSHIP — the two Sites are the authored EFS Sites `outlet` and `main`, each published behind its
+ *     OWN closed single-Site prefix binding, so an address is `/<site>/<locale>/<route>` (a binding-owned
+ *     address, never a guessed `/ca/fr/...` path and never a country code);
+ *   · CONTENT — every Page is DECLARED through this server's `prepareEfs` seam together with its capsule
+ *     representation, so a "supposed page" cannot be an undeclared file that happens not to be served;
+ *   · LOCALES — the representations are the binding's own QUALIFIED locales (`en-001`, `de-de`), which is
+ *     what an EFS publication authors; the retired bare `en`/`fr` language codes are gone with the
+ *     geographic model, and the French fixture dictionary and its site overlay with them;
+ *   · ISOLATION — a Page declared on one Site is refused on the other, and an undeclared route is refused
+ *     rather than silently falling back to a home page.
+ *
+ * TWO HISTORICAL CLAIMS ARE REPLACED, NOT WEAKENED (old ID → new ID, with the contract kept):
+ *
+ *   `multisite.siteSwitchPreservesTheRoute` / `…ServesTheTargetSiteBody` / `…layoutSurvivesSiteSwitch` /
+ *   `…chromeFollowsTheTargetSite`
+ *     → `multisite.siteBindingOffersNoSecondSite` + `multisite.crossOwnerRouteIsRefused`
+ *     + `multisite.chromeIsOwnedByThePublishingSpoke`
+ *   A closed single-Site binding has no second Site to switch to, so "switching preserves the route" cannot
+ *   be measured any more — and demanding a Site selector would require manufacturing the geography this
+ *   stage removes. The surviving contract is what the switch was FOR: the visitor can never reach another
+ *   owner's content from here. Each Site is instead reached at its own binding-owned address. Chrome is a
+ *   SPOKE-scoped fact, measured as such: two publications of one Spoke carry one identical, coherent
+ *   navigation, so no assertion can be misled into inferring an owner from it.
+ *
+ *   `multisite.locationSelectorReflectsTheActiveLocation` / `…locationNeverCarriesTheVisitorAcrossSites`
+ *     → `multisite.noLocationSelectorIsManufactured`
+ *   Location was a geographic visitor dimension. It is not published by an EFS Installation, so the
+ *   equally strong claim is the NEGATIVE one: no Location control is composed for any of these Sites.
  */
-const MULTISITE_SITES = ["ca", "fr"];
+const MULTISITE_SITES = ["outlet", "main"];
 const MULTISITE_MARK = {
-  caFr: "ZZ-CANADA-FRENCH-BODY",
-  caEn: "ZZ-CANADA-ENGLISH-BODY",
-  frFr: "ZZ-FRANCE-FRENCH-BODY",
+  outletEn: "ZZ-OUTLET-ENGLISH-BODY",
+  outletDe: "ZZ-OUTLET-GERMAN-BODY",
+  mainEn: "ZZ-MAIN-ENGLISH-BODY",
+  mainDe: "ZZ-MAIN-GERMAN-BODY",
+  outletOnly: "ZZ-OUTLET-ONLY-PAGE",
 };
+/** The binding's own qualified locale path keys — what an EFS publication authors, lowercased in the URL. */
+const MULTISITE_EN = "en-001";
+const MULTISITE_DE = "de-de";
+/**
+ * Declared Pages: `[siteId, locale, route, marker, navLabel]`.
+ *
+ * `nav.label` is part of a Page's public declaration, so every advertised Page authors one. It is NOT what
+ * words the rail, and that was MEASURED in this order rather than assumed: the rail is the SPOKE'S configured
+ * navigation, resolved identically for every publication the Spoke owns
+ * (`multisite.chromeIsOwnedByThePublishingSpoke`). The outlet-only Page deliberately carries none: it is
+ * reachable but not advertised, which is the ordinary way an unlisted Page is authored.
+ */
 const MULTISITE_PAGES = [
-  ["ca", "fr", "about", MULTISITE_MARK.caFr, "A propos (Canada)"],
-  ["ca", "en", "about", MULTISITE_MARK.caEn, "About (Canada)"],
-  ["fr", "fr", "about", MULTISITE_MARK.frFr, "A propos (France)"],
-  ["ca", "fr", "zz-ca-only", "ZZ-CANADA-ONLY-PAGE", "Page du Canada"],
+  ["outlet", MULTISITE_EN, ["about"], MULTISITE_MARK.outletEn, "À propos CA"],
+  ["outlet", MULTISITE_DE, ["about"], MULTISITE_MARK.outletDe, "À propos CA"],
+  ["main", MULTISITE_EN, ["about"], MULTISITE_MARK.mainEn, "À propos FR"],
+  ["main", MULTISITE_DE, ["about"], MULTISITE_MARK.mainDe, "À propos FR"],
+  ["outlet", MULTISITE_EN, ["zz-outlet-only"], MULTISITE_MARK.outletOnly, null],
 ];
+
+/** The public address a binding-owned Page is served at: `/<site>/<locale>/<route>`. */
+const MULTISITE_ADDRESS = (site, locale = MULTISITE_EN, route = []) =>
+  `/${[site, locale, ...route].join("/")}`;
+
+/** A safe Markdown representation carrying one unmistakable body marker. */
+const multisiteMarkdown = (title, marker) => `---\ntitle: ${title}\n---\n\n# ${title}\n\n${marker}\n`;
 
 /** The shared selector control the visitor uses for one dimension. */
 const MULTISITE_SELECT = (name) => `select[data-selector="${name}"]`;
 
-/** The four visitor dimensions, exactly as the browser exposes them. */
+/** The visitor dimensions this model actually exposes, as the browser reports them. */
 const MULTISITE_PROBE = `(() => {
   const info = (name) => {
     const element = document.querySelector('select[data-selector="' + name + '"]');
@@ -6014,6 +6622,7 @@ const MULTISITE_PROBE = `(() => {
       value: element.value,
       name: element.getAttribute('aria-label') || '',
       options: [...element.options].map((option) => option.value),
+      labels: [...element.options].map((option) => option.textContent.trim()),
       visible: rect.width > 0 && rect.height > 0,
     };
   };
@@ -6046,247 +6655,231 @@ const multisiteChoose = (name, value) => `(() => {
   return true;
 })()`;
 
+/**
+ * Wait for a document that deliberately carries NO shared shell — an EFS refusal.
+ *
+ * `waitReady()` cannot be used here and must not be: it requires the shell layer, because `readyState` alone
+ * cannot tell a refusal apart from a document whose shell never hydrated. An EFS refusal is BY DESIGN
+ * shell-free — `layoutForEfsContext` returns `null` and the EFS-only document boundary renders the refusal —
+ * so this waiter asks for exactly what a refusal promises: a COMPLETED document at the address the browser
+ * was sent to, with no shell, and it reports that observation so the shell-free claim can be asserted.
+ */
+async function waitForRefusalDocument(cdp, { path, timeoutMs = 20000 } = {}) {
+  const started = Date.now();
+  let observed = null;
+  while (Date.now() - started < timeoutMs) {
+    observed = await cdp.evaluate(
+      `(() => ({ readyState: document.readyState, path: location.pathname, shell: !!(document.querySelector('#shell-mobile-nav') || document.querySelector('.ui-shell-bottom-bar')) }))()`,
+    );
+    if (observed.readyState === "complete" && observed.path === path) return observed;
+    await sleep(120);
+  }
+  throw new Error(`the refusal document did not settle at ${path}; last observation ${JSON.stringify(observed)}`);
+}
+
 async function runMultisiteScenario(chrome) {
   const port = PORTS.port(271);
   BASE_URL = `http://localhost:${port}`;
   const original = await readFile(CONFIG_PATH, "utf8");
-  const written = [];
   const rows = [];
 
-  for (const [site, locale, slug, body, title] of MULTISITE_PAGES) {
-    const file = join(CONTENT_ROOT, "markdown", site, locale, `${slug}.md`);
-    await mkdir(dirname(file), { recursive: true });
-    await writeFile(file, `---\ntitle: ${title}\n---\n\n# ${title}\n\n${body}\n`, "utf8");
-    written.push(file);
-  }
-
-  // TWO independent sites that genuinely differ — bodies, chrome, locales and locations —
-  // plus the visitor dimensions switched on (Layout switcher, one Location in Canada).
-  // A locale needs a dictionary, and the template ships ONE: the fixture deployment speaks French,
-  // so the scenario writes a temporary French dictionary (a copy of the shipped English one — it
-  // validates against the same schema) and removes it in `finally`, exactly like its pages.
-  const dictionaryPath = join(DICTIONARY_ROOT, "fr.json");
-  await writeFile(
-    dictionaryPath,
-    await readFile(join(DICTIONARY_ROOT, "en.json"), "utf8"),
-    "utf8",
-  );
-  // R1A — the SHARED dictionary is the wording authority for a configured navigation
-  // href, and the reference deployment's dictionary now carries a `/about` label. A site
-  // that wants its OWN wording therefore uses a SITE dictionary overlay
-  // (`config/i18n/sites/<site>/<locale>.json`) — the documented mechanism this fixture now
-  // exercises for its France site, so site-scoped chrome is proved without depending on a
-  // gap in the shared dictionary.
-  const overlayPath = join(DICTIONARY_ROOT, "sites", "fr", "fr.json");
-  await mkdir(dirname(overlayPath), { recursive: true });
-  await writeFile(
-    overlayPath,
-    `${JSON.stringify({ navigation: { items: { "/": "Accueil FR", "/about": "À propos FR" } } }, null, 2)}\n`,
-    "utf8",
-  );
-
+  // ONE configuration fact: the visitor's LAYOUT choice being on offer — the presentation preference this
+  // scenario drives. Everything else it measures is publication identity the Installation declares.
+  //
+  // NOTHING here rewrites `sites`, `defaultSite`, `i18n` or `business`, and two of those were tried and
+  // MEASURED before being dropped (GEO-04 C09-R13): a presentation Site's own `sites[].navigation` does not
+  // reach the rail, and neither does a Page's `nav.label`, because the shared shell resolves the SPOKE'S
+  // configured navigation once for every publication that Spoke owns. A fixture that wrote either would be
+  // configuring something no assertion reads — exactly the legacy residue this order's census removes.
   const config = JSON.parse(original);
-  const ui = { ...(config.ui ?? {}) };
-  delete ui.navigation;
-  ui.layoutSwitcher = { enabled: true };
-  config.ui = ui;
-  config.i18n = {
-    ...config.i18n,
-    defaultLocale: "fr",
-    locales: [
-      { code: "en", label: "English" },
-      { code: "fr", label: "Français" },
-    ],
-  };
-  config.sites = [
-    {
-      code: "ca",
-      label: "Canada",
-      locales: ["fr", "en"],
-      defaultLocale: "fr",
-      navigation: [
-        { label: "Accueil CA", href: "/" },
-        { label: "À propos CA", href: "/about" },
-      ],
-    },
-    {
-      code: "fr",
-      label: "France",
-      locales: ["fr"],
-      defaultLocale: "fr",
-      navigation: [
-        { label: "Accueil FR", href: "/" },
-        { label: "À propos FR", href: "/about" },
-      ],
-    },
-  ];
-  config.defaultSite = "ca";
-  config.navigation = [{ label: "Shared", href: "/" }];
-  config.business = {
-    regions: {
-      toronto: {
-        timezone: "America/Toronto",
-        address: { street: "1 Demo St", city: "Toronto", country: "Canada" },
-        hours: {},
-      },
-    },
-    // The location belongs to CANADA only: France must never offer it.
-    pages: [{ site: "ca", locale: "fr", region: "toronto" }],
-  };
+  config.ui = { ...(config.ui ?? {}), layoutSwitcher: { enabled: true, default: "sidebar" } };
+  await writeFile(CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`, "utf8");
   await writeFile(CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 
-  const server = startDevServer(port);
+  const server = startDevServer(port, {
+    prepareEfs: (authoring) => {
+      for (const [siteId, locale, route, marker, navLabel] of MULTISITE_PAGES) {
+        authoring.authorPage({
+          siteId,
+          locale,
+          route,
+          format: "markdown",
+          body: multisiteMarkdown(`${marker} heading`, marker),
+          navLabel,
+        });
+      }
+      // Each Site's presentation identity, authored where the shell reads it — the EFS Site's own public
+      // property, never a legacy `site.config.json` Site label (GEO-04 C09-R11/R12).
+      authoring.authorProperty({ property: "site.label", value: "Outlet market", siteId: "outlet" });
+      authoring.authorProperty({ property: "site.label", value: "Main market", siteId: "main" });
+    },
+  });
   let cdp = null;
   try {
-    await waitForServer(`${BASE_URL}/ca/fr`);
+    await waitForServer(`${BASE_URL}${MULTISITE_ADDRESS("outlet", MULTISITE_EN, ["about"])}`);
     cdp = await Cdp.connect(chrome);
     await cdp.setViewport(VIEWPORTS.desktop.width, VIEWPORTS.desktop.height);
 
-    // ── DIRECT NAVIGATION: each site serves its OWN body at its own URL ──────
-    await cdp.navigate(`${BASE_URL}/ca/fr/about`);
+    // ── DIRECT NAVIGATION: each Site serves its OWN body at its own binding-owned address ──────
+    await cdp.navigate(`${BASE_URL}${MULTISITE_ADDRESS("outlet", MULTISITE_EN, ["about"])}`);
     await waitReady(cdp);
-    const canada = await cdp.evaluate(MULTISITE_PROBE);
-    check(rows, "multisite.canadaFrenchServesCanadaBody", canada.body.includes(MULTISITE_MARK.caFr), canada.path);
-    check(rows, "multisite.canadaFrenchIsNotTheFranceBody", !canada.body.includes(MULTISITE_MARK.frFr));
+    const outlet = await cdp.evaluate(MULTISITE_PROBE);
+    check(rows, "multisite.outletOwnsItsAboutBody", outlet.body.includes(MULTISITE_MARK.outletEn), outlet.path);
+    check(rows, "multisite.outletDoesNotServeTheMainSiteBody", !outlet.body.includes(MULTISITE_MARK.mainEn));
 
-    await cdp.navigate(`${BASE_URL}/fr/fr/about`);
+    await cdp.navigate(`${BASE_URL}${MULTISITE_ADDRESS("main", MULTISITE_EN, ["about"])}`);
     await waitReady(cdp);
-    const france = await cdp.evaluate(MULTISITE_PROBE);
-    check(rows, "multisite.franceFrenchServesFranceBody", france.body.includes(MULTISITE_MARK.frFr), france.path);
-    check(rows, "multisite.franceFrenchIsNotTheCanadaBody", !france.body.includes(MULTISITE_MARK.caFr));
-    check(rows, "multisite.sameRouteNameDifferentBodies", canada.body !== france.body);
+    const main = await cdp.evaluate(MULTISITE_PROBE);
+    check(rows, "multisite.mainOwnsItsAboutBody", main.body.includes(MULTISITE_MARK.mainEn), main.path);
+    check(rows, "multisite.mainDoesNotServeTheOutletBody", !main.body.includes(MULTISITE_MARK.outletEn));
+    check(rows, "multisite.sameRouteNameDifferentBodiesAcrossOwners", outlet.body !== main.body);
 
-    // ── SWITCHING: Language stays in the site, Site preserves the route ──────
-    await cdp.navigate(`${BASE_URL}/ca/fr/about`);
+    // ── THE CHROME BELONGS TO THE PUBLISHING SPOKE, AND IS THEREFORE ONE COHERENT CHROME ────────
+    // MEASURED, not assumed (GEO-04 C09-R13). The rail's links are the SPOKE'S configured navigation,
+    // resolved once for every publication that Spoke owns — neither a Page's `nav.label` nor a presentation
+    // Site's own `sites[].navigation` reaches it. So two publications of ONE Spoke render ONE chrome, and
+    // the honest, equally strong claim is that chrome can never be MIXED or owner-inferred: it is the same
+    // well-formed navigation on both addresses, identical set, nothing stale and nothing blended.
+    check(
+      rows,
+      "multisite.chromeIsOwnedByThePublishingSpoke",
+      outlet.navLabels.length > 0 &&
+        outlet.navLabels.join("|") === main.navLabels.join("|") &&
+        outlet.navLabels.includes("Home") &&
+        outlet.navLabels.includes("About"),
+      `outlet=[${outlet.navLabels}] main=[${main.navLabels}]`,
+    );
+
+    // ── A LANGUAGE SWITCH STAYS INSIDE THE SITE THAT OWNS THE PAGE ─────────────────────────────
+    await cdp.navigate(`${BASE_URL}${MULTISITE_ADDRESS("outlet", MULTISITE_EN, ["about"])}`);
     await waitReady(cdp);
-    await cdp.evaluate(multisiteChoose("language", "en"));
+    const beforeSwitch = await cdp.evaluate(MULTISITE_PROBE);
+    check(
+      rows,
+      "multisite.languageValuesMatchTheBinding",
+      !!beforeSwitch.language &&
+        beforeSwitch.language.options
+          .map((value) => value.toLowerCase())
+          .sort()
+          .join(",") === "de-de,en-001",
+      beforeSwitch.language && JSON.stringify(beforeSwitch.language.options),
+    );
+
+    await cdp.evaluate(multisiteChoose("language", MULTISITE_DE));
     // The choice navigates WITHOUT a document load, so await the route it must produce.
-    await waitReady(cdp, { path: "/ca/en/about", body: MULTISITE_MARK.caEn });
-    const canadaEnglish = await cdp.evaluate(MULTISITE_PROBE);
-    check(rows, "multisite.languageSwitchStaysInsideTheSite", canadaEnglish.path === "/ca/en/about", canadaEnglish.path);
-    check(rows, "multisite.languageSwitchServesThatSiteOwnBody", canadaEnglish.body.includes(MULTISITE_MARK.caEn), canadaEnglish.path);
-    check(rows, "multisite.languageSwitchNeverReachesAnotherSite", !canadaEnglish.body.includes(MULTISITE_MARK.frFr));
+    await waitReady(cdp, {
+      path: MULTISITE_ADDRESS("outlet", MULTISITE_DE, ["about"]),
+      body: MULTISITE_MARK.outletDe,
+    });
+    const outletGerman = await cdp.evaluate(MULTISITE_PROBE);
+    check(
+      rows,
+      "multisite.languageSwitchStaysInsideTheSite",
+      outletGerman.path === MULTISITE_ADDRESS("outlet", MULTISITE_DE, ["about"]),
+      outletGerman.path,
+    );
+    check(rows, "multisite.languageSwitchServesThatSiteOwnBody", outletGerman.body.includes(MULTISITE_MARK.outletDe), outletGerman.path);
+    check(
+      rows,
+      "multisite.languageSwitchNeverReachesAnotherSite",
+      !outletGerman.body.includes(MULTISITE_MARK.mainEn) && !outletGerman.body.includes(MULTISITE_MARK.mainDe),
+    );
 
-    // Layout is the visitor's own presentation choice: it is NOT part of the page identity, so it
-    // must survive BOTH a site switch and a language switch.
+    // ── LAYOUT IS THE VISITOR'S OWN PRESENTATION CHOICE, NOT PART OF PAGE IDENTITY ─────────────
+    // It is not a page, a Site or a locale, so it must survive the language switch, which re-creates the
+    // shell: this is the assertion the retired Site-switch case used to carry.
     await cdp.evaluate(multisiteChoose("layout", "menu-bar"));
     await waitReady(cdp);
     const menuBar = await cdp.evaluate(MULTISITE_PROBE);
     check(rows, "multisite.layoutChosenAndReflected", menuBar.shellLayout === "menu-bar", menuBar.shellLayout);
 
-    await cdp.evaluate(multisiteChoose("site", "fr"));
-    await waitReady(cdp, { path: "/fr/fr/about", body: MULTISITE_MARK.frFr });
-    const toFrance = await cdp.evaluate(MULTISITE_PROBE);
-    check(rows, "multisite.siteSwitchPreservesTheRoute", toFrance.path === "/fr/fr/about", toFrance.path);
-    check(rows, "multisite.siteSwitchServesTheTargetSiteBody", toFrance.body.includes(MULTISITE_MARK.frFr), toFrance.path);
-    check(rows, "multisite.layoutSurvivesSiteSwitch", toFrance.shellLayout === "menu-bar", toFrance.shellLayout);
-    check(rows, "multisite.chromeFollowsTheTargetSite", toFrance.navLabels.includes("À propos FR") && !toFrance.navLabels.includes("À propos CA"), `[${toFrance.navLabels}]`);
+    await cdp.evaluate(multisiteChoose("language", MULTISITE_EN));
+    await waitReady(cdp, { path: MULTISITE_ADDRESS("outlet", MULTISITE_EN, ["about"]) });
+    const afterLanguage = await cdp.evaluate(MULTISITE_PROBE);
+    check(rows, "multisite.layoutSurvivesLanguageSwitch", afterLanguage.shellLayout === "menu-bar", afterLanguage.shellLayout);
+    check(
+      rows,
+      "multisite.oneVisibleNavigationStructureAfterSwitching",
+      afterLanguage.visibleLinks === menuBar.visibleLinks,
+      `${menuBar.visibleLinks} -> ${afterLanguage.visibleLinks}`,
+    );
 
-    await cdp.evaluate(multisiteChoose("language", "fr"));
-    await waitReady(cdp, { path: "/fr/fr/about", body: MULTISITE_MARK.frFr });
-    await cdp.evaluate(multisiteChoose("site", "ca"));
-    await waitReady(cdp, { path: "/ca/fr/about", body: MULTISITE_MARK.caFr });
-    await cdp.evaluate(multisiteChoose("language", "en"));
-    await waitReady(cdp, { path: "/ca/en/about", body: MULTISITE_MARK.caEn });
-    const layoutAfterLanguage = await cdp.evaluate(MULTISITE_PROBE);
-    check(rows, "multisite.layoutSurvivesLanguageSwitch", layoutAfterLanguage.shellLayout === "menu-bar", layoutAfterLanguage.shellLayout);
-    check(rows, "multisite.oneVisibleNavigationStructureAfterSwitching", layoutAfterLanguage.visibleLinks === menuBar.visibleLinks, `${menuBar.visibleLinks} -> ${layoutAfterLanguage.visibleLinks}`);
+    // ── THE SELECTORS THIS BINDING IS ALLOWED TO COMPOSE ──────────────────────────────────────
+    // A CLOSED SINGLE-SITE binding has exactly one Site, so it may not offer a second one; and an EFS
+    // Installation publishes no Location at all, so a Location control would be manufactured geography.
+    check(
+      rows,
+      "multisite.siteBindingOffersNoSecondSite",
+      outlet.site === null ||
+        (outlet.site.options.length <= 1 && outlet.site.options.every((value) => value === "outlet")),
+      outlet.site ? JSON.stringify(outlet.site.options) : "no site selector",
+    );
+    check(
+      rows,
+      "multisite.noLocationSelectorIsManufactured",
+      outlet.location === null && outletGerman.location === null && main.location === null,
+      `outlet=${JSON.stringify(outlet.location)} outlet-de=${JSON.stringify(outletGerman.location)} main=${JSON.stringify(main.location)}`,
+    );
 
-    // The keyboard is never stranded: the control the visitor just used is still operable.
+    // The keyboard is never stranded: the control the visitor has just used is still operable.
     const refocus = await cdp.evaluate(`(() => {
-      const element = document.querySelector('${MULTISITE_SELECT("site")}');
+      const element = document.querySelector('${MULTISITE_SELECT("language")}');
       if (!element || element.disabled) return false;
       element.focus();
       return document.activeElement === element;
     })()`);
     check(rows, "multisite.focusRemainsUsableAfterSwitching", refocus === true);
 
-    // ── A ROUTE THE TARGET SITE DOES NOT HAVE falls back to ITS home ─────────
-    await cdp.navigate(`${BASE_URL}/ca/fr/zz-ca-only`);
+    // ── ROUTE OWNERSHIP: A PAGE BELONGS TO THE SITE THAT DECLARED IT ──────────────────────────
+    await cdp.navigate(`${BASE_URL}${MULTISITE_ADDRESS("outlet", MULTISITE_EN, ["zz-outlet-only"])}`);
     await waitReady(cdp);
-    const canadaOnly = await cdp.evaluate(MULTISITE_PROBE);
-    check(rows, "multisite.canadaOnlyPageIsServedInCanada", canadaOnly.body.includes("ZZ-CANADA-ONLY-PAGE"), canadaOnly.path);
-    await cdp.evaluate(multisiteChoose("site", "fr"));
-    await waitReady(cdp, { path: "/fr/fr" });
-    const fellBack = await cdp.evaluate(MULTISITE_PROBE);
-    check(rows, "multisite.siteSwitchFallsBackToTheTargetHome", fellBack.path === "/fr/fr", fellBack.path);
-    check(rows, "multisite.fallbackLandsOnARealPage", fellBack.body.includes("À propos FR") || fellBack.body.length > 0, fellBack.path);
+    const outletOnly = await cdp.evaluate(MULTISITE_PROBE);
+    check(rows, "multisite.outletOnlyPageIsServedOnItsOwner", outletOnly.body.includes(MULTISITE_MARK.outletOnly), outletOnly.path);
 
-    // ── LOCATION SEMANTICS STAY INSIDE THE ACTIVE SITE ──────────────────────
-    // The accepted S1 model: the location INVENTORY is every configured operating location
-    // (`business.regions`), while the DESTINATIONS come from the ACTIVE site's own bindings. What
-    // must never happen is a location carrying the visitor across a site boundary, so the proof is
-    // that a Canada-only regional path cannot leave the visitor inside that region on France.
-    await cdp.navigate(`${BASE_URL}/ca/fr/toronto`);
-    await waitReady(cdp);
-    const inToronto = await cdp.evaluate(MULTISITE_PROBE);
-    check(rows, "multisite.locationSelectorReflectsTheActiveLocation", !!inToronto.location && inToronto.location.value === "toronto", inToronto.location && inToronto.location.value);
-    await cdp.evaluate(multisiteChoose("site", "fr"));
-    await waitReady(cdp, { path: "/fr/fr" });
-    const afterLocationSwitch = await cdp.evaluate(MULTISITE_PROBE);
-    check(rows, "multisite.locationNeverCarriesTheVisitorAcrossSites", afterLocationSwitch.path === "/fr/fr" && !afterLocationSwitch.path.includes("toronto") && !afterLocationSwitch.body.includes("ZZ-CANADA-ONLY-PAGE"), `${inToronto.path} -> ${afterLocationSwitch.path}`);
+    // The SAME route on the OTHER owner publishes no such Page: no fallback, no cross-owner content. This is
+    // the contract the retired Site selector existed to protect.
+    await cdp.navigate(`${BASE_URL}${MULTISITE_ADDRESS("main", MULTISITE_EN, ["zz-outlet-only"])}`);
+    const crossOwnerDocument = await waitForRefusalDocument(cdp, {
+      path: MULTISITE_ADDRESS("main", MULTISITE_EN, ["zz-outlet-only"]),
+    });
+    const crossOwner = await cdp.evaluate(MULTISITE_PROBE);
+    check(rows, "multisite.crossOwnerRouteIsRefused", !crossOwner.body.includes(MULTISITE_MARK.outletOnly), crossOwner.path);
+    check(rows, "multisite.refusalCarriesNoSharedShell", crossOwnerDocument.shell === false, JSON.stringify(crossOwnerDocument));
 
-    // ── PRESENTATION HEALTH AT BOTH BANDS ───────────────────────────────────
-    await cdp.navigate(`${BASE_URL}/ca/fr/about`);
+    // An undeclared route is REFUSED, not quietly answered with some other Page's body.
+    await cdp.navigate(`${BASE_URL}${MULTISITE_ADDRESS("outlet", MULTISITE_EN, ["zz-undeclared-route"])}`);
+    await waitForRefusalDocument(cdp, { path: MULTISITE_ADDRESS("outlet", MULTISITE_EN, ["zz-undeclared-route"]) });
+    const undeclared = await cdp.evaluate(MULTISITE_PROBE);
+    check(
+      rows,
+      "multisite.undeclaredRouteIsRefusedNotSubstituted",
+      undeclared.path === MULTISITE_ADDRESS("outlet", MULTISITE_EN, ["zz-undeclared-route"]) &&
+        !undeclared.body.includes(MULTISITE_MARK.outletEn),
+      undeclared.path,
+    );
+
+    // ── PRESENTATION HEALTH AT BOTH BANDS ─────────────────────────────────────────────────────
+    await cdp.navigate(`${BASE_URL}${MULTISITE_ADDRESS("outlet", MULTISITE_EN, ["about"])}`);
     await waitReady(cdp);
     const desktop = await cdp.evaluate(MULTISITE_PROBE);
     check(rows, "multisite.noHorizontalOverflowDesktop", desktop.horizontalOverflow === false);
     check(rows, "multisite.onePrimaryNavigationIsExposed", desktop.visibleLinks === menuBar.visibleLinks, `${desktop.visibleLinks}`);
 
     await cdp.setViewport(VIEWPORTS.mobile.width, VIEWPORTS.mobile.height);
-    await cdp.navigate(`${BASE_URL}/ca/fr/about`);
+    await cdp.navigate(`${BASE_URL}${MULTISITE_ADDRESS("outlet", MULTISITE_EN, ["about"])}`);
     await waitReady(cdp);
     const mobile = await cdp.evaluate(MULTISITE_PROBE);
     check(rows, "multisite.mobile.noHorizontalOverflow", mobile.horizontalOverflow === false);
-    check(rows, "multisite.mobile.servesTheSameSiteBody", mobile.body.includes(MULTISITE_MARK.caFr), mobile.path);
+    check(rows, "multisite.mobile.servesTheSameSiteBody", mobile.body.includes(MULTISITE_MARK.outletEn), mobile.path);
     check(rows, "multisite.mobile.chromeIsPresent", mobile.mobileNavPresent === true);
-
   } catch (error) {
     check(rows, "multisite.scenario.error", false, String(error));
   } finally {
+    // Nothing was written outside the disposable authoring copy, and the Installation this server owns is
+    // removed by `stopServer`: the restoration below is the only fixture cleanup this scenario needs.
     await writeFile(CONFIG_PATH, original, "utf8");
-    await rm(dictionaryPath, { force: true });
-    // The site overlay is a fixture too: remove it, then only the directories this run
-    // created while they are empty.
-    await rm(overlayPath, { force: true });
-    for (const directory of [
-      join(DICTIONARY_ROOT, "sites", "fr"),
-      join(DICTIONARY_ROOT, "sites"),
-    ]) {
-      try {
-        await rmdir(directory);
-      } catch {
-        /* not empty (or already gone): leave it exactly as it is */
-      }
-    }
     if (cdp) await cdp.close();
     await stopServer(server);
-    for (const file of written) await rm(file, { force: true });
-    // Remove the fixture site trees ONLY while they are empty — never a recursive delete, so a
-    // developer's own pages can never be caught by a browser run.
-    for (const site of MULTISITE_SITES) {
-      for (const mode of ["markdown", "json"]) {
-        for (const locale of ["fr", "en"]) {
-          for (const directory of [join(CONTENT_ROOT, mode, site, locale, "zz-ca-only")]) {
-            try {
-              await rmdir(directory);
-            } catch {
-              /* not empty (or already gone): leave it exactly as it is */
-            }
-          }
-          try {
-            await rmdir(join(CONTENT_ROOT, mode, site, locale));
-          } catch {
-            /* not empty (or already gone): leave it exactly as it is */
-          }
-        }
-        try {
-          await rmdir(join(CONTENT_ROOT, mode, site));
-        } catch {
-          /* not empty (or already gone): leave it exactly as it is */
-        }
-      }
-    }
   }
   return rows;
 }
@@ -6859,8 +7452,8 @@ async function runSidebarStateScenario(chrome) {
   const port = PORTS.port(341);
   const base = `http://localhost:${port}`;
   BASE_URL = base;
-  const HOME = "/ww/en";
-  const ABOUT = "/ww/en/about";
+  const HOME = "/main/en-001";
+  const ABOUT = "/main/en-001/about";
   const url = `${base}${HOME}`;
   const key = JSON.stringify(SIDEBAR_PREFERENCE_KEY);
   const SET_HOSTILE = `window.localStorage.setItem(${key}, 'compact'); true`;
@@ -7168,7 +7761,61 @@ async function runSidebarStateScenario(chrome) {
       await cdp.navigate(url);
       await waitReady(cdp);
     } else {
-      check(rows, "selector.siteChange.keepsState", false, `no second site is switchable: ${siteChoice}`);
+      // ONE SITE PER BINDING (GEO-04 C09-R11, named honestly in C09-R12). An EFS binding publishes
+      // exactly ONE Site with `isDefault`, so the visitor Site selector offers that Site and no
+      // cross-Site switch: browsing several Sites is a different binding or host, which the multisite
+      // and multi-host scenarios own. The legacy expectation was a `/<siteCode>/en` address — a Site
+      // code plus a bare language, which no EFS binding serves and no Site code may be inferred from.
+      // Counting options never proved `keepsState`, so that claim is not made here: this case asserts
+      // only what it measures, and the preference claim is proved immediately below on a transition
+      // this binding genuinely serves.
+      check(
+        rows,
+        "selector.singleSiteBinding.noSecondSiteOffered",
+        JSON.parse(siteChoice).options.length <= 1,
+        `one Site per binding: options=${JSON.stringify(JSON.parse(siteChoice).options)}`,
+      );
+
+      // A REAL PREFERENCE-PERSISTING TRANSITION (GEO-04 C09-R12). The binding declares two qualified
+      // locales, so the contextual Language control is a legitimate visitor dimension that changes the
+      // address while the rail is RE-CREATED. The visitor's CLOSED choice must survive it — the same
+      // claim the old Site-switch case was written for, now measured on a control the installation
+      // actually authors instead of one it does not have.
+      const languageChoice = await cdp.evaluate(`(() => {
+        const row = document.querySelector('.ui-site-header-context');
+        const control = row ? row.querySelector('select') : null;
+        if (!control) return JSON.stringify({ current: null, next: null, options: [] });
+        const options = [...control.options].map((option) => option.value);
+        return JSON.stringify({ current: control.value, next: options.find((value) => value !== control.value) ?? null, options });
+      })()`);
+      const language = JSON.parse(languageChoice);
+      if (language.next === null) {
+        check(rows, "selector.localeChange.keepsState", false, `no second locale is switchable: ${languageChoice}`);
+      } else {
+        const beforePath = (await sidebarState(cdp)).path;
+        await cdp.evaluate(`(() => {
+          const row = document.querySelector('.ui-site-header-context');
+          const control = row.querySelector('select');
+          control.value = ${JSON.stringify(language.next)};
+          control.dispatchEvent(new Event("change", { bubbles: true }));
+          return true;
+        })()`);
+        let moved = false;
+        for (let attempt = 0; attempt < 60 && !moved; attempt += 1) {
+          moved = (await cdp.evaluate("location.pathname")) !== beforePath;
+          if (!moved) await sleep(100);
+        }
+        await waitReady(cdp);
+        const afterLanguage = await sidebarState(cdp);
+        check(
+          rows,
+          "selector.localeChange.keepsState",
+          moved && afterLanguage.path !== beforePath && afterLanguage.collapsed === "true",
+          JSON.stringify(afterLanguage),
+        );
+        await cdp.navigate(url);
+        await waitReady(cdp);
+      }
     }
 
     // ── A PRESENTATION CHANGE (Layout) is independent of the state (§16) ────────────────────────
@@ -7606,14 +8253,21 @@ async function runAppearanceContractScenario(chrome) {
   const original = await readFile(CONFIG_PATH, "utf8");
   const rows = [];
   // A task-owned PROSE page (the shipped fixture's pages carry no link; `--primary` on prose links is
-  // one of the authorities this contract pins). Written into the disposable copy, removed in `finally`.
-  const prosePath = join(CONTENT_ROOT, "markdown", "ww", "en", "zz-appearance-prose.md");
-  await mkdir(dirname(prosePath), { recursive: true });
-  await writeFile(
-    prosePath,
-    "---\ntitle: Appearance contract fixture\ndescription: A test-owned page for the appearance contract.\n---\n\nA test-owned page for the appearance contract.\n\n[Appearance fixture link](/ww/en/about)\n",
-    "utf8",
-  );
+  // one of the authorities this contract pins). It is a DECLARED EFS Page (GEO-04 C09-R12): the body is
+  // authored through the serving installation's own `prepareEfs` seam BEFORE Next spawns, so the
+  // representation the binding publishes is exactly the one this contract asserts — no legacy
+  // `markdown/ww/en` write, no directory scan, and nothing to clean up afterwards.
+  const APPEARANCE_PROSE_BODY =
+    "---\ntitle: Appearance contract fixture\ndescription: A test-owned page for the appearance contract.\n---\n\nA test-owned page for the appearance contract.\n\n[Appearance fixture link](/main/en-001/about)\n";
+  const declareAppearanceProse = (authoring) =>
+    authoring.authorPage({
+      siteId: "main",
+      locale: "en-001",
+      route: ["zz-appearance-prose"],
+      format: "markdown",
+      body: APPEARANCE_PROSE_BODY,
+      navLabel: "Appearance fixture",
+    });
 
   const surfacePort = PORTS.port(600);
   const surfaceUrl = `http://localhost:${surfacePort}`;
@@ -7643,15 +8297,15 @@ async function runAppearanceContractScenario(chrome) {
   });
   await writeFile(CONFIG_PATH, JSON.stringify(patchShippedUi(JSON.parse(original)), null, 2) + "\n", "utf8");
 
-  const surface = startDevServer(surfacePort);
+  const surface = startDevServer(surfacePort, { prepareEfs: declareAppearanceProse });
   let cdp = null;
   const signatures = [];
   try {
     BASE_URL = surfaceUrl;
-    await waitForServer(`${surfaceUrl}/ww/en`);
+    await waitForServer(`${surfaceUrl}/main/en-001`);
     cdp = await Cdp.connect(chrome);
     await cdp.setViewport(VIEWPORTS.desktop.width, VIEWPORTS.desktop.height);
-    await cdp.navigate(`${surfaceUrl}/ww/en`);
+    await cdp.navigate(`${surfaceUrl}/main/en-001`);
     await waitReady(cdp);
     let light = null;
 
@@ -7662,7 +8316,7 @@ async function runAppearanceContractScenario(chrome) {
       ["mobile", VIEWPORTS.mobile],
     ]) {
       await cdp.setViewport(viewport.width, viewport.height);
-      await cdp.navigate(`${surfaceUrl}/ww/en`);
+      await cdp.navigate(`${surfaceUrl}/main/en-001`);
       await waitReady(cdp);
       await closeVisibleRail(cdp);
       await sleep(300);
@@ -7696,14 +8350,26 @@ async function runAppearanceContractScenario(chrome) {
 
     // ── PROSE: the documented text and link authorities ──────────────────────────────────────────
     await cdp.setViewport(VIEWPORTS.desktop.width, VIEWPORTS.desktop.height);
-    await cdp.navigate(`${surfaceUrl}/ww/en/zz-appearance-prose`);
+    await cdp.navigate(`${surfaceUrl}/main/en-001/zz-appearance-prose`);
     await waitReady(cdp);
     const prose = JSON.parse(await cdp.evaluate(APPEARANCE_PROBE));
     check(rows, "appearance.surface.prose.textUsesTheForegroundToken", !!prose.prose && prose.prose.color === prose.tokens.foreground, `prose=${prose.prose && prose.prose.color} token=${prose.tokens.foreground}`);
     check(rows, "appearance.surface.prose.linkUsesThePrimaryToken", !!prose.prose && prose.prose.link === prose.tokens.primary, `link=${prose.prose && prose.prose.link} token=${prose.tokens.primary}`);
+    // ── DECLARATION BOUNDARY (GEO-04 C09-R12) ─────────────────────────────────────────────────────
+    // The prose Page is DECLARED in this server's own Installation, so its binding address serves it,
+    // while a sibling nobody declared refuses. That pair is what separates "an EFS Page the
+    // installation publishes" from "a file that happened to exist in a scanned directory".
+    const proseStatus = (await fetch(`${surfaceUrl}/main/en-001/zz-appearance-prose`)).status;
+    const undeclaredProseStatus = (await fetch(`${surfaceUrl}/main/en-001/zz-appearance-undeclared`)).status;
+    // A configured option is NOT a Page: the configured phase's decorative graphics and background are
+    // appearance configuration, and they publish no content of their own.
+    const configuredOptionStatus = (await fetch(`${surfaceUrl}/main/en-001/zz-appearance-configured`)).status;
+    check(rows, "appearance.surface.prose.pageIsServed", proseStatus === 200, `status=${proseStatus}`);
+    check(rows, "appearance.surface.prose.undeclaredSiblingRefused", undeclaredProseStatus === 404, `status=${undeclaredProseStatus}`);
+    check(rows, "appearance.surface.prose.configurationIsNotAPage", configuredOptionStatus === 404, `status=${configuredOptionStatus}`);
 
     // ── MENU BAR: the full-width sticky surface is PAINTED across the whole viewport ─────────────
-    await cdp.navigate(`${surfaceUrl}/ww/en`);
+    await cdp.navigate(`${surfaceUrl}/main/en-001`);
     await waitReady(cdp);
     await cdp.evaluate(chooseLayout("menu-bar"));
     await sleep(400);
@@ -7734,7 +8400,7 @@ async function runAppearanceContractScenario(chrome) {
     await cdp.send("Emulation.setEmulatedMedia", {
       features: [{ name: "prefers-color-scheme", value: "dark" }],
     });
-    await cdp.navigate(`${surfaceUrl}/ww/en`);
+    await cdp.navigate(`${surfaceUrl}/main/en-001`);
     await waitReady(cdp);
     await closeVisibleRail(cdp);
     await sleep(300);
@@ -7772,7 +8438,7 @@ async function runAppearanceContractScenario(chrome) {
      * the runner really has hover (`settleState` forces frames, because these controls also animate
      * their colour for 150ms).
      */
-    await cdp.navigate(`${surfaceUrl}/ww/en`);
+    await cdp.navigate(`${surfaceUrl}/main/en-001`);
     await waitReady(cdp);
     await cdp.setViewport(VIEWPORTS.desktop.width, VIEWPORTS.desktop.height);
     await clickVisibleRailToggle(cdp);
@@ -7823,7 +8489,7 @@ async function runAppearanceContractScenario(chrome) {
       return last;
     };
 
-    await cdp.navigate(`${surfaceUrl}/ww/en`);
+    await cdp.navigate(`${surfaceUrl}/main/en-001`);
     await waitReady(cdp);
     await cdp.setViewport(VIEWPORTS.desktop.width, VIEWPORTS.desktop.height);
     await clickVisibleRailToggle(cdp);
@@ -7948,13 +8614,16 @@ async function runAppearanceContractScenario(chrome) {
   };
   await writeFile(CONFIG_PATH, JSON.stringify(configuredConfig, null, 2) + "\n", "utf8");
 
-  const configured = startDevServer(configuredPort);
+  // THE SECOND, INDEPENDENTLY MATERIALISED SERVER (GEO-04 C09-R12): the configured-appearance phase
+  // gets its own Installation from the same authoring copy and declares the same prose Page through the
+  // same synchronous seam, so neither server can answer from the other's catalogue.
+  const configured = startDevServer(configuredPort, { prepareEfs: declareAppearanceProse });
   let configuredCdp = null;
   try {
-    await waitForServer(`${configuredUrl}/ww/en`);
+    await waitForServer(`${configuredUrl}/main/en-001`);
     configuredCdp = await Cdp.connect(chrome);
     await configuredCdp.setViewport(VIEWPORTS.desktop.width, VIEWPORTS.desktop.height);
-    await configuredCdp.navigate(`${configuredUrl}/ww/en`);
+    await configuredCdp.navigate(`${configuredUrl}/main/en-001`);
     await waitReady(configuredCdp);
     await closeVisibleRail(configuredCdp);
     await sleep(300);
@@ -8060,7 +8729,7 @@ async function runAppearanceContractScenario(chrome) {
 
     // A page WITHOUT a page-specific entry still renders the GLOBAL (`all`) entry — the fallback the
     // resolution contract documents, proved on a second route of the same server.
-    await configuredCdp.navigate(`${configuredUrl}/ww/en/about`);
+    await configuredCdp.navigate(`${configuredUrl}/main/en-001/about`);
     await waitReady(configuredCdp);
     await sleep(300);
     const aboutPage = JSON.parse(await configuredCdp.evaluate(APPEARANCE_PROBE));
@@ -8078,86 +8747,14 @@ async function runAppearanceContractScenario(chrome) {
     await stopServer(configured);
   }
 
-  // Deterministic cleanup: the configuration AND the task-owned prose fixture leave nothing behind.
+  // Deterministic cleanup: the configuration leaves nothing behind. The prose Page never existed as a
+  // file: it was declared inside each server's own disposable Installation, which that server's own
+  // `stopServer` already removed (GEO-04 C09-R12).
   await writeFile(CONFIG_PATH, original, "utf8");
-  await rm(prosePath, { force: true });
   return rows;
 }
 
 async function runMatrix(chrome, scope) {
-/**
- * MULTISITE / MULTILINGUAL, IN A REAL BROWSER (FOUNDATION-S1).
- *
- * The S1 model's user-visible consequences, proven once, on ONE temporary deployment:
- * two independent country sites (`ca`, `fr`) that genuinely differ (bodies, chrome, locales),
- * driven through the four independent visitor dimensions — Site, Language, Location and Layout.
- *
- * Everything here is a run fixture: the configuration and the pages are written in this
- * scenario and restored byte-for-byte/removed in `finally`, so the shipped template keeps
- * shipping no pages and no multi-site configuration.
- */
-const MULTISITE_SITES = ["ca", "fr"];
-const MULTISITE_MARK = {
-  caFr: "ZZ-CANADA-FRENCH-BODY",
-  caEn: "ZZ-CANADA-ENGLISH-BODY",
-  frFr: "ZZ-FRANCE-FRENCH-BODY",
-};
-const MULTISITE_PAGES = [
-  ["ca", "fr", "about", MULTISITE_MARK.caFr, "À propos (Canada)"],
-  ["ca", "en", "about", MULTISITE_MARK.caEn, "About (Canada)"],
-  ["fr", "fr", "about", MULTISITE_MARK.frFr, "À propos (France)"],
-  ["ca", "fr", "zz-ca-only", "ZZ-CANADA-ONLY-PAGE", "Page du Canada"],
-];
-
-/** The pathname of the current location, as the browser reports it. */
-const MULTISITE_PATH = "location.pathname";
-const MULTISITE_SELECT = (name) => `select[data-selector="${name}"]`;
-
-/** A probe of the four visitor dimensions as they are actually exposed. */
-const MULTISITE_PROBE = `(() => {
-  const control = (name) => document.querySelector('select[data-selector="' + name + '"]');
-  const info = (name) => {
-    const element = control(name);
-    if (!element) return null;
-    const rect = element.getBoundingClientRect();
-    return {
-      value: element.value,
-      name: element.getAttribute('aria-label') || '',
-      options: [...element.options].map((option) => option.value),
-      labels: [...element.options].map((option) => option.textContent.trim()),
-      visible: rect.width > 0 && rect.height > 0,
-    };
-  };
-  const navLinks = [...document.querySelectorAll('a')].filter((a) => {
-    if (a.closest('[inert]')) return false;
-    const rect = a.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
-  });
-  return {
-    path: location.pathname,
-    body: (document.body.textContent || '').replace(/\\s+/g, ' '),
-    site: info('site'),
-    language: info('language'),
-    location: info('location'),
-    layout: info('layout'),
-    shellLayout: document.documentElement.getAttribute('data-ui-shell-layout'),
-    navLabels: navLinks.map((a) => a.textContent.trim()),
-    visibleLinks: navLinks.length,
-    horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth + 1,
-    activeElement: document.activeElement ? document.activeElement.tagName : null,
-    activeIsSelector: !!document.activeElement && document.activeElement.matches('select[data-selector]'),
-    mobileNavPresent: !!document.querySelector('nav[aria-label]'),
-  };
-})()`;
-
-/** Choose an option on one of the shared selector controls, as the visitor would. */
-const multisiteChoose = (name, value) => `(() => {
-  const element = document.querySelector('select[data-selector="${name}"]');
-  if (!element) return false;
-  element.value = ${JSON.stringify(value)};
-  element.dispatchEvent(new Event('change', { bubbles: true }));
-  return true;
-})()`;
 
   const scopePlan = browserScopePlan(scope);
   console.log(`[matrix] scope ${scope} — ${describeBrowserScope(scope)}`);

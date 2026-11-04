@@ -1,143 +1,395 @@
 /**
- * THE REQUIRED-LOCATION POLICY, PROVED THROUGH A REAL SERVER AND A REAL BROWSER (FOUNDATION-LOC1)
- * =============================================================================================
+ * AN AUTHORED CHOICE OF LANGUAGE — PROVED ON REAL EFS PUBLICATIONS (GEO-04 C09-R18)
+ * ===================================================================================
  *
- * WHAT THIS SCENARIO EXISTS FOR. `tests/unit/location-selection.test.ts` proves the rules through the
- * public path completion and the selector's pure ordering. This scenario proves the SAME capability where
- * it crosses the two boundaries a unit test cannot reach: an HTTP request (is the public completion really
- * a redirect, and is it ONE hop?) and a browser (does the visitor SEE a Location control with no
- * unspecified option, and does using it move the URL inside the Location namespace?).
+ * WHAT REPLACED WHAT. This scenario used to test the retired `ca` Site's `locationSelection` policy: a `north`
+ * default, a `de → south` refinement, `307`s into `/ca/en/north` and `/ca/de/south`, a Location selector, and
+ * `business.pages`/`content/pages/markdown/ca/**` authoring behind `{ deploymentRoot }`. None of that publishes
+ * an EFS Page after the EFS-only runtime cut, so the Location POLICY tests are retired — the useful capability
+ * they stood for is not:
  *
- * TWO DEPLOYMENTS, ONE DIFFERENCE. The scenario materialises TWO disposable copies of the committed
- * synthetic fixture in OS temp: one whose Site declares a required-Location policy — `{ "mode":
- * "required", "default": "north", "localeDefaults": { "de": "south" } }`, the LOC2 refinement included —
- * and the untouched one. Both are started, and the SAME assertions are measured on each — which is what
- * makes "an absent policy changes nothing" a measurement rather than a claim. The refinement is measured
- * the same way: the SAME Site answers `/ca/en` with its site-wide default and `/ca/de` with the Location
- * the adopter named FOR THAT LOCALE, so the difference is authored data and not inference.
+ *   · an author really CAN publish different Page representations at ONE Site and ONE route in explicitly
+ *     declared qualified locales, and a visitor really CAN choose an offered language to reach the other one;
+ *   · the choice stays inside the same Site, the same Page and the same owner — never a region, Location,
+ *     foreign Site or another host;
+ *   · a Page that nobody declared is REFUSED, not completed into a default Location;
+ *   · only real declarations are discoverable, and the retired geographic grammar never comes back.
  *
- * NO DEPLOYMENT IS MUTATED: the copies live in OS temp (the harness's own write domain), the shipped
- * fixture is only ever read, and both copies are removed when the run ends.
+ * TWO INDEPENDENT SERVING STATES, because that is what the retired `required` versus `optional` policy pair
+ * actually tested — and because an absence can only be proved on a publication that never declared the Page:
  *
- * OWNERSHIP. This is a FOUNDATION contract (a platform capability, not one deployment's copy), so it lives
- * in the harness's own directory and runs in the foundation scope.
+ *   PHASE A — `declareChoicePages` publishes Site `outlet`'s Home and the `choice` Page in BOTH declared locales,
+ *             each with its own marker. The language control really moves between the two representations.
+ *   PHASE B — a fresh, separately owned Installation with NO authoring hook: the generic Home is still served,
+ *             and `/outlet/<locale>/choice` has no declaration, so it refuses. Nothing is synthesized.
+ *
+ * `127.0.0.1` is the transport address, NOT a Host any binding claims: every HTTP claim is addressed to the
+ * declared Host `localhost`, and the browser speaks `http://localhost:<port>`. Route words are Page routes.
  */
-import { mkdtempSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { setTimeout as sleep } from "node:timers/promises";
+import { request as httpRequest } from "node:http";
 
 import { Cdp } from "./cdp.mjs";
 
-/** The scenario's id, used as the report's `presentation` label. */
+/** The scenario id — retained so filename-driven discovery and report continuity are unchanged. */
 export const id = "required-location";
 
-/** The committed fixture every generic scenario is derived from — READ, never written. */
-const FIXTURE = ["tests", "fixtures", "synthetic-deployment"];
+/** The Host every generic EFS binding claims. */
+const HOST = "localhost";
 
-/** The ports this scenario tries, so a busy port is a retry rather than a failure. */
-const PORT_OFFSETS = [31, 32, 33];
+/** The manifest's canonical origin, from which `<loc>` and the sitemap derive. */
+const CANONICAL = `https://${HOST}`;
+
+/** Phase A and Phase B try these ports in turn, so a busy port is a retry rather than a failure. */
+const PHASE_A_PORTS = [31, 32, 33];
+const PHASE_B_PORTS = [34, 35, 36];
+
+/** The authored Page route, and the two qualified locales that carry it. */
+const CHOICE = "choice";
+const EN = { locale: "en-001", pathKey: "en-001", suffix: "EN" };
+const DE = { locale: "de-DE", pathKey: "de-de", suffix: "DE" };
+const LOCALES = [EN, DE];
+
+/** Test-owned body markers: every assertion can name the Site, locale and Page it actually received. */
+const MARKER = {
+  homeEn: "EFS-OUTLET-HOME-EN",
+  homeDe: "EFS-OUTLET-HOME-DE",
+  choiceEn: "EFS-OUTLET-CHOICE-EN",
+  choiceDe: "EFS-OUTLET-CHOICE-DE",
+};
+
+/** The binding-owned path of one qualified locale, optionally suffixed by a Page route. */
+function outletPath(localePath, suffix = "") {
+  return suffix === "" ? `/outlet/${localePath}` : `/outlet/${localePath}/${suffix}`;
+}
+const CHOICE_EN_PATH = outletPath(EN.pathKey, CHOICE);
+const CHOICE_DE_PATH = outletPath(DE.pathKey, CHOICE);
+const HOME_EN_PATH = outletPath(EN.pathKey);
+const HOME_DE_PATH = outletPath(DE.pathKey);
 
 /**
- * ONE HTTP response, with redirects NOT followed — the only way a public completion is observable as what
- * it is: a `307` and a `Location`, produced inside the request-selected Spoke.
+ * One valid declarative Page document. The `title` is what the Page renders as its heading; the `body` is the
+ * test-owned marker, so a marker in the document can only come from the representation that was served.
  */
-async function request(url) {
-  const response = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(30000) });
-  return { status: response.status, location: response.headers.get("location"), body: await response.text() };
-}
-
-/** A disposable copy of the fixture, optionally patched, in the harness's own OS-temp domain. */
-async function materializeFixture(harness, patch) {
-  const root = mkdtempSync(path.join(tmpdir(), "foundation-required-location-"));
-  harness.cpSync(path.join(harness.repositoryRoot, ...FIXTURE), root, { recursive: true });
-
-  const configPath = path.join(root, "site.config.json");
-  const config = JSON.parse(readFileSync(configPath, "utf8"));
-  await patch(harness, root, config);
-  await harness.writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
-
-  return {
-    root,
-    dictionary: JSON.parse(readFileSync(path.join(root, "config", "i18n", "en.json"), "utf8")),
-  };
-}
-
-/** The `ca` Site of the fixture — the one Site of it that HAS Locations. */
-function canadaSite(config) {
-  return config.sites.find((site) => site.code === "ca");
+function documentOf(title, marker) {
+  return `${JSON.stringify(
+    { schemaVersion: 1, title, sections: [{ type: "prose", body: marker }] },
+    null,
+    2,
+  )}\n`;
 }
 
 /**
- * The policy under test: `ca` REQUIRES its `north` Location, and REFINES its `de` locale to `south`
- * (FOUNDATION-LOC2). `about` exists as a page in both Locations, so a completed page is observable too.
+ * PHASE A's authored publication — synchronous, before Next spawns.
  *
- * The refinement is exactly what LOC2 adds: authored data naming the Location that completes an
- * otherwise Location-less request FOR ONE LOCALE. Nothing in the platform knows that `de` "is" `south`;
- * this patch is the adopter.
+ * The SAME `choice` route is published in both declared locales as one representation PAIR of one Page: this is
+ * an author's explicit declaration, not two Sites, two inferred regions or a locale→Location mapping. The Home
+ * representation each locale already has is refreshed with its own marker (the generic fixture declares it, so
+ * this updates that representation rather than adding a conflicting source).
  */
-async function requireNorthLocation(harness, root, config) {
-  // The Site serves BOTH locales, and binds a Location in each — the shape a refinement needs (rule 8
-  // refuses a refinement whose Location has no landing in its OWN locale).
-  canadaSite(config).locales = ["en", "de"];
-  canadaSite(config).locationSelection = {
-    mode: "required",
-    default: "north",
-    localeDefaults: { de: "south" },
-  };
-  config.business.pages.push(
-    { site: "ca", locale: "en", region: "north", slug: "about" },
-    { site: "ca", locale: "de", region: "south" },
-    { site: "ca", locale: "de", region: "south", slug: "about" },
-    { site: "ca", locale: "de", region: "north" },
-  );
-
-  // A regional PAGE reuses the accepted content model — its own file inside the Location's directory —
-  // so the copy authors one: byte-for-byte the Site+locale page the fixture already ships, copied to the
-  // Location's directory. The copy is DISPOSABLE, and the scenario authors nothing the test does not
-  // assert (no prose is parsed, no expectation is read from it).
-  harness.cpSync(
-    path.join(root, "content", "pages", "markdown", "ca", "en", "about.md"),
-    path.join(root, "content", "pages", "markdown", "ca", "en", "north", "about.md"),
-    { recursive: false },
-  );
-  // The SAME for the refined locale's own pages: a `de` landing per Location (the fixture's landing
-  // files are named after the Location) and the `de` about page of the refined Location.
-  for (const [from, to] of [
-    [["ca", "en", "south.md"], ["ca", "de", "south.md"]],
-    [["ca", "en", "north.md"], ["ca", "de", "north.md"]],
-    [["ca", "en", "about.md"], ["ca", "de", "south", "about.md"]],
-  ]) {
-    harness.cpSync(
-      path.join(root, "content", "pages", "markdown", ...from),
-      path.join(root, "content", "pages", "markdown", ...to),
-      { recursive: false },
-    );
+function declareChoicePages(authoring) {
+  for (const { locale, suffix } of LOCALES) {
+    authoring.authorPage({
+      siteId: "outlet",
+      locale,
+      route: [],
+      format: "json",
+      body: documentOf(`Outlet Home ${suffix}`, suffix === "EN" ? MARKER.homeEn : MARKER.homeDe),
+    });
+    authoring.authorPage({
+      siteId: "outlet",
+      locale,
+      route: [CHOICE],
+      format: "json",
+      body: documentOf(`Outlet Choice ${suffix}`, suffix === "EN" ? MARKER.choiceEn : MARKER.choiceDe),
+      navLabel: "Choice",
+    });
   }
 }
 
 /**
- * THE BROWSER'S OWN BASE URL — `localhost`, never `127.0.0.1`.
- *
- * Next.js's dev server blocks JS/HMR chunks requested from `127.0.0.1` as a cross-origin dev request
- * (unless `allowedDevOrigins` is set), so an app loaded that way never activates and every visitor action
- * is inert. `localhost` is an allowed dev origin by default. Raw HTTP probes are unaffected (they run no
- * client runtime), which is why only the BROWSER's URLs use this base.
+ * ONE request, with an EXPLICIT `Host` header and redirects NOT followed — the status a visitor really receives.
  */
-function browserBase(port) {
-  return `http://localhost:${port}`;
+function requestWithHost(port, host, pathname) {
+  return new Promise((resolve, reject) => {
+    const request = httpRequest(
+      { host: "127.0.0.1", port, path: pathname, method: "GET", headers: { host } },
+      (response) => {
+        const chunks = [];
+        response.on("data", (chunk) => chunks.push(chunk));
+        response.on("end", () =>
+          resolve({
+            host,
+            path: pathname,
+            status: response.statusCode ?? 0,
+            location: response.headers.location ?? null,
+            body: Buffer.concat(chunks).toString("utf8"),
+          }),
+        );
+      },
+    );
+    request.on("error", reject);
+    request.on("timeout", () => request.destroy(new Error(`timed out: ${pathname}`)));
+    request.setTimeout(30000);
+    request.end();
+  });
 }
 
-/** One visitor action on the Location control, reproduced as the browser itself performs it. */
-async function dispatchLocationChange(cdp, value) {
+/** The `<loc>` entries of a served sitemap. */
+function sitemapUrls(body) {
+  return [...body.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1] ?? "");
+}
+
+/**
+ * Start ONE generic EFS server on a port that answers its OWN claimed Home.
+ *
+ * Phase A passes an authoring hook, Phase B passes none — and a server with no hook declares nothing beyond the
+ * generic fixture, which is exactly the absence this scenario must prove. Each call materialises a separate,
+ * separately owned Installation; `stopServer` removes it.
+ */
+async function startServer(harness, prepareEfs, ports, label) {
+  let last = null;
+  for (const offset of ports) {
+    const port = harness.port(offset);
+    const server = harness.startDevServer(port, prepareEfs === null ? {} : { prepareEfs });
+    try {
+      const deadline = Date.now() + 120000;
+      let status = 0;
+      while (Date.now() < deadline) {
+        try {
+          status = (await requestWithHost(port, HOST, HOME_EN_PATH)).status;
+        } catch {
+          status = 0;
+        }
+        if (status === 200) return { server, port };
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      // An already-running server that answers the CLAIMED Home with anything but 200 is a failed contract,
+      // not "not ready": the log is reported so the cause is visible without a long retry loop.
+      throw new Error(
+        `${label}: the Installation never served ${HOME_EN_PATH} on Host ${HOST} (status=${status})\n` +
+          `--- dev server output ---\n${server.log()}`,
+      );
+    } catch (error) {
+      last = error;
+      await harness.stopServer(server);
+    }
+  }
+  throw last ?? new Error(`${label}: no port answered`);
+}
+
+/** Assert one expected status, aborting the run with Host/path/status/log when it does not hold. */
+async function expectStatus(harness, rows, port, server, pathname, expected, label, host = HOST, marker = null) {
+  let response = null;
+  let failure = null;
+  try {
+    response = await requestWithHost(port, host, pathname);
+  } catch (error) {
+    failure = error instanceof Error ? error.message : String(error);
+  }
+  const status = response?.status ?? 0;
+  const hasMarker = marker === null || (response?.body.includes(marker) ?? false);
+  harness.check(
+    rows,
+    label,
+    status === expected && hasMarker,
+    `host=${host} path=${pathname} status=${status} expected=${expected} location=${
+      response?.location ?? "none"
+    }${marker === null ? "" : ` marker=${marker}:${hasMarker}`}${failure === null ? "" : ` error=${failure}`}`,
+  );
+  if (status !== expected || !hasMarker) {
+    throw new Error(
+      `EFS publication claim refused: host=${host} path=${pathname} status=${status} expected=${expected} ` +
+        `location=${response?.location ?? "none"}\n--- dev server output ---\n${server.log()}`,
+    );
+  }
+  return response;
+}
+
+/**
+ * PHASE A's bounded preflight — every row independent, all of it BEFORE Chrome exists.
+ */
+async function preflightPhaseA(harness, rows, port, server) {
+  await expectStatus(harness, rows, port, server, HOME_EN_PATH, 200, "the authored Home is served (en-001)", HOST, MARKER.homeEn);
+  await expectStatus(harness, rows, port, server, HOME_DE_PATH, 200, "the authored Home is served (de-DE)", HOST, MARKER.homeDe);
+
+  const choiceEn = await expectStatus(
+    harness,
+    rows,
+    port,
+    server,
+    CHOICE_EN_PATH,
+    200,
+    "the AUTHORED `choice` Page is served in en-001, with its own representation",
+    HOST,
+    MARKER.choiceEn,
+  );
+  harness.check(
+    rows,
+    "…and the en-001 representation is NOT the de-DE one",
+    !choiceEn.body.includes(MARKER.choiceDe),
+    choiceEn.body.includes(MARKER.choiceDe) ? "the DE marker was served at the EN address" : "EN marker only",
+  );
+
+  const choiceDe = await expectStatus(
+    harness,
+    rows,
+    port,
+    server,
+    CHOICE_DE_PATH,
+    200,
+    "the SAME Page is served in de-DE, with its own representation",
+    HOST,
+    MARKER.choiceDe,
+  );
+  harness.check(
+    rows,
+    "…and the de-DE representation is NOT the en-001 one",
+    !choiceDe.body.includes(MARKER.choiceEn),
+    choiceDe.body.includes(MARKER.choiceEn) ? "the EN marker was served at the DE address" : "DE marker only",
+  );
+
+  await expectStatus(harness, rows, port, server, "/main/en-001", 200, "the other Site's Home is untouched", HOST);
+  await expectStatus(harness, rows, port, server, "/main/en-001/choice", 404, "a FOREIGN Site has no such Page", HOST);
+  await expectStatus(harness, rows, port, server, "/outlet/en-001/undeclared", 404, "an UNDECLARED Page is refused", HOST);
+  await expectStatus(harness, rows, port, server, "/outlet/en/choice", 404, "a BARE, undeclared locale is not an alias", HOST);
+  await expectStatus(harness, rows, port, server, "/outlet/en-001/north/choice", 404, "no inferred Location segment is routed", HOST);
+  await expectStatus(harness, rows, port, server, "/ca/en/north", 404, "the retired `ca` Site is never revived", HOST);
+  await expectStatus(harness, rows, port, server, "/ca/de/south", 404, "the retired `ca` refinement is never revived", HOST);
+  await expectStatus(harness, rows, port, server, "/ww/en", 404, "the retired `ww` grammar is never revived", HOST);
+  await expectStatus(harness, rows, port, server, CHOICE_EN_PATH, 404, "no cross-host fallback for an unclaimed Host", "unclaimed.localhost");
+}
+
+
+/**
+ * DISCOVERY on one server: only real declarations are advertised, at THIS binding's canonical origin, and the
+ * retired geographic grammar never appears. The expected addresses are authored here, never parsed back out.
+ */
+async function discoveryProof(harness, rows, port, server, expected, absent, phase) {
+  const sitemap = await requestWithHost(port, HOST, "/sitemap.xml");
+  const urls = sitemapUrls(sitemap.body);
+  harness.check(
+    rows,
+    `${phase}: the sitemap is served for the claimed Host`,
+    sitemap.status === 200 && urls.length > 0,
+    `status=${sitemap.status} urls=${urls.length}`,
+  );
+  for (const address of expected) {
+    harness.check(
+      rows,
+      `${phase}: the sitemap publishes ${address}`,
+      urls.includes(address),
+      urls.includes(address) ? `${urls.length} URL(s)` : urls.join(", "),
+    );
+  }
+  for (const address of absent) {
+    harness.check(
+      rows,
+      `${phase}: the sitemap publishes NOTHING at ${address}`,
+      !urls.includes(address),
+      `${urls.length} URL(s); no match`,
+    );
+  }
+  harness.check(
+    rows,
+    `${phase}: every published address is on this binding's canonical origin, with no geographic grammar`,
+    urls.every((url) => url.startsWith(CANONICAL)) && urls.every((url) => !/\/(ww|ca)\//.test(url)),
+    urls.join(", "),
+  );
+  /**
+   * The SITEMAP carries only addresses that declare themselves. Two facts are asserted, and no more: nothing is
+   * published under the retired Site grammar, and no address is a Location COMPLETION of the Page under test.
+   * (`/outlet/en-001/north` and `/south` are legitimate declared ROUTE WORDS of the generic fixture — a route word
+   * is not geographic authority, and forbidding the string would punish the fixture's own authoring.)
+   */
+  harness.check(
+    rows,
+    `${phase}: no published address uses the retired Site grammar or a Location completion`,
+    urls.every((url) => !/\/(ww|ca)\//.test(url)) &&
+      urls.every((url) => !/\/(north|south)\/choice$/.test(url)),
+    urls.join(", "),
+  );
+
+  const robots = await requestWithHost(port, HOST, "/robots.txt");
+  harness.check(
+    rows,
+    `${phase}: robots.txt keeps its authored sitemap origin and invents no Disallow`,
+    robots.body.includes(`${CANONICAL}/sitemap.xml`) &&
+      robots.body.includes("User-Agent: *") &&
+      !/disallow/i.test(robots.body),
+    robots.body.replace(/\s+/g, " ").trim().slice(0, 160),
+  );
+  if (sitemap.status !== 200) {
+    throw new Error(`${phase}: sitemap refused (status=${sitemap.status})\n--- dev server output ---\n${server.log()}`);
+  }
+}
+
+/**
+ * PHASE B's preflight — the SAME Installation type, WITHOUT the authoring hook. The Home still publishes; the
+ * Page nobody declared refuses. No `307`, no default Location, no synthesized representation.
+ */
+async function preflightPhaseB(harness, rows, port, server) {
+  await expectStatus(harness, rows, port, server, HOME_EN_PATH, 200, "without the hook the generic Home still serves (en-001)");
+  await expectStatus(harness, rows, port, server, HOME_DE_PATH, 200, "…and in de-DE");
+  await expectStatus(harness, rows, port, server, CHOICE_EN_PATH, 404, "an UNDECLARED Page refuses in en-001");
+  await expectStatus(harness, rows, port, server, CHOICE_DE_PATH, 404, "an UNDECLARED Page refuses in de-DE");
+  await expectStatus(harness, rows, port, server, "/main/en-001", 200, "…while the other Site is unaffected");
+
+  // A refusal must be a REFUSAL: no completion, no relocation, no silent fallback into a default Location.
+  for (const pathname of [CHOICE_EN_PATH, CHOICE_DE_PATH]) {
+    const response = await requestWithHost(port, HOST, pathname);
+    harness.check(
+      rows,
+      `the absence of a declaration is a refusal, not a redirect: ${pathname}`,
+      response.location === null,
+      `status=${response.status} location=${response.location ?? "none"}`,
+    );
+  }
+}
+
+
+/**
+ * WHAT THE PAGE ITSELF OFFERS. The language control is the one selector a Site-closed EFS publication may show:
+ * its options are the binding's DECLARED locale path keys, and no Location or Site selector is manufactured.
+ */
+const SELECTOR_PROBE = `(() => {
+  const read = (name) => {
+    const select = document.querySelector('select[data-selector="' + name + '"]');
+    if (select === null) return null;
+    return {
+      value: select.value,
+      values: [...select.options].map((option) => option.value),
+      labels: [...select.options].map((option) => (option.textContent || "").trim()),
+      disabled: select.disabled,
+    };
+  };
+  return { language: read("language"), location: read("location"), site: read("site") };
+})()`;
+
+/** Everything a rendered Page of this scenario claims, as the browser sees it. */
+const PAGE_PROBE = `(() => {
+  const heading = document.querySelector("h1");
+  return {
+    h1: heading === null ? null : (heading.textContent || "").trim(),
+    // WHAT THE VISITOR ACTUALLY SEES. innerText excludes script payloads (an RSC flight response carries
+    // route data that is not rendered), so a marker found here really was painted on the page.
+    text: (document.body.innerText || document.body.textContent || "").trim(),
+    navLinks: [...document.querySelectorAll("a[href]")].map((link) => link.getAttribute("href")),
+    hasHeaderBrand: !!document.querySelector(".ui-site-header-identity"),
+    pathname: location.pathname,
+    host: location.host,
+    scrollWidth: document.documentElement.scrollWidth,
+    clientWidth: document.documentElement.clientWidth,
+  };
+})()`;
+
+/** One visitor action on the LANGUAGE control, reproduced exactly as the browser performs it. */
+async function dispatchLanguageChange(cdp, value) {
   return cdp.evaluate(
     `(() => {
-       const select = document.querySelector('[data-selector="location"]');
+       const select = document.querySelector('select[data-selector="language"]');
        if (!select) return false;
-       // WHAT A REAL SELECTION DOES. React tracks a node's value property, so a plain assignment is
-       // seen as "no change" and never reaches the control's handler. The NATIVE setter reproduces what
-       // the browser does when a visitor picks an option, and the bubbling change event then reaches
-       // React exactly as a real one does.
+       // React tracks a node's value property, so a plain assignment is seen as "no change". The NATIVE
+       // setter reproduces what a visitor's selection does, and the bubbling change event reaches React.
        const setValue = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set;
        setValue.call(select, ${JSON.stringify(value)});
        select.dispatchEvent(new Event("change", { bubbles: true }));
@@ -147,194 +399,170 @@ async function dispatchLocationChange(cdp, value) {
 }
 
 /**
- * ACTIVATE the control, and await the transition it produces through the harness's OWN readiness layer
- * (BR1: a visitor action is awaited by the route the next assertion reads).
- *
- * The action is retried, and only the action: a dev server's client runtime activates asynchronously, so an
- * action dispatched before it is interactive cannot have an effect. The ASSERTION is never relaxed — the
- * control must move the URL, or this returns `false` and the check fails.
+ * Activate the language control and await the transition through the harness's OWN readiness layer. Only the
+ * ACTION is retried (a dev client activates asynchronously); the ASSERTION is never relaxed.
  */
-async function activateLocationControl(harness, cdp, value, expectedPath, attempts = 4) {
+async function activateLanguageControl(harness, cdp, value, expectedPath, attempts = 4) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    await dispatchLocationChange(cdp, value);
+    await dispatchLanguageChange(cdp, value);
     try {
       await harness.waitReady(cdp, { path: expectedPath });
       return true;
     } catch {
-      /* the runtime was not yet interactive: retry the visitor action */
+      /* the client runtime was not yet interactive: retry the visitor action */
     }
   }
   return false;
 }
 
-/** The Location control's options as the browser sees them, or `null` when it is not rendered. */
-async function readLocationControl(cdp) {
-  return cdp.evaluate(
-    `(() => {
-       const select = document.querySelector('[data-selector="location"]');
-       if (!select) return null;
-       return {
-         value: select.value,
-         values: [...select.options].map((option) => option.value),
-         labels: [...select.options].map((option) => option.textContent || ""),
-       };
-     })()`,
-  );
-}
 
-/** THE REQUIRED COPY — the public completions, ONE hop, on a real server. */
-async function requiredHttpProof(harness, rows, port) {
-  const base = `http://127.0.0.1:${port}`;
-  const completions = [
-    ["/ca", "/ca/en/north"],
-    // An UNMAPPED locale keeps the site-wide default — this Site refines `de`, not `en`.
-    ["/ca/en", "/ca/en/north"],
-    ["/ca/en/about", "/ca/en/north/about"],
-    // The untouched Site is the control: its completions are exactly the established ones.
-    ["/", "/ww/en"],
-    ["/en/about", "/ww/en/about"],
-  ];
-
-  for (const [from, to] of completions) {
-    const response = await request(`${base}${from}`);
-    harness.check(
-      rows,
-      `${from} is completed into ${to} by a public redirect`,
-      response.status === 307 && response.location === to,
-      `status=${response.status} location=${response.location}`,
-    );
-  }
-
-  // LOC2 — THE EXPLICIT LOCALE REFINEMENT. A Location-less request in the REFINED locale is completed
-  // into the Location the ADOPTER named for it, through the SAME one public redirect; nothing infers it.
-  for (const [from, to] of [
-    ["/ca/de", "/ca/de/south"],
-    ["/ca/de/about", "/ca/de/south/about"],
-  ]) {
-    const response = await request(`${base}${from}`);
-    harness.check(
-      rows,
-      `${from} (the refined locale) is completed into ${to}`,
-      response.status === 307 && response.location === to,
-      `status=${response.status} location=${response.location}`,
-    );
-  }
-
-  // …and THE URL WINS, in the refined locale too: a request that already names a Location is answered
-  // exactly as it is, whether it names the refined one or another.
-  for (const served of ["/ca/de/south", "/ca/de/north", "/ca/de/south/about"]) {
-    const response = await request(`${base}${served}`);
-    harness.check(rows, `${served} renders (200)`, response.status === 200, `status=${response.status}`);
-  }
-
-  for (const served of ["/ca/en/north", "/ca/en/north/about", "/ca/en/south", "/ww/en", "/ww/en/about"]) {
-    const response = await request(`${base}${served}`);
-    harness.check(rows, `${served} renders (200)`, response.status === 200, `status=${response.status}`);
-  }
-}
-
-/** THE REQUIRED COPY — its own canonical inventory advertises no unspecified destination. */
-async function requiredSitemapProof(harness, rows, port, locationIds) {
-  const response = await request(`http://127.0.0.1:${port}/sitemap.xml`);
-  const urls = [...response.body.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1] ?? "");
-  const canada = urls.filter((url) => new URL(url).pathname.startsWith("/ca/"));
-  const regions = canada.map((url) => new URL(url).pathname.split("/")[3] ?? "");
-  const unspecified = canada.filter((url) => !locationIds.includes(new URL(url).pathname.split("/")[3] ?? ""));
-
-  harness.check(
-    rows,
-    "the sitemap publishes the required Site's Location inventory",
-    canada.length > 0 && regions.includes("north") && regions.includes("south"),
-    `entries=${canada.join(", ")}`,
-  );
-  harness.check(
-    rows,
-    "the sitemap advertises NO unspecified URL of that Site",
-    unspecified.length === 0,
-    unspecified.join(", "),
-  );
-}
-
-/** THE REQUIRED COPY — the visitor's control, and what using it does. */
-async function requiredBrowserProof(harness, rows, chrome, port, dictionary) {
+/** PHASE A in a real browser: one authored Page, offered in two declared languages, inside one owner. */
+async function browserPhaseA(harness, rows, chrome, port) {
   const cdp = await Cdp.connect(chrome);
-  const base = browserBase(port);
-
   try {
-    await cdp.navigate(`${base}/ca/en`);
-    // BR1 — the document's shell AND the route the next assertions read: the public redirect lands the
-    // visitor in the configured default Location.
-    let landed = true;
-    try {
-      await harness.waitReady(cdp, { path: "/ca/en/north" });
-    } catch (error) {
-      landed = false;
-      harness.check(rows, "a BROWSER reaches the default Location's URL", false, String(error));
-    }
-    if (landed) {
-      harness.check(
-        rows,
-        "a BROWSER is landed in the configured default Location by the public redirect",
-        true,
-        "/ca/en/north",
-      );
-    }
+    await cdp.setViewport(harness.viewports.desktop.width, harness.viewports.desktop.height);
+    await cdp.navigate(`http://${HOST}:${port}${CHOICE_EN_PATH}`);
+    await harness.waitReady(cdp, { path: CHOICE_EN_PATH });
 
-    const control = await readLocationControl(cdp);
+    const selectors = await cdp.evaluate(SELECTOR_PROBE);
     harness.check(
       rows,
-      "the Location control offers NO unspecified option",
-      control !== null && !control.labels.includes(dictionary.location.unspecified),
-      JSON.stringify(control?.labels ?? null),
+      "the Page offers a real LANGUAGE control",
+      selectors.language !== null && selectors.language.disabled === false,
+      JSON.stringify(selectors.language),
+    );
+    const offered = (selectors.language?.values ?? []).slice().sort();
+    harness.check(
+      rows,
+      "…whose options are exactly the two DECLARED qualified locales of the binding",
+      JSON.stringify(offered) === JSON.stringify([EN.pathKey, DE.pathKey].sort()),
+      JSON.stringify(selectors.language),
     );
     harness.check(
       rows,
-      "the configured default Location leads the control",
-      control?.values[0] === "north",
-      JSON.stringify(control?.values ?? null),
+      "…each labelled, never an empty control",
+      (selectors.language?.labels ?? []).length > 0 &&
+        (selectors.language?.labels ?? []).every((label) => label !== ""),
+      JSON.stringify(selectors.language?.labels ?? null),
     );
-
-    const switched = await activateLocationControl(harness, cdp, "south", "/ca/en/south");
     harness.check(
       rows,
-      "using the control moves the URL inside the Location namespace",
-      switched,
-      switched ? "/ca/en/south" : "the control did not move the URL",
+      "no LOCATION selector is fabricated for an EFS Page",
+      selectors.location === null,
+      JSON.stringify(selectors.location),
+    );
+    harness.check(
+      rows,
+      "no SITE selector is fabricated for a Site-closed binding",
+      selectors.site === null,
+      JSON.stringify(selectors.site),
     );
 
-    // LOC2 — THE REFINED LOCALE. A Location-less URL lands in the Location the ADOPTER named for that
-    // locale, and the control leads with it. Nothing in the platform associates the language with the
-    // place: this is authored configuration, which is exactly what makes it measurable here.
-    await cdp.navigate(`${base}/ca/de`);
-    let refinedLanded = true;
-    try {
-      await harness.waitReady(cdp, { path: "/ca/de/south" });
-    } catch (error) {
-      refinedLanded = false;
-      harness.check(rows, "a BROWSER reaches the REFINED Location's URL", false, String(error));
-    }
-    if (refinedLanded) {
-      harness.check(rows, "a BROWSER reaches the REFINED Location's URL", true, "/ca/de/south");
-    }
+    const page = await cdp.evaluate(PAGE_PROBE);
+    harness.check(
+      rows,
+      "the en-001 representation renders its own heading and test-owned body",
+      page.h1 === "Outlet Choice EN" && page.text.includes(MARKER.choiceEn),
+      `h1=${JSON.stringify(page.h1)} marker=${page.text.includes(MARKER.choiceEn)}`,
+    );
+    harness.check(
+      rows,
+      "…inside the shared shell, without horizontal overflow",
+      page.hasHeaderBrand === true && page.scrollWidth <= page.clientWidth + 1,
+      `brand=${page.hasHeaderBrand} scroll=${page.scrollWidth}/${page.clientWidth}`,
+    );
+    // THE NAVIGATION LINK, WHERE ONE EXISTS. The order makes this conditional: a Page may be reachable without a
+    // navigation entry. What is NOT conditional is the destination — any link to this Page must stay inside its
+    // own Site and qualified locale, never `/ww`, `/ca` or a legacy region.
+    const choiceLinks = page.navLinks.filter((href) => (href ?? "").includes(CHOICE));
+    harness.check(
+      rows,
+      "every navigation link to this Page resolves inside its own Site and qualified locale",
+      choiceLinks.every(
+        (href) =>
+          href === CHOICE_EN_PATH ||
+          href === CHOICE_DE_PATH ||
+          href === `http://${HOST}:${port}${CHOICE_EN_PATH}` ||
+          href === `http://${HOST}:${port}${CHOICE_DE_PATH}`,
+      ),
+      `links=${JSON.stringify(choiceLinks.slice(0, 6))}`,
+    );
+    const focusable = await cdp.evaluate(
+      `(() => {
+         const select = document.querySelector('select[data-selector="language"]');
+         if (select === null) return false;
+         select.focus();
+         return document.activeElement === select && select.tabIndex >= 0;
+       })()`,
+    );
+    harness.check(rows, "…the language control is keyboard reachable", focusable === true, `focused=${focusable}`);
 
-    const refinedControl = await readLocationControl(cdp);
+    // THE CHOICE ITSELF.
+    const moved = await activateLanguageControl(harness, cdp, DE.pathKey, CHOICE_DE_PATH);
     harness.check(
       rows,
-      "the refined locale's control offers NO option with an empty value",
-      refinedControl !== null && !refinedControl.values.includes(""),
-      JSON.stringify(refinedControl?.values ?? null),
+      "choosing the other language moves the visitor to the same Page",
+      moved === true,
+      `expected path=${CHOICE_DE_PATH}`,
+    );
+    const german = await cdp.evaluate(PAGE_PROBE);
+    harness.check(
+      rows,
+      "…which now serves the de-DE representation, with its own heading and body",
+      german.h1 === "Outlet Choice DE" && german.text.includes(MARKER.choiceDe),
+      `h1=${JSON.stringify(german.h1)} marker=${german.text.includes(MARKER.choiceDe)}`,
     );
     harness.check(
       rows,
-      "the REFINED Location leads the control in its own locale",
-      refinedControl?.values[0] === "south",
-      JSON.stringify(refinedControl?.values ?? null),
+      "…on the SAME Site, the SAME Page and the same Host — never another Site, region or Location",
+      german.pathname === CHOICE_DE_PATH && german.host === `${HOST}:${port}`,
+      `pathname=${german.pathname} host=${german.host}`,
     );
     harness.check(
       rows,
-      "the refined locale's control selects the URL's own Location",
-      refinedControl?.value === "south",
-      `value=${refinedControl?.value ?? "(none)"}`,
+      "…and the de-DE representation is not the en-001 one",
+      !german.text.includes(MARKER.choiceEn),
+      german.text.includes(MARKER.choiceEn) ? "the EN marker was served at the DE address" : "DE marker only",
+    );
+    harness.check(
+      rows,
+      "…still without horizontal overflow at the canonical viewport",
+      german.scrollWidth <= german.clientWidth + 1,
+      `${german.scrollWidth}/${german.clientWidth}`,
+    );
+  } finally {
+    await cdp.close();
+  }
+}
+
+/** PHASE B in a CLEAN browser session against the server that never declared the Page. */
+async function browserPhaseB(harness, rows, chrome, port) {
+  const cdp = await Cdp.connect(chrome);
+  try {
+    await cdp.setViewport(harness.viewports.desktop.width, harness.viewports.desktop.height);
+    await cdp.navigate(`http://${HOST}:${port}${HOME_EN_PATH}`);
+    await harness.waitReady(cdp, { path: HOME_EN_PATH });
+
+    const page = await cdp.evaluate(PAGE_PROBE);
+    harness.check(
+      rows,
+      "without the declaration the Home still renders normally",
+      page.hasHeaderBrand === true && page.text.trim() !== "",
+      `h1=${JSON.stringify(page.h1)} brand=${page.hasHeaderBrand}`,
+    );
+    harness.check(
+      rows,
+      "…with no choice Page, marker or navigation link synthesized from Site configuration",
+      !page.text.includes(MARKER.choiceEn) && !page.navLinks.some((href) => (href ?? "").includes(CHOICE)),
+      JSON.stringify(page.navLinks.filter((href) => (href ?? "").includes(CHOICE)).slice(0, 4)),
+    );
+
+    const selectors = await cdp.evaluate(SELECTOR_PROBE);
+    harness.check(
+      rows,
+      "…and no LOCATION selector appears even here",
+      selectors.location === null,
+      JSON.stringify(selectors.location),
     );
   } finally {
     await cdp.close();
@@ -342,124 +570,64 @@ async function requiredBrowserProof(harness, rows, chrome, port, dictionary) {
 }
 
 
-/** A dev server for one copy, on a port that answers. */
-async function startServer(harness, root) {
-  let last = null;
-  for (const offset of PORT_OFFSETS) {
-    const port = harness.port(offset);
-    const server = harness.startDevServer(port, { deploymentRoot: root });
-    try {
-      // The readiness URL is a path BOTH copies answer with 200 — the untouched Site's locale root.
-      await harness.waitForServer(`http://127.0.0.1:${port}/ww/en`, 240000);
-      return { server, port };
-    } catch (error) {
-      last = error;
-      await harness.stopServer(server);
-    }
-  }
-  throw last ?? new Error("no port answered for the required-location scenario");
-}
-
-/** THE UNTOUCHED COPY — the established optional behaviour, measured on a real server and browser. */
-async function optionalProof(harness, rows, chrome, port, dictionary, locationIds) {
-  const base = `http://127.0.0.1:${port}`;
-
-  const localeRoot = await request(`${base}/ca/en`);
-  harness.check(
-    rows,
-    "a Site with NO policy still answers its non-regional path (no redirect)",
-    localeRoot.status === 200,
-    `status=${localeRoot.status} location=${localeRoot.location}`,
-  );
-  const bareSite = await request(`${base}/ca`);
-  harness.check(
-    rows,
-    "…and a bare Site path is still completed exactly as before",
-    bareSite.status === 307 && bareSite.location === "/ca/en",
-    `status=${bareSite.status} location=${bareSite.location}`,
-  );
-
-  // The canonical inventory of an optional Site still carries its own non-regional destinations.
-  const sitemap = await request(`${base}/sitemap.xml`);
-  const urls = [...sitemap.body.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1] ?? "");
-  const flat = urls.filter((url) => {
-    const pathname = new URL(url).pathname;
-    return pathname.startsWith("/ca/") && !locationIds.includes(pathname.split("/")[3] ?? "");
-  });
-  harness.check(
-    rows,
-    "…and its sitemap still publishes those non-regional destinations",
-    flat.length > 0,
-    flat.join(", "),
-  );
-
-  const cdp = await Cdp.connect(chrome);
-  try {
-    await cdp.navigate(`${browserBase(port)}/ca/en`);
-    await harness.waitReady(cdp, { path: "/ca/en" });
-    const control = await readLocationControl(cdp);
-    harness.check(
-      rows,
-      "its Location control still offers the unspecified option FIRST",
-      control?.labels[0] === dictionary.location.unspecified,
-      JSON.stringify(control?.labels ?? null),
-    );
-  } finally {
-    await cdp.close();
-  }
-}
+const canonical = (pathname) => `${CANONICAL}${pathname}`;
 
 /**
- * RUN IT: two disposable copies, two servers, ONE difference — and the same assertions on each.
+ * RUN BOTH PHASES — sequentially, each on its own Installation, because one Next dev lock is shared.
+ *
+ * Phase A proves the authored choice, Phase B proves the absence of a declaration. Neither shares a Page
+ * declaration with the other: they are two separately materialised publications.
  */
 export async function run(chrome, harness) {
   const rows = [];
-  let requiredCopy = null;
-  let optionalCopy = null;
-  let requiredServer = null;
-  let optionalServer = null;
+  const started = { A: null, B: null };
 
   try {
-    requiredCopy = await materializeFixture(harness, requireNorthLocation);
-    optionalCopy = await materializeFixture(harness, async () => undefined);
-
-    // ONE SERVER AT A TIME: Next refuses a second `next dev` for the same project directory, so the
-    // required copy's server is STOPPED (and awaited) before the untouched copy's server starts.
-    const requiredRun = await startServer(harness, requiredCopy.root);
-    requiredServer = requiredRun.server;
-    await requiredHttpProof(harness, rows, requiredRun.port);
-    await requiredSitemapProof(harness, rows, requiredRun.port, ["north", "south"]);
-    await requiredBrowserProof(harness, rows, chrome, requiredRun.port, requiredCopy.dictionary);
-    await harness.stopServer(requiredServer);
-    requiredServer = null;
-
-    const optionalRun = await startServer(harness, optionalCopy.root);
-    optionalServer = optionalRun.server;
-    await optionalProof(
+    // ── PHASE A — an author explicitly publishes a choice ─────────────────────────────────────────────
+    started.A = await startServer(harness, declareChoicePages, PHASE_A_PORTS, "phase A (authored choice)");
+    await preflightPhaseA(harness, rows, started.A.port, started.A.server);
+    await discoveryProof(
       harness,
       rows,
-      chrome,
-      optionalRun.port,
-      optionalCopy.dictionary,
-      ["north", "south"],
+      started.A.port,
+      started.A.server,
+      [canonical(HOME_EN_PATH), canonical(HOME_DE_PATH), canonical(CHOICE_EN_PATH), canonical(CHOICE_DE_PATH)],
+      [canonical("/main/en-001/choice"), canonical("/ca/en/north"), canonical("/ww/en/preview")],
+      "phase A",
     );
+    await browserPhaseA(harness, rows, chrome, started.A.port);
+    await harness.stopServer(started.A.server);
+    started.A = null;
+
+    // ── PHASE B — no declaration, so no Page ─────────────────────────────────────────────────────────
+    started.B = await startServer(harness, null, PHASE_B_PORTS, "phase B (no declaration)");
+    await preflightPhaseB(harness, rows, started.B.port, started.B.server);
+    await discoveryProof(
+      harness,
+      rows,
+      started.B.port,
+      started.B.server,
+      [canonical(HOME_EN_PATH), canonical(HOME_DE_PATH)],
+      [canonical(CHOICE_EN_PATH), canonical(CHOICE_DE_PATH), canonical("/ca/en/north"), canonical("/ww/en")],
+      "phase B",
+    );
+    await browserPhaseB(harness, rows, chrome, started.B.port);
   } catch (error) {
     harness.check(
       rows,
-      "the required-location scenario ran to completion",
+      "the required-location scenario ran to completion across both phases",
       false,
       error instanceof Error ? error.message : String(error),
     );
   } finally {
-    for (const server of [requiredServer, optionalServer]) {
+    for (const phase of ["A", "B"]) {
+      const server = started[phase];
+      if (server === null) continue;
       try {
-        await harness.stopServer(server);
+        await harness.stopServer(server.server);
       } catch {
-        /* the server is already gone */
+        /* the server is already gone; its own installation is removed by the harness */
       }
-    }
-    for (const copy of [requiredCopy, optionalCopy]) {
-      if (copy !== null) harness.rmSync(copy.root, { recursive: true, force: true });
     }
   }
 

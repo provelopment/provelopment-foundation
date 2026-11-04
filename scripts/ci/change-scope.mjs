@@ -136,14 +136,12 @@ export const ROUTE_COMMANDS = {
     "git diff --check",
     ROUTE_SETUP_COMMAND,
     "pnpm assets:check",
-    "pnpm country-codes:check",
     "pnpm test:deployment",
     "pnpm build",
   ],
   deployment: [
     ROUTE_SETUP_COMMAND,
     "pnpm assets:check",
-    "pnpm country-codes:check",
     "pnpm exec tsc --noEmit",
     "pnpm lint",
     "pnpm test:deployment",
@@ -153,7 +151,6 @@ export const ROUTE_COMMANDS = {
   foundation: [
     ROUTE_SETUP_COMMAND,
     "pnpm assets:check",
-    "pnpm country-codes:check",
     "pnpm exec tsc --noEmit",
     "pnpm lint",
     "pnpm test:foundation",
@@ -167,7 +164,6 @@ export const ROUTE_COMMANDS = {
     "git diff --check",
     ROUTE_SETUP_COMMAND,
     "pnpm assets:check",
-    "pnpm country-codes:check",
     "pnpm exec tsc --noEmit",
     "pnpm lint",
     "pnpm test",
@@ -232,8 +228,7 @@ const SHARED_DIRECTORIES = [
  *
  * Deliberately an explicit list rather than "every `.md` file": a deployment's authored page
  * (`deployment/content/pages/markdown/<site>/<locale>/<page>.md`) is production content that HAPPENS
- * to be Markdown, and the generated `deployment/content/COUNTRY-CODES.md` belongs to the deployment's
- * generation/validation lifecycle. Both stay deployment-owned.
+ * to be Markdown. It stays deployment-owned.
  */
 const DOCUMENTATION_FILES = [
   "README.md",
@@ -253,8 +248,8 @@ const DOCUMENTATION_DIRECTORIES = ["instruction-manuals/"];
 
 /**
  * The author-facing maps inside the deployment's own content tree (`content/README.md`,
- * `content/assets/README.md`, `content/pages/markdown/README.md`, …): documentation, by the same
- * test that excludes `COUNTRY-CODES.md` — a reader consults them, and nothing derives from them.
+ * `content/assets/README.md`, `content/pages/markdown/README.md`, …): documentation — a reader
+ * consults them, and nothing derives from them.
  */
 const DOCUMENTATION_README_DIRECTORY = "deployment/content/";
 
@@ -347,8 +342,8 @@ export function normalisePath(file) {
  *
  * The rule order IS the policy — first match wins — and it is what makes the exceptions above
  * meaningful: a README inside `deployment/content/` is claimed by the documentation rule BEFORE the
- * capsule rule sees it, while `deployment/content/COUNTRY-CODES.md` is not a README and therefore
- * stays deployment-owned. The same shape applies to the executable trees: a `README.md` beneath `src/`
+ * capsule rule sees it, while a page document that is not a README stays deployment-owned. The same
+ * shape applies to the executable trees: a `README.md` beneath `src/`
  * or `scripts/` is claimed by the code-adjacent documentation rule BEFORE the `scripts/` (shared) and
  * `src/` (foundation) directory rules see it, while every other file in those trees keeps the stronger
  * owner — so documentation can never narrow an executable change.
@@ -422,8 +417,7 @@ export function classifyPath(file) {
   }
 
   // An author-facing README inside ANY authored content tree is documentation, in every supported
-  // layout: a reader consults it, and nothing derives from it (§8 of the M21 mandate, and the same test
-  // that keeps a generated lifecycle file like COUNTRY-CODES.md out of this rule).
+  // layout: a reader consults it, and nothing derives from it (§8 of the M21 mandate).
   const authoredTree = authoredContentTree(path);
   if (authoredTree !== null && path.endsWith("/README.md")) {
     return {

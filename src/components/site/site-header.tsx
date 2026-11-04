@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 import type { SiteConfig } from "@/config/site-config";
 import type { Dictionary } from "@/config/i18n/dictionary";
@@ -13,12 +14,12 @@ import {
     type ResolvedUiConfig,
 } from "@/core/ui";
 import type { RuntimeAssetOwnershipResolver } from "@/config/runtime-asset-resolver";
-import { ContextNavLinks, type ContextNavLink } from "./context-nav-links";
+import { ContextNavLinks, type ContextNavLink, type EfsResolvedNavItem } from "./context-nav-links";
 import { ClientRoutingProvider } from "./client-routing-context";
 import { buildClientRoutingContext } from "./client-routing";
 import { siteSetOf } from "@/core/site";
 import { Stack } from "@/components/ui/stack";
-import { LanguageSwitcher } from "./language-switcher";
+import { EfsLanguageSwitcher, LanguageSwitcher, type EfsLanguageOption } from "./language-switcher";
 import { LayoutSwitcher } from "./layout-switcher";
 import { LocationSwitcher } from "./location-switcher";
 import { SiteSelector, type SiteSelectorOption } from "./site-selector";
@@ -74,6 +75,39 @@ interface SiteHeaderProps {
         readonly current: string;
         readonly label: string;
         readonly options: readonly SpokeSwitcherOption[];
+    };
+    /**
+     * GEO-04 R10 — THE EFS PRESENTATION OF THIS HEADER.
+     *
+     * Present → the header renders the PUBLICATION'S OWN verified facts and resolves nothing: no
+     * `getSiteNavLinks`, no `siteSetOf`/`regionsForSite`, no `ClientRoutingProvider`, no `siteHref` and no
+     * `buildClientRoutingContext`. This is mandatory, not an optimisation — the EFS shell composes no routing
+     * provider (the legacy `ContextNavLinks`/`LanguageSwitcher` branches would throw or resolve a second time
+     * against a page-binding model the EFS publication does not have).
+     *
+     * Absent → every legacy code path below is untouched, byte for byte.
+     */
+    readonly efs?: {
+        /** Published primary navigation, already verified and `current`-marked (R09). */
+        readonly navItems: readonly EfsResolvedNavItem[];
+        /**
+         * The published Home address (`EfsShellAddressProjection.homeHref`), or `null` when this Site
+         * publishes no Home Page. `null` renders the brand UNLINKED — the header must never invent a locale
+         * root, a default Site or a prefix that the publication did not prove.
+         */
+        readonly homeHref: string | null;
+        /**
+         * Published language alternates of THIS Page. Absent when the Page has no other published
+         * representation, in which case no Language control is composed (a one-option selector would offer
+         * a destination the visitor is already on).
+         */
+        readonly languages?: {
+            /** The CURRENT representation's standards tag. */
+            readonly current: string;
+            /** Localized accessible name, from THIS Spoke's dictionary. */
+            readonly label: string;
+            readonly options: readonly EfsLanguageOption[];
+        };
     };
 }
 
@@ -139,6 +173,7 @@ export function SiteHeader({
     dictionaryAccess,
     assets,
     resolvedLogoSrc,
+    efs,
 }: SiteHeaderProps) {
     const dictionary: Dictionary = dictionaryAccess.get(
         locale,
@@ -147,10 +182,16 @@ export function SiteHeader({
     // M14 — this chrome composes ROUTING CONTROLS (navigation links and the Site/language/location
     // selectors), so it provides the CURRENT context's routing projection to them: the ONE client
     // transport, built from the same configuration the header renders with.
-    const clientRouting = buildClientRoutingContext(
-        siteConfig,
-        siteSetOf(siteConfig.sites, siteConfig.defaultSite),
-    );
+    // GEO-04 R10 — the routing projection is built ONLY for the legacy branch. An EFS header has no
+    // provider to feed (and must not build one: its addresses come from the publication, not from a
+    // page-binding model this publication does not have).
+    const clientRouting =
+        efs === undefined
+            ? buildClientRoutingContext(
+                  siteConfig,
+                  siteSetOf(siteConfig.sites, siteConfig.defaultSite),
+              )
+            : null;
     const decision = resolveShellPattern(resolved);
     const desktopSlot = decision.desktop.slot;
     const tabletSlot = decision.tablet.slot;
@@ -204,13 +245,17 @@ export function SiteHeader({
         ]),
     );
 
-    const navLinks: readonly ContextNavLink[] = getSiteNavLinks({
-        locale,
-        siteId,
-        siteConfig,
-        dictionary: dictionaryAccess,
-        iconUrl: assets.availableIconUrl,
-    });
+    // GEO-04 R10 — EFS destinations are ALREADY resolved (R09) and are never re-derived here.
+    const navLinks: readonly ContextNavLink[] =
+        efs === undefined
+            ? getSiteNavLinks({
+                  locale,
+                  siteId,
+                  siteConfig,
+                  dictionary: dictionaryAccess,
+                  iconUrl: assets.availableIconUrl,
+              })
+            : [];
     // P6-3B — the header's left brand slot renders the configured header logo
     // (the `site.assets.logo` role), replacing the former text label.
     // `runtimeAssetUrl` keeps it same-origin AND points it at the RUNTIME
@@ -251,14 +296,26 @@ export function SiteHeader({
     // The ≥md header navigation list — composed only for a CUSTOM composition that presents
     // one (NAV1B: neither shipped layout does; a Menu-bar composition presents its navigation
     // in the sticky bottom bar at every width).
-    const navListElement = (
-        <ContextNavLinks
-            locale={locale}
-            links={navLinks}
-            className={`flex flex-wrap items-center gap-x-4 gap-y-2 ${topModeClass ?? ""}`}
-            linkClassName={HEADER_NAV_LINK_CLASS}
-        />
-    );
+    //
+    // GEO-04 R10 — ONE list, TWO contracts: the EFS branch passes the publication's verified destinations
+    // through the hook-free `efs-resolved` mode of the SAME component, so the markup, ordering, icon and
+    // active treatment are shared and the EFS surface cannot drift.
+    const navListElement =
+        efs === undefined ? (
+            <ContextNavLinks
+                locale={locale}
+                links={navLinks}
+                className={`flex flex-wrap items-center gap-x-4 gap-y-2 ${topModeClass ?? ""}`}
+                linkClassName={HEADER_NAV_LINK_CLASS}
+            />
+        ) : (
+            <ContextNavLinks
+                mode="efs-resolved"
+                items={efs.navItems}
+                className={`flex flex-wrap items-center gap-x-4 gap-y-2 ${topModeClass ?? ""}`}
+                linkClassName={HEADER_NAV_LINK_CLASS}
+            />
+        );
 
     // NAV1B — WHO BELONGS TO THE SECONDARY ROW. `SiteSelector` (only when the deployment
     // serves more than one site), `LocationSwitcher` (only where the active site binds
@@ -269,7 +326,10 @@ export function SiteHeader({
     // dropdown either, but it is secondary chrome: it shares this row rather than disturbing
     // the top row's fixed ownership.
     const siteSelectorPresent = siteSwitch !== undefined && siteSwitch.length > 1;
-    const languageSelectorPresent = siteConfig.locales.length > 1;
+    // GEO-04 R10 — the EFS Language control is composed from the Page's PUBLISHED alternates, not from the
+    // Site's declared locale list: a locale the Page has no representation in is not a destination.
+    const languageSelectorPresent =
+        efs === undefined ? siteConfig.locales.length > 1 : efs.languages !== undefined;
     const hasSecondaryControls =
         hasHeaderNav || siteSelectorPresent || hasLocations || languageSelectorPresent;
 
@@ -284,8 +344,12 @@ export function SiteHeader({
     // (logo, navigation, switchers, mobile trigger) and above the header's own
     // background colour. Unconfigured → no attribute and no inline style, so
     // the header renders exactly as it did before P12-HG.
-    return (
-        <ClientRoutingProvider routing={clientRouting}>
+    // GEO-04 R10 — THE BRAND DESTINATION, decided by ONE authority per branch. Legacy keeps the locale-root
+    // link it has always emitted; EFS uses the publication's OWN Home address, and `null` (this Site publishes
+    // no Home Page) means the brand renders UNLINKED rather than a synthesised root.
+    const brandHref: string | null = efs === undefined ? `/${locale}` : efs.homeHref;
+
+    const header = (
         <header className="ui-site-header border-b border-border" {...headerGraphicBandProps(headerGraphic)}>
             <div className="mx-auto max-w-page px-4 py-4">
                 {/* ── TOP SEMANTIC ROW — THE BRAND IDENTITY + THE RIGHT-HAND CONTROL CLUSTER ─────
@@ -308,14 +372,13 @@ export function SiteHeader({
                         }
                     >
                         {headerLogoSrc ? (
-                            <Link
-                                href={`/${locale}`}
-                                aria-label={siteConfig.name}
+                            <BrandFrame
+                                href={brandHref}
+                                label={siteConfig.name}
                                 // VIS1C — a >= 44px-tall HIT AREA for the brand/home link.
                                 // The lockup artwork stays at its `h-8` visual scale; the
                                 // interactive box around it grows so the site's primary
                                 // "go home" target is comfortably tappable.
-                                className="ui-site-header-brand inline-flex min-h-11 min-w-11 items-center"
                             >
                                 {/* FOUNDATION-UI-R1E — the mark's DISPLAY contract lives in ONE place: the
                                     stylesheet's `.ui-site-header-logo` rule (a maximum inline size of 280px
@@ -347,8 +410,8 @@ export function SiteHeader({
                                         className="ui-site-header-logo"
                                     />
                                 </picture>
-                            </Link>
-                        ) : (
+                            </BrandFrame>
+                        ) : efs === undefined ? (
                             <ContextNavLinks
                                 locale={locale}
                                 links={[{ href: "/", label: siteConfig.name }]}
@@ -358,6 +421,16 @@ export function SiteHeader({
                                 // (its own typography and weight are untouched).
                                 linkClassName={TOUCH_TARGET_BOX_CLASS}
                             />
+                        ) : brandHref === null ? (
+                            // GEO-04 R10 — no published Home Page: the name is a LABEL, never a link to an
+                            // address the publication did not prove.
+                            <span className={`font-semibold tracking-tight ${TOUCH_TARGET_BOX_CLASS}`}>
+                                {siteConfig.name}
+                            </span>
+                        ) : (
+                            <Link href={brandHref} className={`font-semibold tracking-tight ${TOUCH_TARGET_BOX_CLASS}`}>
+                                {siteConfig.name}
+                            </Link>
                         )}
                     </div>
 
@@ -452,12 +525,61 @@ export function SiteHeader({
                         />
                     ) : null}
                     {languageSelectorPresent ? (
-                        <LanguageSwitcher locale={locale} label={dictionary.language.label} />
+                        efs === undefined || efs.languages === undefined ? (
+                            <LanguageSwitcher locale={locale} label={dictionary.language.label} />
+                        ) : (
+                            <EfsLanguageSwitcher
+                                current={efs.languages.current}
+                                label={efs.languages.label}
+                                options={efs.languages.options}
+                            />
+                        )
                     ) : null}
+                    {/* GEO-04 R10 — EFS language control: PUBLISHED alternates only, resolved by the
+                        compositor and rendered verbatim (see `EfsLanguageSwitcher`). */}
                     </Stack>
                 ) : null}
             </div>
         </header>
-        </ClientRoutingProvider>
+    );
+    // GEO-04 R10 — the ONE place the provider is chosen. An EFS header composes NO `ClientRoutingProvider`:
+    // its links and its language control are hook-free, and giving them a page-binding routing projection
+    // they do not have would be a second, contradictory address authority.
+    return clientRouting === null ? (
+        header
+    ) : (
+        <ClientRoutingProvider routing={clientRouting}>{header}</ClientRoutingProvider>
+    );
+}
+
+/**
+ * GEO-04 R10 — THE BRAND'S ONE INTERACTION FRAME.
+ *
+ * The header's identity is a "go home" target only when a Home address is PROVED. This renders the SAME box
+ * and the SAME ≥44px hit area in both cases — as a link when `href` is an address, and as a plain labelled box
+ * when it is `null` — so an EFS Site that publishes no Home Page cannot acquire a synthesised root, a default
+ * Site or a locale guess, and the layout does not shift between the two states.
+ */
+function BrandFrame({
+    href,
+    label,
+    children,
+}: {
+    readonly href: string | null;
+    readonly label: string;
+    readonly children: ReactNode;
+}) {
+    const className = "ui-site-header-brand inline-flex min-h-11 min-w-11 items-center";
+    if (href === null) {
+        return (
+            <span aria-label={label} className={className}>
+                {children}
+            </span>
+        );
+    }
+    return (
+        <Link href={href} aria-label={label} className={className}>
+            {children}
+        </Link>
     );
 }

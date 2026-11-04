@@ -1,4 +1,12 @@
-import { ItemTitle, MarkdownField, PageImage, SectionHeading, columnsClass, sectionClassName } from "./section-support";
+import {
+  ItemTitle,
+  MarkdownField,
+  PageImage,
+  SectionHeading,
+  columnsClass,
+  sectionClassName,
+  type PageRouteResolver,
+} from "./section-support";
 import type { SectionViewProps } from "./text-sections";
 import type { PageLinkIdResolver } from "@/core/page-document";
 import { Grid } from "@/components/ui/grid";
@@ -40,7 +48,7 @@ export function FeaturesSection({ section, id, resolveLink }: SectionViewProps<"
 }
 
 /** `list`: labels, optionally with detail text and a destination. */
-export function ListSection({ section, locale, id, resolveLink }: SectionViewProps<"list">) {
+export function ListSection({ section, locale, id, resolveLink, resolveRoute }: SectionViewProps<"list">) {
   const items = section.items.map((item) => (typeof item === "string" ? { label: item } : item));
   const Tag = section.ordered === true ? "ol" : "ul";
   return (
@@ -57,7 +65,7 @@ export function ListSection({ section, locale, id, resolveLink }: SectionViewPro
       >
         {items.map((item, index) => (
           <li key={index}>
-            <InlineOrLink item={item} locale={locale} resolveLink={resolveLink} />
+            <InlineOrLink item={item} locale={locale} resolveLink={resolveLink} resolveRoute={resolveRoute} />
             {item.detail ? <MarkdownField text={item.detail} resolveLink={resolveLink} className="mt-1 text-sm" /> : null}
           </li>
         ))}
@@ -71,13 +79,21 @@ function InlineOrLink({
   item,
   locale,
   resolveLink,
+  resolveRoute,
 }: {
   readonly item: { label: string; href?: string; route?: string; link?: string };
   readonly locale: string;
   readonly resolveLink?: PageLinkIdResolver;
+  /** The per-render page-route resolver (GEO-04 C09-R06); absent means the legacy locale-first path. */
+  readonly resolveRoute?: PageRouteResolver;
 }) {
   if (item.href !== undefined) return <a href={item.href}>{item.label}</a>;
-  if (item.route !== undefined) return <a href={`/${locale}/${item.route}`}>{item.label}</a>;
+  if (item.route !== undefined) {
+    // THE SAME ANSWER THE ACTION PATH GIVES: a supplied resolver owns the result, including `null`, so an
+    // unaddressable route falls through to the label alone instead of a prefix-less path that would 404.
+    const routeHref = resolveRoute === undefined ? `/${locale}/${item.route}` : resolveRoute(item.route);
+    return routeHref === null ? <span>{item.label}</span> : <a href={routeHref}>{item.label}</a>;
+  }
   // AN APPLICATION-LINK DESTINATION (A8 Phase F, §3C): the SAME per-render resolver and the SAME
   // text-only fallback the action and Markdown controls use. A resolved href becomes a link; anything
   // else — no resolver, no answer, an answer the contract refused — leaves the label and no anchor.

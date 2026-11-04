@@ -12,6 +12,7 @@ function view(
     readonly pageId?: string;
     readonly siteMode?: "closed" | "open";
     readonly presentationSiteCode?: string;
+    readonly locales?: readonly string[];
   } = {},
 ): EfsView {
   const properties = new Map([
@@ -29,7 +30,7 @@ function view(
     binding: {
       host: "north.example",
       prefix: overrides.prefix ?? ["de"],
-      locales: ["de", "en"],
+      locales: overrides.locales ?? ["de", "en"],
       defaultLocale: "en",
       siteMode: overrides.siteMode ?? "closed",
     },
@@ -115,6 +116,19 @@ describe("EFS shell presentation is name- and geography-neutral (R03)", () => {
     expect(result.sites[0].locationSelection).toBeNull();
     expect(result.business.timezone).toBeUndefined();
     expect(result.business.locations).toEqual([]);
+  });
+
+  it("projects the Spoke dictionaries when the binding declares QUALIFIED locales (R12)", () => {
+    // A binding declares qualified tags (`en-001`, `de-DE`); a Spoke declares language bases (`en`,
+    // `de`) and owns one dictionary each. Before R12 the projection compared the two strings directly,
+    // matched nothing, and left EVERY EFS Site with no presentation locale — so the shared shell could
+    // never offer a Language control at all. The correspondence is the documented language base.
+    const qualified = efsShellPresentationConfig(source(), view({ locales: ["en-001", "de-DE"] }))!;
+    expect(qualified.locales.map((entry) => entry.code)).toEqual(["en", "de"]);
+    expect(qualified.sites[0].locales.map((entry) => entry.path)).toEqual(["en-001", "de-de"]);
+    // A locale the Spoke does not declare is still NOT offered, however the binding spells it.
+    const undeclared = efsShellPresentationConfig(source(), view({ locales: ["en-001", "fr-FR"] }))!;
+    expect(undeclared.locales.map((entry) => entry.code)).toEqual(["en"]);
   });
 
   it("does not let a Site, Page or Facet name change locale or properties", () => {

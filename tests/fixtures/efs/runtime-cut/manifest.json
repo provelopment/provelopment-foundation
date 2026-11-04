@@ -1,0 +1,141 @@
+{
+  "entities": [
+    {
+      "id": "e_00000000000000000000000001",
+      "properties": {
+        "brand.name": { "value": "Runtime Cut", "public": true },
+        "brand.logo": { "value": "/brand/runtime-cut.svg", "public": true },
+        "contact.address": { "value": "2 Neutral Way", "public": true },
+        "openingHours": { "value": "Mon-Thu 08:00-16:00", "public": true }
+      },
+      "facets": [
+        {
+          "id": "runtime",
+          "properties": {
+            "contact.phone": { "value": "+1 555 0123", "public": true }
+          },
+          "sites": [
+            {
+              "id": "main",
+              "properties": {
+                "brand.logo": { "value": "/brand/runtime-cut-main.svg", "public": true }
+              },
+              "pages": [
+                {
+                  "id": "home",
+                  "route": ["home"],
+                  "fallbackLocaleKey": "en-001",
+                  "representations": [{ "locale": "en-001" }, { "locale": "de-DE" }],
+                  "properties": { "nav.label": { "value": "Home", "public": true } }
+                },
+                {
+                  "id": "about",
+                  "route": ["about"],
+                  "fallbackLocaleKey": "en-001",
+                  "representations": [{ "locale": "en-001" }],
+                  "properties": { "nav.label": { "value": "About", "public": true } }
+                },
+                {
+                  "id": "catalogue",
+                  "route": ["catalogue"],
+                  "fallbackLocaleKey": "en-001",
+                  "representations": [{ "locale": "en-001" }],
+                  "properties": { "nav.label": { "value": "Catalogue", "public": true } }
+                },
+                {
+                  "id": "preview",
+                  "route": ["preview"],
+                  "fallbackLocaleKey": "en-001",
+                  "representations": [{ "locale": "en-001" }],
+                  "properties": {}
+                },
+                {
+                  "id": "guide-start",
+                  "route": ["guide", "start"],
+                  "fallbackLocaleKey": "en-001",
+                  "representations": [{ "locale": "en-001" }],
+                  "properties": { "nav.label": { "value": "Guide", "public": true } }
+                }
+              ]
+            },
+            {
+              "id": "outlet",
+              "properties": {},
+              "pages": [
+                {
+                  "id": "home",
+                  "route": ["home"],
+                  "fallbackLocaleKey": "en-001",
+                  "representations": [{ "locale": "en-001" }],
+                  "properties": { "nav.label": { "value": "Home", "public": true } }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "publications": [
+    {
+      "id": "runtime-cut-dedicated",
+      "spokeId": "runtime-cut-spoke",
+      "entityId": "e_00000000000000000000000001",
+      "facetId": "runtime",
+      "bindings": [
+        {
+          "id": "runtime-cut-root",
+          "host": "runtime-cut.test",
+          "prefix": [],
+          "entityId": "e_00000000000000000000000001",
+          "facetId": "runtime",
+          "siteIds": ["main"],
+          "siteMode": "closed",
+          "defaultSiteId": "main",
+          "locales": ["en-001", "de-DE"],
+          "defaultLocale": "en-001",
+          "canonical": true
+        },
+        {
+          "id": "runtime-cut-managed",
+          "host": "managed.runtime-cut.test",
+          "prefix": ["managed"],
+          "entityId": "e_00000000000000000000000001",
+          "facetId": "runtime",
+          "siteIds": ["main"],
+          "siteMode": "closed",
+          "defaultSiteId": "main",
+          "locales": ["en-001", "de-DE"],
+          "defaultLocale": "en-001",
+          "canonical": true
+        },
+        {
+          "id": "runtime-cut-deep",
+          "host": "deep.runtime-cut.test",
+          "prefix": ["managed", "deep"],
+          "entityId": "e_00000000000000000000000001",
+          "facetId": "runtime",
+          "siteIds": ["main"],
+          "siteMode": "closed",
+          "defaultSiteId": "main",
+          "locales": ["en-001"],
+          "defaultLocale": "en-001",
+          "canonical": true
+        },
+        {
+          "id": "runtime-cut-open",
+          "host": "open.runtime-cut.test",
+          "prefix": [],
+          "entityId": "e_00000000000000000000000001",
+          "facetId": "runtime",
+          "siteIds": ["main", "outlet"],
+          "siteMode": "open",
+          "defaultSiteId": "main",
+          "locales": ["en-001"],
+          "defaultLocale": "en-001",
+          "canonical": true
+        }
+      ]
+    }
+  ]
+}

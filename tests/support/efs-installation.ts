@@ -24,10 +24,11 @@ import {
 const SYNTHETIC = path.join(process.cwd(), "tests", "fixtures", "synthetic-deployment");
 
 export type EfsInstallationSpec =
-  | { readonly mode: "flat"; readonly spokes: readonly string[] }
+  | { readonly mode: "flat"; readonly spokes: readonly string[]; readonly prefix?: string }
   | {
       readonly mode: "hubs";
       readonly hubs: readonly { readonly id: string; readonly spokes: readonly string[] }[];
+      readonly prefix?: string;
     };
 
 export interface DisposableEfsInstallation {
@@ -59,7 +60,9 @@ function writeSpoke(root: string, locator: string, hostname: string): void {
  * After a successful return the root belongs to the caller, whose `cleanup()` removes it.
  */
 export function materializeEfsInstallation(spec: EfsInstallationSpec): DisposableEfsInstallation {
-  const root = mkdtempSync(path.join(tmpdir(), "foundation-efs-installation-"));
+  const root = mkdtempSync(
+    path.join(tmpdir(), spec.prefix ?? "foundation-efs-installation-"),
+  );
 
   try {
     const declarations: { id: string; root: string; spokeHubId?: string }[] = [];

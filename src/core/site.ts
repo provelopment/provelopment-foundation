@@ -9,7 +9,6 @@ import { isRegionBoundToLocale } from "./regional-pages";
 import type { PageRegionBinding } from "./region";
 import {
   defaultSiteLabel,
-  isSiteCode,
   normalizeSiteCode,
   WORLDWIDE_SITE_CODE,
 } from "./site-code";
@@ -450,16 +449,37 @@ export function siteSwitchDestination(options: {
  * is left exactly as written: linking across sites is a deliberate authoring choice, never an
  * accident of a matching route string. External destinations (`https:`, `mailto:`, `tel:`, a bare
  * fragment) are never rewritten.
+ *
+ * GEO-04 — MEMBERSHIP COMES FROM THE CALLER'S OWN INVENTORY. The leading segment is a Site because
+ * the CURRENT Spoke's resolved `SiteSet` DECLARES that code, and for no other reason: a closed
+ * country list, an ISO spelling, a hostname, a locale or a `ww` convention can never grant a
+ * destination cross-Site authority. The inventory is a REQUIRED argument supplied by the caller
+ * (`composition.siteSet`, or the footer's own `siteSetOf(...)`), so this helper holds no global
+ * configuration and two Spokes with the same route strings never borrow each other's Sites.
  */
-export function siteHref(site: ResolvedSite, localePath: string, href: string): string {
+export function siteHref(
+  set: SiteSet,
+  site: ResolvedSite,
+  localePath: string,
+  href: string,
+): string {
   if (!href.startsWith("/")) return href;
 
   const [first] = href.slice(1).split("/");
-  if (first !== undefined && isSiteCode(first)) return href;
+  if (first !== undefined && first !== "" && isDeclaredSite(set, first)) return href;
 
   const prefix = siteLocalePath(site, localePath);
   if (href === "/") return prefix === "" ? "/" : prefix;
   return `${prefix}${href}`;
+}
+
+/**
+ * Whether `segment` names a Site THIS deployment declares. Case-insensitive, because a URL may
+ * arrive in any casing and canonicalisation is a routing concern, not a link concern.
+ */
+function isDeclaredSite(set: SiteSet, segment: string): boolean {
+  const wanted = segment.toLowerCase();
+  return set.sites.some((candidate) => candidate.code.toLowerCase() === wanted);
 }
 
 /** The `SiteSet` view of a resolved site list and its default site. */

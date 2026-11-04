@@ -10,26 +10,21 @@
  *                     `en`, `en-CA`, `fr-CA`, `fr-FR`, `zh-Hans`
  *
  * A path key may be SIMPLE (a bare language, `fr`) or FULL (language + region, `fr-ca`). The
- * simple form keeps ordinary authoring easy, and its MEANING depends on the site:
+ * simple form keeps ordinary authoring easy and means EXACTLY the bare language, in every Site:
  *
- *   site `ca` + `en`     → en-CA      (English appropriate to Canada)
- *   site `ca` + `fr`     → fr-CA      (French appropriate to Canada)
- *   site `ww` + `en`     → en-US      (the Worldwide site's English convention)
- *   site `fr` + `fr`     → fr-FR
- *
- * and an author who deliberately wants another country's language INSIDE a site writes the full
- * form instead (`ca/fr-fr` → fr-FR), which is never reinterpreted.
+ *   site `ca` + `en`        → en        (a Site is not a country: no `en-CA` is invented)
+ *   site `corporate` + `fr` → fr
+ *   site `ca` + `fr-ca`     → fr-CA     (a FULL key names its own locale and is never reinterpreted)
+ *   site `ca` + explicit `canonical: en-CA` → en-CA
  *
  * RESOLUTION ORDER (ONE authority, no scattered magic):
- *   1. the entry's explicit `canonical` (the adopter's declaration: `ww/en` → `en-US`);
+ *   1. the entry's explicit `canonical` (the adopter's declaration: `en` → `en-US`, `en` → `en-CA`);
  *   2. a FULL path key resolves to itself in canonical casing (`fr-ca` → `fr-CA`);
- *   3. a SIMPLE path key inside a COUNTRY site resolves to `<lang>-<CODE>` (`ca` + `fr` → `fr-CA`);
- *   4. a SIMPLE path key inside the WORLDWIDE site uses the language's global convention
- *      (`en` → `en-US`, per the documented table below), else the bare language.
+ *   3. a SIMPLE path key is the bare language (`fr`), because a Site is a configuration key and not a
+ *      country — the `GEO-04` Stage C retirement of Site-derived language inference.
  *
  * Framework-neutral: pure data + types only.
  */
-import { isWorldwideSiteCode, normalizeSiteCode } from "./site-code";
 
 /**
  * A locale PATH KEY: `en`, `fr`, `fr-ca`, `en-ca`, `zh-hans`, `zh-hant-tw`, `sr-latn`.
@@ -112,7 +107,6 @@ export function resolveSiteLocale(
 ): ResolvedSiteLocale {
   const entry: SiteLocaleInput = typeof input === "string" ? { path: input } : input;
   const key = entry.path.trim().toLowerCase();
-  const code = normalizeSiteCode(siteCode);
 
   if (entry.canonical !== undefined && entry.canonical.trim() !== "") {
     return {
@@ -125,12 +119,13 @@ export function resolveSiteLocale(
   const canonical = (() => {
     // A FULL key already names its own locale: `fr-ca` → `fr-CA`, `zh-hant-tw` → `zh-Hant-TW`.
     if (!isSimpleLocalePathKey(key)) return canonicalTagForPathKey(key);
-    // The Worldwide site makes NO country assumption: `ww/fr` is simply French (`fr`). A
-    // deliberate convention (`ww/en` → `en-US`) is an EXPLICIT `canonical` on the entry, so the
-    // platform never invents a country for a global language.
-    if (isWorldwideSiteCode(code)) return key;
-    // A country site derives the country's own variant: `ca/en` → `en-CA`, `br/pt` → `pt-BR`.
-    return `${key}-${code.toUpperCase()}`;
+    // `GEO-04` STAGE C — A SIMPLE KEY IS THE BARE LANGUAGE, IN EVERY SITE.
+    //
+    // This used to derive a country variant from the Site code (`ca` + `en` → `en-CA`, `br` + `pt` →
+    // `pt-BR`), which made a Site a country and manufactured a locale nobody authored. A Site is a
+    // descriptive configuration key, so `en` means `en` — and an author who wants `en-CA` writes the FULL
+    // key (`en-ca`) or declares `canonical` explicitly. Both remain authoritative and unchanged above.
+    return key;
   })();
 
   return { path: key, canonical, ...(entry.label === undefined ? {} : { label: entry.label }) };

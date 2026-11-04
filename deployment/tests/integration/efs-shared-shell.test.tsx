@@ -21,7 +21,7 @@ vi.mock("next/navigation", () => ({
   },
 }));
 
-import { efsPublicSegments, efsViewForCurrentRequest, type EfsView } from "@/app/[[...segments]]/efs-request";
+import { efsNavigationForBinding, efsPublicSegments, efsViewForCurrentRequest, type EfsView } from "@/app/[[...segments]]/efs-request";
 import { layoutForEfsContext } from "@/app/[[...segments]]/server-composition";
 import { foundationSpoke } from "../support/spoke-contexts";
 
@@ -45,11 +45,12 @@ async function referenceView(): Promise<EfsView> {
 }
 
 function withBinding(view: EfsView, prefix: readonly string[], siteMode: "closed" | "open", canonical: string): EfsView {
-  return {
-    ...view,
-    binding: { ...view.binding, id: "presentation-test", prefix, siteMode, canonical: true },
-    canonical,
-  };
+  const binding = { ...view.binding, id: "presentation-test", prefix, siteMode, canonical: true };
+  const rebound: EfsView = { ...view, binding, canonical };
+  // `navigation` is baked at resolution time from the binding in force THEN. Replacing the binding
+  // alone leaves a view advertising the old public base, so navigation is re-derived by the same
+  // resolver rule for the new binding — the publication still decides what is advertised.
+  return { ...rebound, navigation: efsNavigationForBinding(rebound, binding) };
 }
 
 describe("EFS shared shell is publication-independent (R04)", () => {

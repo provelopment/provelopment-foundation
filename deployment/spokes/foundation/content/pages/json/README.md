@@ -26,9 +26,10 @@ content/pages/json/<site>/<language>/<page-name>.json
 ```
 
 - **`<site>`** — a recognized lowercase country code (`ca`, `fr`, `ch`…), or `ww` for a
-  worldwide/global site. The complete list is
-  [`content/COUNTRY-CODES.md`](../../COUNTRY-CODES.md). A folder that is not one of those
-  codes defines no site, and pages inside it are never published.
+  worldwide/global site. Which Sites a published reference serves is selected explicitly in
+  its EFS manifest (the configured reference Site is `main`), not from a country-code
+  catalogue. A folder that is not one of those codes defines no site, and pages inside it are
+  never published.
 - **`<language>`** — `en`, `fr`, `fr-ca`… (lowercase).
 - **`<page-name>`** — one name (`services`) or a folder plus a name
   (`services/web-design`).

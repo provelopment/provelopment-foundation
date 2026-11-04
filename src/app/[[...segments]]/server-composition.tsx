@@ -79,6 +79,11 @@ import { dictionaryAccessForRuntimeContext } from "@/config/runtime-dictionaries
 import type { SiteConfig } from "@/config/site-config";
 import { effectiveSitePageConfig } from "@/config/site-page-config";
 import type { EfsView } from "./efs-request";
+import { ShellDocument } from "./efs-shell";
+import { shellAddressesForEfsView } from "./efs-shell-addresses";
+import { resolveEfsShellInternalDestination } from "./efs-shell-destinations";
+import { efsOwnedPrimaryNavigation } from "./efs-shell-nav-ownership";
+import type { EfsResolvedNavItem } from "@/components/site/context-nav-links";
 import { assetUrl, publicPathBase, publicationOwnedBy } from "@/core/efs/publication";
 import { ownerAssetReference, PUBLIC_FACT_KEYS, resolvePublicFacts, type PublicFactState } from "@/core/efs/public-facts";
 import type { PropertyLevel } from "@/core/efs/properties";
@@ -88,6 +93,8 @@ import { buildLanguageAlternates, type LanguageAlternateLocale } from "@/core/lo
 import { resolveSiteNotice } from "@/core/notice";
 import { HOME_CONTENT_SLUG } from "@/core/page-content";
 import { isUnlistedPage } from "@/core/page-document";
+import { legalPageRoutePath } from "@/core/legal";
+import { classifyAuthorUrl } from "@/core/safe-url";
 import { pageRoutePathSegments } from "@/core/page-route-path";
 import {
   bindingsForSite,
@@ -848,79 +855,29 @@ export async function layoutForContext(
         )
       : undefined;
 
-  // P5-5 — `navigation.sidebar.mode: "closed"` means the persistent aside rail
-  // is not composed (the responsive disclosure/`Show navigation` control remains
-  // the way navigation is reached). Distinct from `compact` (rail present,
-  // icon-only) and `open`.
-  const sidebarClosed = resolvedUi.navigation.sidebar.mode === "closed";
-  const sidebarCompact = resolvedUi.navigation.sidebar.mode === "compact";
-  // NAV1A — "is a rail composed?" and "is a bottom bar composed?" are properties of EVERY
-  // composed layout, not of the default one. A site whose visitor may choose the sidebar
-  // layout must compose that layout's rail (≥md) and its mobile drawer (<md) even when the
-  // configured default is the menu bar — and vice versa for the sticky bar. The rail/bar
-  // structure is then exposed by the stylesheet for the ACTIVE layout only, so exactly one
-  // navigation is ever present.
-  const usesAside =
-    !sidebarClosed &&
-    (railCompositions(resolvedUi, "desktop").length > 0 ||
-      railCompositions(resolvedUi, "tablet").length > 0);
-  const usesBottomBar = bottomBarCompositions(resolvedUi).length > 0;
-  // P6-3B/P6-3C — the per-page banner map (page slug → composable banner asset).
-  // Only entries whose file actually exists under `public/assets/` survive, so a
-  // stale/typo'd banner URL renders NO banner (never a placeholder or a 404).
-  // P6-3C — the graphic's INTRINSIC size is read here (server-only) so the
-  // renderer can enforce `displayWidth = min(availableWidth, 1.5 × naturalWidth)`
-  // without client measurement, upscaling flash, or layout shift.
-  const bannerMap = Object.fromEntries(
-    Object.entries(siteConfig.assets?.banners ?? {}).flatMap(([page, url]) => {
-      const path = assets.availableBannerPath(url);
-      if (!path) return [];
-      const size = assets.readImageDimensions(path);
-      return [[page, { src: path, width: size?.width, height: size?.height }]];
-    }),
-  );
-  const regionIds = configuredRegionIds(siteConfig.regions);
-  // P12-BG — the per-page-role background map (page role → resolved decorative
-  // graphic). Same availability rule as the banner role: only entries whose file
-  // actually exists under `public/assets/` survive, so a CONFIGURED-but-missing
-  // background is indistinguishable from an ABSENT one. That is exactly what
-  // drives the documented `background-<page>` → `background-all` → none
-  // fallback at render time (a missing page-specific graphic falls through to
-  // the global one; a missing global one renders no graphic at all). The `all`
-  // key is the reserved GLOBAL role.
-  // No intrinsic size is read here: the layer is a CSS `background-image` with
-  // `cover`, so — unlike a page banner — it needs no dimension/upscale contract.
-  const backgroundMap = assets.availableBackgroundMap(siteConfig.assets?.backgrounds);
-
-  // P12-SG — the optional decorative STATUS graphic (`site.assets.statusGraphic`,
-  // the `status-graphic` role): ONE global role shared by BOTH status surfaces
-  // (`error.tsx` and `not-found.tsx`). Resolved here (server-only) for the same
-  // reason the banner map is: the availability read touches `node:fs`, and
-  // `error.tsx` is a CLIENT component that can never import the resolver. The
-  // value is handed to both surfaces through `StatusGraphicProvider`, the same
-  // transport the error copy uses. Same availability rule as every other graphic
-  // role, so a CONFIGURED-but-missing status graphic is indistinguishable from an
-  // ABSENT one.
-  const statusGraphicPath = assets.availableStatusGraphicPath(siteConfig.assets?.statusGraphic);
-  const statusGraphicDimensions = assets.readImageDimensions(statusGraphicPath);
-  const statusGraphic = statusGraphicPath
-    ? {
-        src: statusGraphicPath,
-        width: statusGraphicDimensions?.width,
-        height: statusGraphicDimensions?.height,
-      }
-    : undefined;
-
-  // Phase K: when operating regions are configured, the legacy global business
-  // block is NOT merged into rendered pages. The layout suppresses the global
-  // footer NAP + JSON-LD; regional pages render their own region's identity.
-  const hasRegions = Object.keys(siteConfig.regions).length > 0;
-
-  // Composition boundary (the ONLY place providers become concrete): the factories
-  // select adapters from THIS context's validated configuration; the layout below
-  // renders the already-composed integrations without any provider-specific
-  // conditional.
-  const analytics = createAnalyticsProvider(siteConfig.analytics);
+  /**
+   * THE NON-ROUTING PRESENTATION FACTS — resolved by ONE function, shared with the EFS entrypoint
+   * (`layoutForEfsContext`), so both surfaces present the same graphics, the same inert presentation
+   * tokens, the same sidebar geometry, the same rail bridge and the same analytics integration. None of
+   * these facts can name a destination, which is exactly why they are safe to share with a path that
+   * resolves no URL at all. Sharing the IMPLEMENTATION (not a copy) is what keeps the two surfaces from
+   * drifting; see `shellPresentationFacts` for the per-fact rules (all of which are unchanged).
+   */
+  const {
+    sidebarClosed,
+    sidebarCompact,
+    usesAside,
+    usesBottomBar,
+    bannerMap,
+    regionIds,
+    backgroundMap,
+    statusGraphic,
+    hasRegions,
+    analytics,
+    sidebarPreferenceBridge,
+    htmlStyle,
+    htmlPresentationAttrs,
+  } = shellPresentationFacts(composition, siteConfig);
 
   // NAV1B — the sidebar's navigation LIST is needed wherever a sidebar composition presents it:
   // the rail (≥md) AND that composition's constrained-width disclosure. `usesAside` still gates the
@@ -954,43 +911,9 @@ export async function layoutForContext(
       }
     : undefined;
 
-  // UI1-A2 — THE PRE-PAINT SIDEBAR BRIDGE, and the ONE hydration tolerance it needs. The rail's
-  // open/closed state is the visitor's browser-local preference, so a STATICALLY GENERATED document
-  // cannot know it: the server renders the canonical CLOSED rail (which is exactly what keeps every
-  // page prerendered — no cookie, session, request-time rendering or middleware enters this), and the
-  // browser applies the visitor's OPEN preference BEFORE that canonical geometry is painted. The script
-  // is the FIRST element of `<body>`, and `suppressHydrationWarning` is emitted ONLY where a rail is
-  // actually composed — so a deployment without one ships no bridge and no tolerance.
-  const sidebarPreferenceBridge = usesAside;
-
-  // FS-5 — the configured page/background color flows into the EXISTING
-  // design-token system: when `ui.theme.background` is set, we override the
-  // `--background` CSS variable on `<html>` (components consume the token via
-  // `bg-background`/token utilities; no inline component styles). Absent → the
-  // canonical `:root`/dark `--background` tokens render unchanged.
-  const htmlStyle = resolvedUi.theme.background
-    ? ({ "--background": resolvedUi.theme.background } as CSSProperties)
-    : undefined;
-
-  // P5-3 — the RESOLVED presentation intent flows into the shared renderer as
-  // inert `data-ui-*` attributes on `<html>` (see globals.css — P5-3
-  // presentation tokens). These are generalized vocabulary values (never
-  // presentation names), so the CSS token layer implements presentation without
-  // any identity coupling. Static SSR strings; no hydration risk.
-  // P5-5 — the resolved control/menu modes join the same `data-ui-*` surface
-  // for the same reason (single observability + test hook, no presentation CSS).
-  const htmlPresentationAttrs = {
-    ...presentationDataAttributes(resolvedUi.presentation),
-    ...radiusDataAttribute(resolvedUi.theme.radius),
-    // N2 — the ACTIVE shell layout presentation. Emitted ONLY when the adopter enables
-    // the switcher, so a site without it produces byte-identical markup; the client
-    // control changes this one attribute (see globals.css — shell layout presentation).
-    ...layoutDataAttributes(resolvedUi),
-    "data-ui-sidebar-mode": resolvedUi.navigation.sidebar.mode,
-    "data-ui-top-mode": resolvedUi.navigation.top.mode,
-    "data-ui-bottom-mode": resolvedUi.navigation.bottom.mode,
-    "data-ui-cta-state": resolvedUi.cta.state,
-  };
+  // UI1-A2 / FS-5 / P5-3 / P5-5 / N2 — the rail bridge, the `--background` token override and the inert
+  // `data-ui-*` surface are all derived in `shellPresentationFacts` (destructured above), so the EFS
+  // document emits the byte-identical `<html>` presentation as this one.
 
   // R1 — THE SWITCHER THE RENDERING SPOKE RECEIVES, resolved ONCE (Web-1 owner requirement 1; the
   // Hub-scoped reader is FOUNDATION-ID-M3-P3 §8). The OPTIONS come from the build's own routing description —
@@ -1022,30 +945,55 @@ export async function layoutForContext(
       : <SiteNotice notice={siteNotice} copy={requiredSection(dictionary, "siteNotice")} />;
 
   return (
-    <html
-      lang={localeTag}
-      className={htmlClassName}
-      style={htmlStyle}
-      suppressHydrationWarning={sidebarPreferenceBridge}
-      {...htmlPresentationAttrs}
-    >
-      <body className="min-h-full flex flex-col">
-        {/* M14 — the ONE client transport for this Spoke's routing projection: every routing control below
-            (header, footer, sidebar, switchers, the error/404 surfaces) reads THIS document's context. */}
-        <ClientRoutingProvider routing={composition.clientRouting}>
-        {sidebarPreferenceBridge ? <SidebarPreferenceBoot /> : null}
-        <a
-          href="#main"
-          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-background focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-foreground"
-        >
-          {dictionary.a11y.skipToContent}
-        </a>
-        <PageBackground backgrounds={backgroundMap} regionIds={regionIds} />
-        <PageBanner banners={bannerMap} regionIds={regionIds} />
-        <ShellEngine
-          resolved={resolvedUi}
-          notice={notice}
-          header={
+    <ShellDocument
+      mode="legacy"
+      localeTag={localeTag}
+      locale={locale}
+      htmlClassName={htmlClassName}
+      htmlStyle={htmlStyle}
+      htmlAttributes={htmlPresentationAttrs}
+      sidebarPreferenceBridge={sidebarPreferenceBridge}
+      skipToContentLabel={dictionary.a11y.skipToContent}
+      errorMessages={dictionary.error}
+      bannerMap={bannerMap}
+      backgroundMap={backgroundMap}
+      statusGraphic={statusGraphic}
+      regionIds={regionIds}
+      notice={notice}
+      resolved={resolvedUi}
+      mainId="main"
+      mainClassName="flex-1"
+      navigationLabel={dictionary.navigation.primaryLabel}
+      asideContent={sidebarNavContent}
+      sidebarLabels={{
+        show: dictionary.navigation.showSidebar,
+        hide: dictionary.navigation.hideSidebar,
+      }}
+      sidebarOpen={{
+        icon: assets.resolveIconControlUrl(
+          resolvedUi.navigation.sidebar.open.icon,
+          DEFAULT_SIDEBAR_OPEN_ICON,
+        ),
+        text: resolvedUi.navigation.sidebar.open.text,
+      }}
+      sidebarClose={{
+        icon: assets.resolveIconControlUrl(
+          resolvedUi.navigation.sidebar.close.icon,
+          DEFAULT_SIDEBAR_CLOSE_ICON,
+        ),
+        text: resolvedUi.navigation.sidebar.close.text,
+      }}
+      bottomNav={bottomNav}
+      // M14 — the ONE client transport for this Spoke's routing projection. It is REQUIRED here and
+      // IMPOSSIBLE on the EFS surface (see `ShellDocument`'s discriminated props).
+      routing={composition.clientRouting}
+      pageBindings={siteConfig.pageBindings}
+      siteSet={composition.siteSet}
+      ctaLabel={resolvedUi.cta.label}
+      ctaHref={ctaHref}
+      structuredData={hasRegions ? null : <StructuredData locale={locale} siteConfig={siteConfig} />}
+      analytics={analytics}
+      header={
             <SiteHeader
               locale={locale}
               resolved={resolvedUi}
@@ -1059,11 +1007,6 @@ export async function layoutForContext(
               {...(composition.brandLogo === undefined ? {} : { resolvedLogoSrc: composition.brandLogo })}
             />
           }
-          main={
-            <ErrorMessagesProvider messages={dictionary.error}>
-              <StatusGraphicProvider asset={statusGraphic}>{children}</StatusGraphicProvider>
-            </ErrorMessagesProvider>
-          }
           footer={
             <SiteFooter
               locale={locale}
@@ -1075,44 +1018,11 @@ export async function layoutForContext(
               routes={composition.routes}
             />
           }
-          mainId="main"
-          mainClassName="flex-1"
-          navigationLabel={dictionary.navigation.primaryLabel}
-          // P6-1 — the rail disclosure uses the ONE Show/Hide navigation vocabulary
-          // (same as the mobile trigger/close); represented by the localized
-          // labels + the configured open/close control content (icon screened
-          // against the runtime namespaces by the framework layer below).
-          sidebarLabels={{
-            show: dictionary.navigation.showSidebar,
-            hide: dictionary.navigation.hideSidebar,
-          }}
-          sidebarOpen={{
-            icon: assets.resolveIconControlUrl(
-              resolvedUi.navigation.sidebar.open.icon,
-              DEFAULT_SIDEBAR_OPEN_ICON,
-            ),
-            text: resolvedUi.navigation.sidebar.open.text,
-          }}
-          sidebarClose={{
-            icon: assets.resolveIconControlUrl(
-              resolvedUi.navigation.sidebar.close.icon,
-              DEFAULT_SIDEBAR_CLOSE_ICON,
-            ),
-            text: resolvedUi.navigation.sidebar.close.text,
-          }}
-          asideContent={sidebarNavContent}
-          bottomNav={bottomNav}
-          locale={locale}
-          pageBindings={siteConfig.pageBindings}
-          siteSet={composition.siteSet}
-          ctaLabel={resolvedUi.cta.label}
-          ctaHref={ctaHref}
-        />
-        {hasRegions ? null : <StructuredData locale={locale} siteConfig={siteConfig} />}
-        {analytics}
-        </ClientRoutingProvider>
-      </body>
-    </html>
+        >
+          <ErrorMessagesProvider messages={dictionary.error}>
+            <StatusGraphicProvider asset={statusGraphic}>{children}</StatusGraphicProvider>
+          </ErrorMessagesProvider>
+        </ShellDocument>
   );
 }
 
@@ -1189,18 +1099,76 @@ export function efsResolvedBrandLogo(view: EfsView): string | undefined {
  * legacy business timezone/locations are removed. No Site code, Facet name, Page name or URL prefix can
  * therefore acquire geographic or language meaning on the EFS path.
  */
+/**
+ * THE INVALID-PRESENTATION REFUSAL (`GEO-04 R13`)
+ * ===============================================
+ *
+ * A publication MAY declare no presentation Site at all — that is the intentional EFS-only document
+ * boundary. It may NOT declare a Site the owning Spoke does not declare (including one that names an
+ * unrelated EFS Site, or another Spoke's Site): the shared shell would then have to borrow another
+ * owner's label, dictionary, logo or address authority, or silently degrade to a chrome-less 200 page.
+ *
+ * This error carries the claim for server-side diagnosis only. It is never rendered: the document
+ * boundary turns it into the sanctioned public not-found response.
+ */
+export class EfsPresentationRefusal extends Error {
+  constructor(
+    readonly presentationSiteCode: string,
+    readonly spokeId: string,
+  ) {
+    super(`EFS presentation Site "${presentationSiteCode}" is not declared by Spoke "${spokeId}".`);
+    this.name = "EfsPresentationRefusal";
+  }
+}
+
+/**
+ * THE THREE PRESENTATION DECLARATIONS (`GEO-04 R13`)
+ * =================================================
+ *
+ * The publication's `presentationSiteCode` has exactly three meanings, and they are NOT the same:
+ *
+ *   - `efs-only`   — no code declared. The publication is a legitimate EFS-only document: it borrows no
+ *                    chrome, invents no presentation Site, and promises no shared-shell transition. 200.
+ *   - `declared`   — a code the owning Spoke actually declares. The shared shell composes from it. 200.
+ *   - `invalid`    — a code the owning Spoke does NOT declare (including an unrelated EFS Site, or another
+ *                    Spoke's Site). This may never borrow a Site, owner, default or chrome, and may never
+ *                    degrade to a chrome-less 200: it REFUSES.
+ *
+ * The distinction is decided here, once, from the publication and the owning Spoke's own declarations —
+ * never from a route, locale, default or guess.
+ */
+export type EfsPresentationDeclaration =
+  | { readonly kind: "efs-only" }
+  | { readonly kind: "declared"; readonly code: string }
+  | { readonly kind: "invalid"; readonly code: string };
+
+export function efsPresentationDeclaration(
+  source: SiteConfig,
+  view: EfsView,
+): EfsPresentationDeclaration {
+  const presentationSiteCode = view.publication.presentationSiteCode;
+  if (presentationSiteCode === undefined) return { kind: "efs-only" };
+  const declared = source.sites.some((candidate) => candidate.code === presentationSiteCode);
+  return declared
+    ? { kind: "declared", code: presentationSiteCode }
+    : { kind: "invalid", code: presentationSiteCode };
+}
+
 export function efsShellPresentationConfig(
   source: SiteConfig,
   view: EfsView,
 ): SiteConfig | null {
-  const presentationSiteCode = view.publication.presentationSiteCode;
-  if (presentationSiteCode === undefined) return null;
-  const sourceSite = source.sites.find((candidate) => candidate.code === presentationSiteCode);
+  const declaration = efsPresentationDeclaration(source, view);
+  if (declaration.kind === "efs-only") return null;
+  if (declaration.kind === "invalid") {
+    // An INVALID DECLARATION refuses. The claim stays server-side; the document boundary turns it into the
+    // sanctioned public not-found response, so no Site, owner, locale or address is ever borrowed.
+    throw new EfsPresentationRefusal(declaration.code, view.publication.spokeId);
+  }
+  const sourceSite = source.sites.find((candidate) => candidate.code === declaration.code);
   if (!sourceSite) {
-    throw new Error(
-      `EFS presentation Site "${presentationSiteCode}" is not declared by the owning Spoke ` +
-        `"${view.publication.spokeId}"; the shared shell cannot be composed.`,
-    );
+    // Unreachable: `declared` was decided from this same list. Kept as a total-function guard.
+    throw new EfsPresentationRefusal(declaration.code, view.publication.spokeId);
   }
 
   const label = view.properties.get("site.label");
@@ -1401,6 +1369,122 @@ export function efsShellPresentationConfig(
 }
 
 /**
+ * THE NON-ROUTING PRESENTATION FACTS — ONE implementation, TWO surfaces (FOUNDATION-GEO-04 R10)
+ * ============================================================================================
+ *
+ * Every fact this function returns is a property of the SITE'S PRESENTATION, never of a URL: graphic
+ * availability, the resolved UI token set, rail/bottom-bar geometry, the pre-paint rail bridge and the
+ * analytics integration. `layoutForContext` (legacy) and `layoutForEfsContext` (EFS) both destructure
+ * this result, so the two documents cannot present different banners, different `data-ui-*` tokens,
+ * different sidebar geometry or a different analytics integration.
+ *
+ * It deliberately reads NO request and resolves NO destination: it is not given `segments`, a path
+ * context, a `SiteSet` or `pageBindings`, so it is structurally incapable of acquiring geographic or
+ * language meaning on either surface. The per-fact rules below are the ones the legacy layout has always
+ * applied — moved, not changed.
+ */
+export function shellPresentationFacts(
+  composition: SpokeServerComposition,
+  siteConfig: SiteConfig,
+) {
+  const resolvedUi = composition.resolvedUi;
+  const assets = composition.assets;
+
+  // P5-5 — `navigation.sidebar.mode: "closed"` means the persistent aside rail is not composed (the
+  // responsive disclosure/`Show navigation` control remains the way navigation is reached). Distinct
+  // from `compact` (rail present, icon-only) and `open`.
+  const sidebarClosed = resolvedUi.navigation.sidebar.mode === "closed";
+  const sidebarCompact = resolvedUi.navigation.sidebar.mode === "compact";
+  // NAV1A — "is a rail composed?" and "is a bottom bar composed?" are properties of EVERY composed
+  // layout, not of the default one. A site whose visitor may choose the sidebar layout must compose that
+  // layout's rail (≥md) and its mobile drawer (<md) even when the configured default is the menu bar —
+  // and vice versa for the sticky bar.
+  const usesAside =
+    !sidebarClosed &&
+    (railCompositions(resolvedUi, "desktop").length > 0 ||
+      railCompositions(resolvedUi, "tablet").length > 0);
+  const usesBottomBar = bottomBarCompositions(resolvedUi).length > 0;
+
+  // P6-3B/P6-3C — the per-page banner map (page slug → composable banner asset). Only entries whose file
+  // actually exists under `public/assets/` survive, so a stale/typo'd banner URL renders NO banner (never
+  // a placeholder or a 404). The INTRINSIC size is read here (server-only) so the renderer can enforce
+  // `displayWidth = min(availableWidth, 1.5 × naturalWidth)` without client measurement.
+  const bannerMap = Object.fromEntries(
+    Object.entries(siteConfig.assets?.banners ?? {}).flatMap(([page, url]) => {
+      const path = assets.availableBannerPath(url);
+      if (!path) return [];
+      const size = assets.readImageDimensions(path);
+      return [[page, { src: path, width: size?.width, height: size?.height }]];
+    }),
+  );
+  const regionIds = configuredRegionIds(siteConfig.regions);
+  // P12-BG — the per-page-role background map. Same availability rule as the banner role, so a
+  // CONFIGURED-but-missing background is indistinguishable from an ABSENT one (which is what drives the
+  // documented `background-<page>` → `background-all` → none fallback). No intrinsic size is read: the
+  // layer is a CSS `background-image` with `cover`.
+  const backgroundMap = assets.availableBackgroundMap(siteConfig.assets?.backgrounds);
+
+  // P12-SG — the optional decorative STATUS graphic: ONE global role shared by BOTH status surfaces
+  // (`error.tsx` and `not-found.tsx`), resolved server-side because the availability read touches
+  // `node:fs` and `error.tsx` is a client component that can never import the resolver.
+  const statusGraphicPath = assets.availableStatusGraphicPath(siteConfig.assets?.statusGraphic);
+  const statusGraphicDimensions = assets.readImageDimensions(statusGraphicPath);
+  const statusGraphic = statusGraphicPath
+    ? {
+        src: statusGraphicPath,
+        width: statusGraphicDimensions?.width,
+        height: statusGraphicDimensions?.height,
+      }
+    : undefined;
+
+  // Phase K — when operating regions are configured, the legacy global business block is NOT merged into
+  // rendered pages: the layout suppresses the global footer NAP + JSON-LD.
+  const hasRegions = Object.keys(siteConfig.regions).length > 0;
+
+  // Composition boundary (the ONLY place providers become concrete): the factories select adapters from
+  // THIS context's validated configuration; the renderer below composes the already-built integration.
+  const analytics = createAnalyticsProvider(siteConfig.analytics);
+
+  // UI1-A2 — the pre-paint sidebar bridge and the ONE hydration tolerance it needs. Emitted only where a
+  // rail is actually composed, so a deployment without one ships no bridge and no tolerance.
+  const sidebarPreferenceBridge = usesAside;
+
+  // FS-5 — the configured page colour flows into the EXISTING design-token system as the `--background`
+  // override on `<html>`. Absent → the canonical tokens render unchanged.
+  const htmlStyle = resolvedUi.theme.background
+    ? ({ "--background": resolvedUi.theme.background } as CSSProperties)
+    : undefined;
+
+  // P5-3 / P5-5 / N2 — the inert `data-ui-*` presentation surface (generalized vocabulary values, never
+  // presentation names; static SSR strings, so no hydration risk).
+  const htmlPresentationAttrs = {
+    ...presentationDataAttributes(resolvedUi.presentation),
+    ...radiusDataAttribute(resolvedUi.theme.radius),
+    ...layoutDataAttributes(resolvedUi),
+    "data-ui-sidebar-mode": resolvedUi.navigation.sidebar.mode,
+    "data-ui-top-mode": resolvedUi.navigation.top.mode,
+    "data-ui-bottom-mode": resolvedUi.navigation.bottom.mode,
+    "data-ui-cta-state": resolvedUi.cta.state,
+  };
+
+  return {
+    sidebarClosed,
+    sidebarCompact,
+    usesAside,
+    usesBottomBar,
+    bannerMap,
+    regionIds,
+    backgroundMap,
+    statusGraphic,
+    hasRegions,
+    analytics,
+    sidebarPreferenceBridge,
+    htmlStyle,
+    htmlPresentationAttrs,
+  };
+}
+
+/**
  * EFS's shared-shell entry. The EFS Page remains the content authority; this adapter supplies a
  * presentation-only configuration with no routing/locale/location inference. `null` means the binding
  * has no compatible shared shell, so the EFS-only document boundary applies.
@@ -1421,15 +1505,234 @@ export async function layoutForEfsContext(
   const siteConfig = efsShellPresentationConfig(context.siteConfig, view);
   if (!siteConfig) return null;
   const siteSet: SiteSet = { sites: siteConfig.sites, defaultSite: siteConfig.defaultSite };
-  return layoutForContext(
-    spokeServerComposition(context, {
-      siteConfig,
-      siteSet,
-      // The SAME decision the configuration above projected, expressed as the shell's HTML form.
-      ...(efsResolvedBrandLogo(view) === undefined ? {} : { brandLogo: efsResolvedBrandLogo(view) }),
-    }),
-    segments,
-    children,
-    htmlClassName,
+  const composition = spokeServerComposition(context, {
+    siteConfig,
+    siteSet,
+    // The SAME decision the configuration above projected, expressed as the shell's HTML form.
+    ...(efsResolvedBrandLogo(view) === undefined ? {} : { brandLogo: efsResolvedBrandLogo(view) }),
+  });
+
+  // ── THE SHARED PRESENTATION FACTS ────────────────────────────────────────────────────────────────────
+  // The same function the legacy document uses, so banners, backgrounds, the status graphic, the
+  // `data-ui-*` tokens, the rail geometry, the pre-paint bridge and the analytics integration are
+  // identical by construction — not by a parallel implementation that must be kept in step.
+  const facts = shellPresentationFacts(composition, siteConfig);
+
+  // PUBLIC EFS PAGE IDENTITY is `view`'s answer; the presentation Site is CONFIGURATION identity, used
+  // only for labels, icons, dictionary selection and appearance. Neither is derived from the other, and
+  // they may legitimately differ.
+  const locale = view.localeKey;
+  const presentationSiteCode = siteConfig.defaultSite.code;
+  const dictionary = composition.dictionaries.get(locale, presentationSiteCode);
+
+  // ── PUBLISHED ADDRESSES (R02) ────────────────────────────────────────────────────────────────────────
+  // Every public href below is either an entry of `addresses.navigation` (the publication's OWN published,
+  // ordered destinations) or a destination the R04 resolver proved AND this membership test then accepted.
+  // Nothing is string-joined onto a base; no unproved prefix, locale root or default-Site Home exists.
+  const addresses = shellAddressesForEfsView(view);
+  const publishedHrefs = new Set(addresses.navigation.map((item) => item.href));
+
+  // ── OWNER-VERIFIED PRIMARY NAVIGATION (R09) ──────────────────────────────────────────────────────────
+  // `null` means the publication declares no presentation Site (the ordinary EFS-only boundary), which is
+  // an empty shell list, not a failure. A wrong-Spoke or undeclared presentation Site throws in there.
+  const navItems = efsOwnedPrimaryNavigation({
+    view,
+    dictionaries: composition.dictionaries,
+    assets: composition.assets,
+  });
+
+  /**
+   * Prove ONE authored internal destination against the publication.
+   *
+   * The resolver answers three ways: `published` with a verified `href`, `external` with none, and
+   * `unavailable` with a refusal reason. Only a verified `href` that is ALSO a published navigation
+   * destination of this representation is accepted; everything else yields `undefined`, so a configured
+   * but unpublished Page leaves its control uncomposed rather than linking somewhere the Site does not serve.
+   */
+  const provedInternal = (authoredHref: string | undefined): string | undefined => {
+    if (authoredHref === undefined) return undefined;
+    const resolved = resolveEfsShellInternalDestination({ view, authoredHref });
+    return resolved.kind === "published" && publishedHrefs.has(resolved.href)
+      ? resolved.href
+      : undefined;
+  };
+
+  /**
+   * The CTA keeps its released EXTERNAL capability.
+   *
+   * An external CTA is configuration the Site owner authored deliberately, and the resolver has already
+   * applied the author-URL safety policy to it (refusing executable/unsupported schemes before this point).
+   * Routing it through `provedInternal` would silently DELETE a working CTA, so an `external` answer is
+   * carried verbatim while an internal one still needs the published-membership proof.
+   */
+  const provedCta = (authoredHref: string | undefined): string | undefined => {
+    if (authoredHref === undefined) return undefined;
+    const resolved = resolveEfsShellInternalDestination({ view, authoredHref });
+    if (resolved.kind === "published") {
+      return publishedHrefs.has(resolved.href) ? resolved.href : undefined;
+    }
+    if (resolved.kind !== "external") return undefined;
+    // R04's `external` answer is a CLASSIFICATION, not a safe-URL verdict: it says "this is not one of my
+    // published internal routes", which an executable or unsupported scheme also satisfies. The approved
+    // author-URL policy must therefore decide, and only its decoded href is emitted.
+    const verdict = classifyAuthorUrl(authoredHref);
+    return verdict.ok ? verdict.href : undefined;
+  };
+
+  /**
+   * R04 addresses an AUTHORED INTERNAL destination in its leading-slash form (`/connect`), while the route
+   * constant is the bare segment (`connect`). The constant is used once, here, with the slash the resolver
+   * requires — so a published Connect Page yields a clickable heading instead of being refused as malformed.
+   */
+  const connectAuthoredHref = `/${CONNECT_ROUTE_PATH}`;
+
+  // The Site OBJECT is what `effectiveSitePageConfig` merges overrides against; passing a code would be a
+  // different contract. `presentationSiteCode` is used only for dictionary selection and `siteId`.
+  const pageConfig = effectiveSitePageConfig(siteConfig, siteConfig.defaultSite);
+  const ctaHref = provedCta(pageConfig.ctaHref);
+  const connectHref = provedInternal(connectAuthoredHref);
+  // Connect/social methods keep their released contracts: an INTERNAL method is proved exactly like any
+  // other destination, while an EXTERNAL one is carried through the resolver's `external` answer under the
+  // existing author-URL safety policy — never rewritten into an internal link. The configured inventory is
+  // used as configured; it is never replaced with an empty list to satisfy a type.
+  const methodItems: EfsResolvedNavItem[] = (pageConfig.connect?.methods ?? []).flatMap((method) => {
+    const resolved = resolveEfsShellInternalDestination({ view, authoredHref: method.href });
+    if (resolved.kind === "published") {
+      return publishedHrefs.has(resolved.href)
+        ? [{ key: resolved.pageId, label: method.label, href: resolved.href } satisfies EfsResolvedNavItem]
+        : [];
+    }
+    if (resolved.kind !== "external") return [];
+    // Connect/social methods are NOT primary navigation, so the primary-navigation scheme restriction is not
+    // imposed on them. The released author-URL policy IS applied, and its allowlist is exactly
+    // `http`, `https`, `mailto`, `tel` (`AUTHOR_ALLOWED_SCHEMES`). A method authored with one of those — a
+    // website, a social/profile URL, an email or a phone link — is preserved verbatim when the policy accepts
+    // it. A method authored with a scheme OUTSIDE that list (`sms:`, `viber:` or any other deep link) is
+    // REFUSED here and is not rendered; making such a scheme supported would be a change to the global URL
+    // allowlist, which is outside R10's authorized source set and must not be smuggled in as a second policy.
+    const verdict = classifyAuthorUrl(method.href);
+    return verdict.ok
+      ? [
+          {
+            key: method.href,
+            label: method.label,
+            href: verdict.href,
+            external: true,
+          } satisfies EfsResolvedNavItem,
+        ]
+      : [];
+  });
+
+  // Legal documents that are BOTH configured for this Site AND proved published in this representation.
+  const legalLinks = (pageConfig.legal ?? []).flatMap((document) => {
+    // A legal document is NOT a top-level Page route: its ONE authored contract is `legal/<slug>`
+    // (`legalPageRoutePath`), addressed here in R04's leading-slash form (`/legal/privacy`). Using the bare
+    // slug would have resolved to an unrelated top-level `/privacy` Page whenever one was published.
+    const href = provedInternal(`/${legalPageRoutePath(document.slug)}`);
+    return href === undefined
+      ? []
+      : [{ slug: document.slug, label: document.label, href }];
+  });
+
+  // The Language control offers ONLY this Page's published representations, and only when there is a real
+  // alternative to offer (a one-option selector would propose the page the visitor is already on).
+  const languages =
+    addresses.languageAlternates.length > 1
+      ? {
+          current: view.locale,
+          label: dictionary.language.label,
+          options: addresses.languageAlternates.map((alternate) => ({
+            value: alternate.hreflang,
+            label: alternate.hreflang,
+            href: alternate.href,
+          })),
+        }
+      : undefined;
+  // ── THE EFS DOCUMENT ─────────────────────────────────────────────────────────────────────────────────
+  // `mode="efs"` is a COMPILE-TIME guarantee, not a runtime convention: this branch cannot pass `routing`,
+  // `pageBindings` or `siteSet`, because the EFS props make them inexpressible. Every control below was
+  // given a proved destination, and the shared `ShellDocument` renders the same document tree the legacy
+  // surface uses.
+  return (
+    <ShellDocument
+      statusRecoveryHomeHref={addresses.homeHref ?? null}
+
+      mode="efs"
+      localeTag={view.locale}
+      locale={locale}
+      htmlClassName={htmlClassName}
+      htmlStyle={facts.htmlStyle}
+      htmlAttributes={facts.htmlPresentationAttrs}
+      sidebarPreferenceBridge={facts.sidebarPreferenceBridge}
+      skipToContentLabel={dictionary.a11y.skipToContent}
+      errorMessages={dictionary.error}
+      bannerMap={facts.bannerMap}
+      backgroundMap={facts.backgroundMap}
+      statusGraphic={facts.statusGraphic}
+      regionIds={facts.regionIds}
+      resolved={composition.resolvedUi}
+      mainId="main"
+      mainClassName="flex-1"
+      navigationLabel={dictionary.navigation.primaryLabel}
+      sidebarLabels={{
+        show: dictionary.navigation.showSidebar,
+        hide: dictionary.navigation.hideSidebar,
+      }}
+      sidebarOpen={{
+        icon: composition.assets.resolveIconControlUrl(
+          composition.resolvedUi.navigation.sidebar.open.icon,
+          DEFAULT_SIDEBAR_OPEN_ICON,
+        ),
+        text: composition.resolvedUi.navigation.sidebar.open.text,
+      }}
+      sidebarClose={{
+        icon: composition.assets.resolveIconControlUrl(
+          composition.resolvedUi.navigation.sidebar.close.icon,
+          DEFAULT_SIDEBAR_CLOSE_ICON,
+        ),
+        text: composition.resolvedUi.navigation.sidebar.close.text,
+      }}
+      bottomNavLabel={dictionary.navigation.primaryLabel}
+      bottomNavMode={composition.resolvedUi.navigation.bottom.mode}
+      efsBottomNavItems={navItems ?? []}
+      ctaLabel={composition.resolvedUi.cta.label}
+      ctaHref={ctaHref}
+      structuredData={facts.hasRegions ? null : <StructuredData locale={locale} siteConfig={siteConfig} />}
+      analytics={facts.analytics}
+      header={
+        <SiteHeader
+          locale={locale}
+          resolved={composition.resolvedUi}
+          siteId={presentationSiteCode}
+          siteConfig={siteConfig}
+          dictionaryAccess={composition.dictionaries}
+          assets={composition.assets}
+          efs={{
+            navItems: navItems ?? [],
+            homeHref: addresses.homeHref,
+            ...(languages === undefined ? {} : { languages }),
+          }}
+        />
+      }
+      footer={
+                    <SiteFooter
+                      locale={locale}
+                      siteId={presentationSiteCode}
+                      directionLinkResolver={composition.directionLinks}
+                      siteConfig={siteConfig}
+                      dictionaryAccess={composition.dictionaries}
+                      assets={composition.assets}
+                      routes={composition.routes}
+                      efs={{
+                        navItems: navItems ?? [],
+                        methodItems,
+                        legalLinks,
+                        ...(connectHref === undefined ? {} : { connectHref }),
+                      }}
+                    />
+                  }
+    >
+      {children}
+    </ShellDocument>
   );
 }

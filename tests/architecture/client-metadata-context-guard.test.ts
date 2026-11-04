@@ -96,11 +96,15 @@ describe("M14 — client routing projection guard", () => {
       code(file).includes("ClientRoutingProvider"),
     );
     expect(providerFiles.map(relative).sort()).toEqual([
+      "src/app/[[...segments]]/efs-shell.tsx",
       "src/app/[[...segments]]/server-composition.tsx",
       "src/components/site/client-routing-context.tsx",
       "src/components/site/site-footer.tsx",
       "src/components/site/site-header.tsx",
     ]);
+    // R10 — `efs-shell.tsx` is the SHARED document: it composes the client transport for the LEGACY
+    // presentation only, and the EFS presentation is composed without it. The transport therefore
+    // stays singular and server-supplied; it is never created by a client or by a second authority.
   });
 
   it("keeps the routing projection narrow, serializable and Spoke-local", () => {

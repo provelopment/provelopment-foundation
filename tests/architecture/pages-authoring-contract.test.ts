@@ -178,6 +178,9 @@ describe("pages-authoring contract — exactly two first-class modes", () => {
     expect(routeFiles).toEqual([
       "dedicated-pages.tsx",
       "efs-connect.tsx",
+      // The SHARED DOCUMENT module: it renders the one shell for BOTH presentation modes, so it
+      // sits beside the route without being a route — no URL shape is added.
+      "efs-shell.tsx",
       "error.tsx",
       "global-error.tsx",
       "layout.tsx",

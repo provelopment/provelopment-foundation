@@ -78,20 +78,36 @@ describe("VIS2S — the shared footer link target contract", () => {
     }
   });
 
-  it("C. site-footer.tsx routes every list AND its legal links through the shared floor", () => {
+  it("C. site-footer.tsx routes every list AND its legal links through ONE shared renderer", () => {
     const source = read(...SITE, "site-footer.tsx");
 
-    // Connect methods, social, the optional footer group, the primary group.
+    // ONE shared renderer serves every list, with exactly one branch per presentation mode, so the
+    // floor cannot drift between the primary, secondary, Connect-method and social lists.
     const listUsages = source.match(/\blinkClassName=\{FOOTER_LINK_CLASS\}/g) ?? [];
-    expect(listUsages.length).toBeGreaterThanOrEqual(4);
+    expect(listUsages).toHaveLength(2); // one per mode branch: self-resolving legacy + verified EFS
 
-    // The legal documents are footer links too (exactly one legal list).
+    // Every list goes THROUGH the renderer; no call site composes ContextNavLinks itself.
+    const renderCalls = source.match(/\brenderList\(/g) ?? [];
+    expect(renderCalls.length).toBeGreaterThanOrEqual(4); // every list call site, nothing else
+    expect(source.match(/<ContextNavLinks/g)).toHaveLength(2); // only inside the renderer
+
+    // The renderer really does cover both modes — the EFS branch consumes verified items.
+    expect(source).toContain("efs?.navItems");
+
+    // The legal documents are footer links too (exactly one legal list, same floor).
     const legalUsages = source.match(/\bclassName=\{FOOTER_LINK_CLASS\}/g) ?? [];
     expect(legalUsages).toHaveLength(1);
 
     // No footer link may fall back to a bare hover-only class.
     expect(source).not.toContain('linkClassName="hover:text-primary"');
     expect(source).not.toContain('className="hover:text-primary"');
+
+    // Positive control: the scan is SENSITIVE — an unstyled list is not counted as compliant, and
+    // the absence assertions above would catch exactly this markup.
+    const unstyledList =
+      '<ContextNavLinks locale={locale} links={items} linkClassName="hover:text-primary" />';
+    expect(unstyledList.match(/\blinkClassName=\{FOOTER_LINK_CLASS\}/g) ?? []).toHaveLength(0);
+    expect(unstyledList).toContain('linkClassName="hover:text-primary"');
   });
 
   it("D. the Connect heading link and the business-info links carry the same floor", () => {

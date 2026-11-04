@@ -205,11 +205,12 @@ describe("EN-M — shared header navigation link contract", () => {
   it("keeps ONE contract definition consumed by the header navigation list (drift guard)", () => {
     expect(HEADER_SOURCE).toContain("export const HEADER_NAV_LINK_CLASS");
     const uses = HEADER_SOURCE.match(/linkClassName=\{HEADER_NAV_LINK_CLASS\}/g) ?? [];
-    // NAV1B — the header composes ONE navigation list: the ≥md header navigation a CUSTOM
-    // composition presents. Its mobile list is gone with the disclosure, which the shell engine
-    // now composes at the sidebar boundary and which reuses the RAIL's own list — so the link
-    // contract is not duplicated there either.
-    expect(uses.length).toBe(1);
+    // NAV1B — ONE navigation list per presentation mode: the self-resolving legacy list and the
+    // verified EFS list. R10 adds the EFS branch; both consume the SAME exported contract, so the
+    // ≥44px floor is neither duplicated nor re-declared. The mobile list stays with the shell engine.
+    expect(uses).toHaveLength(2);
+    // Drift guard: there is still exactly ONE definition of the contract itself.
+    expect(HEADER_SOURCE.match(/export const HEADER_NAV_LINK_CLASS/g) ?? []).toHaveLength(1);
     // The text brand fallback (no configured logo) takes the same box.
     expect(HEADER_SOURCE).toContain("linkClassName={TOUCH_TARGET_BOX_CLASS}");
     // No surface may fall back to the undersized inline class again.

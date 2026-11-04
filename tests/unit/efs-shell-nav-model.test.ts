@@ -904,13 +904,23 @@ describe("source guard — nothing live imports this model yet", () => {
       "components/site/context-nav-links.tsx",
     ]) {
       const source = withoutComments(readFileSync(path.join(SRC, file), "utf8"));
+      // After the cutover NO live module may reach the MODEL itself, composition included.
       expect(source, file).not.toContain("efs-shell-nav-model");
-      // …nor the forthcoming non-live intermediate. A live entrypoint importing the adapter directly
-      // would reach the model without ever appearing in the importer allowlist above, so the narrowed
-      // exception must not become a way around this guard. This remains a STRING-LEVEL source guard —
-      // not a transitive dependency graph; deeper reachability is a review question at cutover time.
-      expect(source, file).not.toContain("efs-shell-nav-ownership");
+      // R10 Stage B makes the composition the ONE authorized live consumer of the ownership
+      // adapter. Every other accepted module must still never mention it, so an additional live
+      // entrypoint cannot reach the model by borrowing the composition's entitlement.
+      if (file !== "app/[[...segments]]/server-composition.tsx") {
+        expect(source, file).not.toContain("efs-shell-nav-ownership");
+      }
     }
+
+    // Positive control: the exemption above is EARNED, not vacuous — the composition really does
+    // consume the ownership adapter, and still never reaches the model behind it.
+    const composition = withoutComments(
+      readFileSync(path.join(SRC, "app", "[[...segments]]", "server-composition.tsx"), "utf8"),
+    );
+    expect(composition).toContain("efsOwnedPrimaryNavigation");
+    expect(composition).not.toContain("efs-shell-nav-model");
   });
 
   it("left the accepted R04 resolver and R05 renderer seams unchanged", () => {

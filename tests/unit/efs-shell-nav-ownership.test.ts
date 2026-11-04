@@ -858,6 +858,8 @@ describe("vertical integration — the list renders through the shared ContextNa
 
 const SRC = path.join(process.cwd(), "src");
 const ADAPTER = "src/app/[[...segments]]/efs-shell-nav-ownership.ts";
+/** R10 Stage B: the ONE authorized live consumer of this adapter. */
+const COMPOSITION = "src/app/[[...segments]]/server-composition.tsx";
 const MODEL = "src/app/[[...segments]]/efs-shell-nav-model.ts";
 
 /** Comments are stripped FIRST: this suite and the adapter NAME the authorities they refuse to use. */
@@ -953,7 +955,7 @@ describe("source guards — this seam stays non-live, and R08's guard still hold
     expect(importers).toEqual([ADAPTER]);
   });
 
-  it("is not imported by any live module", () => {
+  it("is imported by exactly ONE live module — the composition", () => {
     const offenders = allModules()
       .map(repoPath)
       .filter((file) => file !== ADAPTER)
@@ -962,7 +964,16 @@ describe("source guards — this seam stays non-live, and R08's guard still hold
         return source.includes("efs-shell-nav-ownership") || source.includes("efsOwnedPrimaryNavigation");
       });
 
-    expect(offenders).toEqual([]);
+    // R10 Stage B cutover: the seam is LIVE, and its liveness is bounded to one audited importer.
+    // A second live importer would compose the primary navigation from two different ownership
+    // inputs — exactly the double-ownership defect this seam exists to prevent.
+    expect(offenders).toEqual([COMPOSITION]);
+
+    // Positive control: any OTHER live module reaching the adapter is still reported.
+    const audited = new Set([COMPOSITION]);
+    expect(
+      [COMPOSITION, "src/app/[[...segments]]/layout.tsx"].filter((file) => !audited.has(file)),
+    ).toEqual(["src/app/[[...segments]]/layout.tsx"]);
   });
 
   it("declares no second URL grammar — it imports only the accepted authorities", () => {

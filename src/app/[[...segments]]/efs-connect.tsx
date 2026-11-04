@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { notFound } from "next/navigation";
 
 import { EfsPageStructuredData, efsPageLinkContext } from "@/components/efs/efs-page-links";
 import { createRuntimeAssetOwnershipResolver } from "@/config/runtime-asset-resolver";
@@ -12,7 +13,7 @@ import {
 import type { EfsPageSource } from "@/adapters/content/efs-content";
 
 import type { EfsView } from "./efs-request";
-import { efsShellPresentationConfig } from "./server-composition";
+import { EfsPresentationRefusal, efsShellPresentationConfig } from "./server-composition";
 
 /**
  * THE EFS CONNECT PAGE — THE SAME SPECIALISED COMPOSITION THE LEGACY ROUTE USES
@@ -71,7 +72,16 @@ export function efsConnectPresentation(
   view: EfsView,
   page: ConnectAuthoredPage,
 ): ReactNode | undefined {
-  const siteConfig = efsShellPresentationConfig(view.context.siteConfig, view);
+  let siteConfig: ReturnType<typeof efsShellPresentationConfig>;
+  try {
+    siteConfig = efsShellPresentationConfig(view.context.siteConfig, view);
+  } catch (error) {
+    // GEO-04 R13 — an invalid presentation declaration is a public REFUSAL wherever it is first
+    // observed, because page and layout render concurrently. The sanctioned not-found response is the
+    // same one the document boundary produces; the two can never disagree about the status.
+    if (error instanceof EfsPresentationRefusal) notFound();
+    throw error;
+  }
   if (!siteConfig) return undefined;
   // GEO-04 C09-R09 — the SAME per-render authorities the generic EFS view uses, so a JSON Connect Page's
   // authored `route` lands on the binding-owned address and its application `link` is resolved by the

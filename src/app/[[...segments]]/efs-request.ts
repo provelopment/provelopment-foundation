@@ -631,6 +631,32 @@ export async function efsViewForCurrentRequest(
 }
 
 /** The public path a view would serve, including the binding prefix and Site selector when open. */
+/**
+ * The view's public navigation re-derived for a DIFFERENT public base.
+ *
+ * `navigation` is baked at resolution time from the binding in force then, so a view whose `binding`
+ * has been replaced without re-deriving `navigation` is an inconsistent object: it would claim one
+ * public base while advertising another's hrefs. This asks the SAME resolver rule for the new
+ * binding, so publication membership, public visibility and open-Site addressing are all re-checked
+ * against each destination's own source. It never mints an address the publication cannot serve.
+ */
+export function efsNavigationForBinding(
+  view: EfsView,
+  binding: EfsBinding,
+): readonly EfsNavigationItem[] {
+  const loaded = runtime();
+  if (!loaded) return view.navigation;
+  return navigationFor({
+    capsule: loaded.capsule,
+    entityId: view.entity.id,
+    facetId: view.facet.id,
+    site: view.site,
+    page: view.page,
+    binding,
+    localeKey: view.localeKey,
+  });
+}
+
 export function efsPublicSegments(view: EfsView): readonly string[] {
   return contentSegments(view.binding, {
     siteId: view.site.id,

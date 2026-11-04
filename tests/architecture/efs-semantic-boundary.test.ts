@@ -33,13 +33,18 @@ describe("EFS semantic boundary (R03)", () => {
   it("builds the shell with explicit locales and no geography-bearing legacy state", () => {
     const composition = source("app/[[...segments]]/server-composition.tsx");
     const build = functionBody(composition, "efsShellPresentationConfig");
+    // GEO-04 R13 — the publication's presentation code is now classified by its own total function, which
+    // `efsShellPresentationConfig` delegates to. The same fact is asserted over the pair, plus the new
+    // delegation itself, so the relocation cannot become a place for the read to disappear from.
+    const declaration = functionBody(composition, "efsPresentationDeclaration");
+    expect(build).toContain("efsPresentationDeclaration(source, view)");
+    expect(`${declaration}\n${build}`).toContain("view.publication.presentationSiteCode");
     expect(build).toContain("canonicalLocaleTag(locale)");
     expect(build).toContain("locationSelection: null");
     expect(build).toContain("regions: {}");
     expect(build).toContain("pageBindings: []");
     expect(build).toContain("timezone: undefined");
     expect(build).toContain("locations: []");
-    expect(build).toContain("view.publication.presentationSiteCode");
     expect(build).toContain("publicPathBase(view.binding, view.site.id)");
     expect(build).not.toContain("view.binding.prefix");
     expect(build).not.toContain("prefix[0]");

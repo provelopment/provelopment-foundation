@@ -258,6 +258,25 @@ describe("EFS-resolved navigation — not reachable from any live render path", 
       }
     }
 
-    expect(offenders).toEqual([]);
+    // R10 Stage B cutover: the EFS-resolved mode is now LIVE. Exactly the shared shell's own
+  // navigation surfaces may select it — the header and footer lists, which receive server-supplied,
+  // already-validated items. Any other module selecting the mode would be a second, unaudited
+  // projection that could re-introduce client-side address derivation.
+  const ALLOWED = [
+    "src/components/site/site-footer.tsx",
+    "src/components/site/site-header.tsx",
+  ];
+  expect(offenders.sort()).toEqual(ALLOWED);
+
+  // Positive control: the scan still detects an opt-in, and rejects any path outside the allowlist.
+  const unauthorized = (entry: string) =>
+    entry.includes("efs-resolved") && !ALLOWED.includes(entry.split(":")[0]);
+  expect(unauthorized("src/components/site/stray-list.tsx:efs-resolved")).toBe(true);
+  // …while the audited consumers are not offenders.
+  expect(unauthorized("src/components/site/site-header.tsx")).toBe(false);
+  // …and the renderer still declares the mode it grants, so the allowlist is anchored to a real seam.
+  expect(
+    readFileSync(path.join(process.cwd(), "src/components/site/context-nav-links.tsx"), "utf8"),
+  ).toContain('readonly mode: "efs-resolved"');
   });
 });

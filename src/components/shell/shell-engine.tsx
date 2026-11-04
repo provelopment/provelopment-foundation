@@ -24,7 +24,7 @@ import {
   type ShellLayout,
 } from "@/core/ui";
 
-import { ShellBottomBar, type ShellBottomBarLink } from "./shell-bottom-bar";
+import { ShellBottomBar, type ShellBottomBarEfsItem, type ShellBottomBarLink } from "./shell-bottom-bar";
 import { ShellMobileNav } from "./shell-mobile-nav";
 import type { SiteSet } from "@/core/site";
 
@@ -143,12 +143,30 @@ export interface ShellEngineProps {
   };
   /** Client nav context: current locale + configured region page bindings. */
   readonly locale: string;
-  readonly pageBindings: readonly PageRegionBinding[];
+  /**
+   * GEO-04 R10 — REQUIRED for the legacy surface, ABSENT for the EFS surface. The EFS path resolves no
+   * address from a page binding, so it supplies none at all: a required prop would force the EFS caller to
+   * invent an empty list, and an invented empty list is indistinguishable from a misconfiguration. The
+   * legacy contract is unchanged — it always passes one.
+   */
+  readonly pageBindings?: readonly PageRegionBinding[];
   /**
    * S1E3A — the resolved sites, passed down like every other config-derived value (the engine
-   * layer imports no configuration; see the UI-04 boundary).
+   * layer imports no configuration; see the UI-04 boundary). Optional for the same R10 reason as
+   * `pageBindings`.
    */
-  readonly siteSet: SiteSet;
+  readonly siteSet?: SiteSet;
+  /**
+   * GEO-04 R10 — THE EFS BAR'S ALREADY-RESOLVED DESTINATIONS.
+   *
+   * Present → the engine forwards them to `ShellBottomBar`, which renders the publication's own verified
+   * addresses and `current` markers and resolves nothing. `pageBindings`/`siteSet` are then inert on this
+   * path (the EFS presentation Site declares no page bindings, and the EFS address form is not a
+   * binding address), but they remain REQUIRED props so a legacy caller's contract is unchanged.
+   *
+   * Absent → the legacy resolution path is untouched, byte for byte.
+   */
+  readonly efsBottomNavItems?: readonly ShellBottomBarEfsItem[];
   /** Optional <md frame-level layer (drawer/bottom bar etc.). */
   readonly mobileNavigation?: ReactNode;
   /** CTA label (only composed when `resolved.cta.enabled`). */
@@ -174,6 +192,7 @@ export function ShellEngine({
   locale,
   pageBindings,
   siteSet,
+  efsBottomNavItems,
   mobileNavigation,
   ctaLabel,
   ctaHref,
@@ -582,8 +601,13 @@ export function ShellEngine({
               label={bottomNav.label}
               links={bottomNav.links}
               locale={locale}
-              pageBindings={pageBindings}
-              siteSet={siteSet}
+              // GEO-04 R10 — supplied by the LEGACY surface only. The EFS bar takes its EFS branch from
+              // `efsItems` below and resolves no site-scoped href, so it is given neither input.
+              {...(pageBindings === undefined ? {} : { pageBindings })}
+              {...(siteSet === undefined ? {} : { siteSet })}
+              // GEO-04 R10 — present only on the EFS path; the bar then renders the publication's own
+              // verified addresses and `current` markers instead of resolving a site-scoped href.
+              efsItems={efsBottomNavItems}
               demoBadgeLabel={bottomNav.demoBadgeLabel}
               mode={bottomNav.mode}
               bandsClassName={bandClassName(mobileSurfaceBands(composition.decision))}

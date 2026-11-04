@@ -48,13 +48,18 @@ export interface ShellBottomBarProps {
   readonly links: readonly ShellBottomBarLink[];
   readonly locale: string;
   /** Configured region page bindings (content layer passes its site config). */
-  readonly pageBindings: readonly PageRegionBinding[];
+  readonly pageBindings?: readonly PageRegionBinding[];
   /**
    * S1E3A — the deployment's resolved SITES, passed in like every other config-derived value.
    * The engine layer never imports `@/config`: it receives the site set and resolves the current
    * site/locale/region context from the URL with the ONE core helper.
+   *
+   * GEO-04 R10 — both this and `pageBindings` are REQUIRED by the legacy resolution path and ABSENT on the
+   * EFS path, which receives `efsItems` instead and resolves nothing. Making them optional is what lets the
+   * EFS document supply neither; the legacy body asserts their presence below, so a legacy caller that
+   * forgets one fails loudly instead of silently resolving an empty context.
    */
-  readonly siteSet: SiteSet;
+  readonly siteSet?: SiteSet;
   /** Localized demo badge label (for `demoOnly` items). */
   readonly demoBadgeLabel?: string;
   /** P5-5 — bottom-menu presentation mode (open | compact | closed). */
@@ -77,6 +82,37 @@ export interface ShellBottomBarProps {
    * mobile-only presentation so a direct consumer is unchanged.
    */
   readonly bandsClassName?: string;
+  /**
+   * GEO-04 R10 — THE EFS PRESENTATION: destinations the EFS compositor has ALREADY proved and marked.
+   *
+   * Present → the bar renders these items verbatim and performs NO URL resolution: no `usePathname`, no
+   * `pathContextOr`, no `sitePrefixPath`, no `resolveNavHref`, no `pageBindings`/`siteSet` read. That is
+   * mandatory under EFS because the shell composes no `ClientRoutingProvider`, the EFS address form is not a
+   * regional page-binding address, and the `current` decision belongs to the verified view (R09), not to a
+   * client pathname comparison.
+   *
+   * Absent → the legacy branch below is untouched, byte for byte.
+   */
+  readonly efsItems?: readonly ShellBottomBarEfsItem[];
+}
+
+/**
+ * GEO-04 R10 — ONE ALREADY-RESOLVED EFS BAR DESTINATION.
+ *
+ * `active` is the publication's OWN current-Page decision, supplied by the compositor. It is never
+ * recomputed here, which is why this type carries no `href` re-resolution surface at all.
+ */
+export interface ShellBottomBarEfsItem {
+  readonly label: string;
+  /** The published address, rendered VERBATIM. */
+  readonly href: string;
+  /** Stable, position-derived React key (two real items may share one destination). */
+  readonly key: string;
+  readonly active?: boolean;
+  readonly external?: boolean;
+  readonly icon?: string;
+  readonly disabled?: boolean;
+  readonly demoOnly?: boolean;
 }
 
 /**
@@ -118,7 +154,26 @@ export const BOTTOM_NAV_LINK_CLASS = "inline-flex min-h-11 min-w-11 items-center
  */
 export const PAGE_EDGE_INSET_CLASS = "px-4";
 
-export function ShellBottomBar({
+export function ShellBottomBar(props: ShellBottomBarProps) {
+  // ── THE DISPATCHER CALLS NO HOOK ────────────────────────────────────────────────────────────────────
+  // `usePathname` lives in the legacy child. The EFS shell composes no `ClientRoutingProvider` and does not
+  // resolve addresses from the visitor's pathname, so the EFS child is hook-free; a conditional hook order
+  // inside one component would be illegal, which is why the two branches are separate components.
+  return props.efsItems === undefined ? (
+    <LegacyShellBottomBar {...props} />
+  ) : (
+    <EfsShellBottomBar
+      label={props.label}
+      items={props.efsItems}
+      demoBadgeLabel={props.demoBadgeLabel}
+      mode={props.mode}
+      scope={props.scope}
+      bandsClassName={props.bandsClassName}
+    />
+  );
+}
+
+function LegacyShellBottomBar({
   label,
   links,
   locale,
@@ -133,6 +188,15 @@ export function ShellBottomBar({
   // P5-5 — "closed" means the menu is not composed at all (adopter choice;
   // Escape/backdrop/focus machinery is untouched when present).
   if (mode === "closed") return null;
+  // GEO-04 R10 — the legacy resolution path's inputs. The EFS path returned above and never reaches this;
+  // a legacy caller that omits either is a wiring defect, so fail loudly rather than resolve an empty
+  // context and silently produce the wrong hrefs.
+  if (pageBindings === undefined || siteSet === undefined) {
+    throw new Error(
+      "ShellBottomBar: the legacy resolution path requires `pageBindings` and `siteSet`; " +
+        "an EFS composition must pass `efsItems` instead.",
+    );
+  }
   const parsed = pathContextOr(
     siteSet,
     pageBindings,
@@ -173,6 +237,40 @@ export function ShellBottomBar({
   // wrapping, so the bar grows in height instead of hiding a destination behind an overflow control.
 
   return (
+    <BottomBarSurface
+      label={label}
+      items={resolved}
+      bandsClassName={bandsClassName}
+      scope={scope}
+      mode={mode}
+    />
+  );
+}
+
+/**
+ * GEO-04 R10 — THE ONE BAR SURFACE, SHARED BY BOTH BRANCHES.
+ *
+ * The legacy and EFS branches differ ONLY in how a destination and its `current` flag are decided; the
+ * SURFACE — the landmark, the sticky layer, the width gate, the layout-scope attributes, the list and link
+ * classes — is one implementation, so the EFS shell cannot drift from the shipped bar visually or
+ * semantically. Both branches hand it an already-resolved `NavItemModel[]`.
+ */
+function BottomBarSurface({
+  label,
+  items,
+  bandsClassName = "md:hidden",
+  scope,
+  mode,
+}: {
+  readonly label: string;
+  readonly items: readonly NavItemModel[];
+  readonly bandsClassName?: string;
+  readonly scope?: Readonly<Record<string, string>>;
+  readonly mode?: MenuMode;
+}) {
+  // P5-5 — "closed" means the menu is not composed at all (adopter choice).
+  if (mode === "closed") return null;
+  return (
     <div
       // NAV1B/NAV1D — THE BAR SPANS THE VIEWPORT: it IS the sticky surface, and it keeps that
       // surface at EVERY width, in every frame. `w-full` is what makes that true inside the shell's
@@ -198,11 +296,60 @@ export function ShellBottomBar({
       <div className={`${PAGE_EDGE_INSET_CLASS} py-1`}>
         <BottomNavigation
           label={label}
-          items={resolved}
+          items={items}
           listClassName={BOTTOM_NAV_LIST_CLASS}
           linkClassName={BOTTOM_NAV_LINK_CLASS}
         />
       </div>
     </div>
+  );
+}
+
+/**
+ * GEO-04 R10 — THE EFS BAR: presentation of already-proved destinations, and nothing else.
+ *
+ * It performs NO URL resolution. Every href arrives from the EFS compositor as a published address and is
+ * forwarded verbatim; the `current` marker arrives from the verified view, so the bar never compares a
+ * client pathname against an address computed by a different authority. `isInternalHref` is used ONLY as the
+ * scheme test when the caller omits `external` — it classifies an href and can never produce one.
+ */
+function EfsShellBottomBar({
+  label,
+  items,
+  demoBadgeLabel,
+  mode,
+  scope,
+  bandsClassName,
+}: {
+  readonly label: string;
+  readonly items: readonly ShellBottomBarEfsItem[];
+  readonly demoBadgeLabel?: string;
+  readonly mode?: MenuMode;
+  readonly scope?: Readonly<Record<string, string>>;
+  readonly bandsClassName?: string;
+}) {
+  const resolved: NavItemModel[] = items.map((item) => {
+    const external = item.external ?? !isInternalHref(item.href);
+    return {
+      label: item.label,
+      href: item.href,
+      key: item.key,
+      // An external destination is never the current Page, even if a contradictory input says so.
+      active: external ? false : item.active === true,
+      external,
+      badge: item.demoOnly && demoBadgeLabel ? demoBadgeLabel : undefined,
+      icon: item.icon,
+      disabled: item.disabled,
+    };
+  });
+
+  return (
+    <BottomBarSurface
+      label={label}
+      items={resolved}
+      bandsClassName={bandsClassName}
+      scope={scope}
+      mode={mode}
+    />
   );
 }
